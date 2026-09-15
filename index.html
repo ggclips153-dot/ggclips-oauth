@@ -3,132 +3,71 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GGclips Automation — authorization callback</title>
-  <style>
-    :root {
-      --bg: #f3f4f6; --surface: #fff; --border: #d9dce1;
-      --ink: #16181d; --muted: #565d6b; --accent: #2f6fed;
-      --ok-bg: #e2f6ea; --ok-ink: #166a3a;
-      --err-bg: #fde8e6; --err-ink: #a3241a;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #14161a; --surface: #1d2026; --border: #33373f;
-        --ink: #eef0f3; --muted: #a2a9b5; --accent: #5b8cff;
-        --ok-bg: #113322; --ok-ink: #6fe0a3;
-        --err-bg: #3a1815; --err-ink: #ff8b7e;
-      }
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; padding: 40px 20px 64px;
-      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-      background: var(--bg); color: var(--ink); line-height: 1.55;
-    }
-    main { max-width: 620px; margin: 0 auto; }
-    h1 { font-size: 22px; margin: 0 0 6px; }
-    .sub { color: var(--muted); margin: 0 0 28px; font-size: 15px; }
-    .card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; padding: 22px 24px; margin-bottom: 20px;
-    }
-    .label {
-      font-size: 12px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: .05em; color: var(--muted); margin-bottom: 10px;
-    }
-    code#code {
-      display: block; font-family: ui-monospace, Consolas, monospace;
-      font-size: 14px; word-break: break-all; background: var(--bg);
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 14px 16px; margin-bottom: 14px; min-height: 52px;
-    }
-    button {
-      font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-      background: var(--accent); color: #fff; border: 0;
-      border-radius: 8px; padding: 10px 18px;
-    }
-    button:hover { filter: brightness(1.08); }
-    .status { display: inline-block; margin-left: 12px; font-size: 14px; font-weight: 600; color: var(--ok-ink); }
-    .banner { border-radius: 8px; padding: 12px 16px; font-size: 14px; font-weight: 500; }
-    .banner.ok { background: var(--ok-bg); color: var(--ok-ink); }
-    .banner.err { background: var(--err-bg); color: var(--err-ink); }
-    pre.cmd {
-      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-      padding: 12px 14px; overflow-x: auto; font-size: 13px; margin: 10px 0 0;
-    }
-    .muted { color: var(--muted); font-size: 14px; }
-  </style>
+  <title>GGclips Automation</title>
+  <meta name="description" content="A self-hosted dashboard that schedules and publishes gaming clips to the GGclips channel's own connected social accounts." />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <main>
+  <header class="site">
+    <a class="brand" href="/ggclips-oauth/">GGclips Automation</a>
+    <nav>
+      <a href="terms/">Terms of Service</a>
+      <a href="privacy/">Privacy Policy</a>
+    </nav>
+  </header>
+
   <h1>GGclips Automation</h1>
-  <p class="sub">TikTok authorization callback</p>
-
-  <div id="banner" class="banner ok card" style="display:none"></div>
-
-  <div class="card" id="code-card" style="display:none">
-    <div class="label">Authorization code</div>
-    <code id="code"></code>
-    <button id="copy" type="button">Copy code</button>
-    <span class="status" id="copied" style="display:none">Copied</span>
-  </div>
-
-  <div class="card" id="next-card" style="display:none">
-    <div class="label">Next step</div>
-    <p class="muted" style="margin:0">Run this in the dashboard folder, pasting the code in place of <code>&lt;code&gt;</code>:</p>
-    <pre class="cmd">python scripts/authorize_tiktok.py &lt;code&gt;</pre>
-  </div>
-
-  <p class="muted" id="idle">
-    This page receives the authorization code after you approve access on TikTok.
-    Open it from the authorization link rather than directly.
+  <p class="lead">
+    A self-hosted scheduling dashboard for GGclips, a gaming highlights channel. It publishes
+    the channel's own clips to the channel's own connected social accounts, at times chosen in
+    advance.
   </p>
+
+  <h2>What it does</h2>
+  <p>
+    GGclips Automation is a single-operator tool. The channel owner adds a finished video clip,
+    writes the caption and first comment, chooses the posting options each platform requires, and
+    sets a date and time. At that time the dashboard publishes the clip through each platform's
+    official API.
+  </p>
+  <ul>
+    <li>Schedules a clip once and publishes it across the channel's connected accounts</li>
+    <li>Posts the caption and an optional first comment</li>
+    <li>Reads back view, like, comment and share counts so performance can be compared</li>
+    <li>Requires the operator to confirm every post before it is armed to go out</li>
+  </ul>
+
+  <h2>How TikTok is used</h2>
+  <p>
+    The dashboard uses TikTok Login Kit so the channel owner can authorize their own TikTok
+    account, and the Content Posting API to publish a video the owner has selected. Before
+    anything is posted, the dashboard asks the owner to choose the video's privacy level, decide
+    whether comments, Duet and Stitch are allowed, and declare any commercial content. Nothing
+    is posted without that confirmation.
+  </p>
+  <p>
+    It also uses <code>video.list</code> to read back public metrics for videos it posted, so the
+    channel owner can see how a clip performed.
+  </p>
+
+  <h2>Where it runs</h2>
+  <p>
+    The dashboard is self-hosted: it runs locally on the channel owner's own computer rather than
+    as a hosted service. There is no shared server, no other users, and no account to sign up for.
+    This website exists to document the tool and to receive the authorization redirect.
+  </p>
+
+  <div class="card">
+    <p class="muted" style="margin:0">
+      GGclips Automation is an independent personal project. It is not affiliated with, endorsed
+      by, or sponsored by TikTok, YouTube, Meta, or any other platform it connects to.
+    </p>
+  </div>
 </main>
 
-<script>
-  (function () {
-    const params = new URLSearchParams(window.location.search);
-    // URLSearchParams decodes percent-encoding for us, which matters here: TikTok's docs
-    // require the code to be URL-decoded before it is exchanged for a token.
-    const code = params.get('code');
-    const error = params.get('error');
-    const errorDesc = params.get('error_description');
-
-    const banner = document.getElementById('banner');
-    const idle = document.getElementById('idle');
-
-    if (error) {
-      banner.className = 'banner err card';
-      banner.textContent = 'TikTok returned an error: ' + error + (errorDesc ? ' — ' + errorDesc : '');
-      banner.style.display = 'block';
-      idle.style.display = 'none';
-      return;
-    }
-
-    if (!code) return;
-
-    banner.textContent = 'Authorization approved. Copy the code below.';
-    banner.style.display = 'block';
-    idle.style.display = 'none';
-    document.getElementById('code').textContent = code;
-    document.getElementById('code-card').style.display = 'block';
-    document.getElementById('next-card').style.display = 'block';
-
-    document.getElementById('copy').addEventListener('click', async function () {
-      try {
-        await navigator.clipboard.writeText(code);
-      } catch (e) {
-        const range = document.createRange();
-        range.selectNode(document.getElementById('code'));
-        window.getSelection().removeAllRanges();
-        window.getSelection().addRange(range);
-        return;
-      }
-      const note = document.getElementById('copied');
-      note.style.display = 'inline-block';
-      setTimeout(function () { note.style.display = 'none'; }, 2000);
-    });
-  })();
-</script>
+<footer class="site">
+  GGclips Automation &middot; <a href="terms/">Terms</a> &middot; <a href="privacy/">Privacy</a>
+</footer>
 </body>
 </html>

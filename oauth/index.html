@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Authorization callback — GGclips Automation</title>
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+<main>
+  <header class="site">
+    <a class="brand" href="../">GGclips Automation</a>
+    <nav>
+      <a href="../terms/">Terms of Service</a>
+      <a href="../privacy/">Privacy Policy</a>
+    </nav>
+  </header>
+
+  <h1>Authorization callback</h1>
+  <p class="lead">This page receives the authorization code after you approve access.</p>
+
+  <div id="banner" class="banner ok card" style="display:none"></div>
+
+  <div class="card" id="code-card" style="display:none">
+    <h2 style="margin-top:0">Authorization code</h2>
+    <code id="code" class="block"></code>
+    <button id="copy" type="button">Copy code</button>
+    <span class="status" id="copied" style="display:none">Copied</span>
+  </div>
+
+  <div class="card" id="next-card" style="display:none">
+    <h2 style="margin-top:0">Next step</h2>
+    <p class="muted" style="margin:0 0 10px">
+      Run this in the dashboard folder, pasting the code in place of <code>&lt;code&gt;</code>:
+    </p>
+    <code class="block">python scripts/authorize_tiktok.py &lt;code&gt;</code>
+  </div>
+
+  <p class="muted" id="idle">
+    Open this page from the authorization link rather than directly — the code arrives as part
+    of that redirect.
+  </p>
+</main>
+
+<footer class="site">
+  GGclips Automation &middot; <a href="../terms/">Terms</a> &middot; <a href="../privacy/">Privacy</a>
+</footer>
+
+<script>
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    // URLSearchParams decodes percent-encoding for us, which matters here: TikTok's docs
+    // require the code to be URL-decoded before it is exchanged for a token.
+    const code = params.get('code');
+    const error = params.get('error');
+    const errorDesc = params.get('error_description');
+
+    const banner = document.getElementById('banner');
+    const idle = document.getElementById('idle');
+
+    if (error) {
+      banner.className = 'banner err card';
+      banner.textContent = 'Authorization failed: ' + error + (errorDesc ? ' — ' + errorDesc : '');
+      banner.style.display = 'block';
+      idle.style.display = 'none';
+      return;
+    }
+
+    if (!code) return;
+
+    banner.textContent = 'Authorization approved. Copy the code below.';
+    banner.style.display = 'block';
+    idle.style.display = 'none';
+    document.getElementById('code').textContent = code;
+    document.getElementById('code-card').style.display = 'block';
+    document.getElementById('next-card').style.display = 'block';
+
+    document.getElementById('copy').addEventListener('click', async function () {
+      try {
+        await navigator.clipboard.writeText(code);
+      } catch (e) {
+        const range = document.createRange();
+        range.selectNode(document.getElementById('code'));
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        return;
+      }
+      const note = document.getElementById('copied');
+      note.style.display = 'inline-block';
+      setTimeout(function () { note.style.display = 'none'; }, 2000);
+    });
+  })();
+</script>
+</body>
+</html>
