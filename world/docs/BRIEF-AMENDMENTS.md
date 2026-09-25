@@ -11,7 +11,8 @@ everything not listed here.
 | A4 | 2026-09-25 | First cities: AI Receptionist City (Mayor Ana), Personal Finance City (Greg), GGClutchPlays (Kevin), Innovations City (Soren), Security City (Odette). | `config/seed.json` |
 | A5 | 2026-09-25 | **Name generator** for agent display names, so Marc doesn't have to name each agent. | `src/domain/names.ts` |
 | A6 | 2026-09-25 | **Task strikes**, a counter separate from KPI strikes. A Security City department has agents deployed to each city. Caught not doing a task = 1 task strike. Every 3 = a jail term: 6 hours, then 24 hours, then 3 days; the 4th time = jailed awaiting deletion. Terms end on their own. Task strikes reset after each term; the term level never resets. | `security.task_strike`, `agent.deployed` |
-| A7 | 2026-09-25 | **Shadows** are interns: students in the last phase before graduation. Professors (the most experienced) supervise the shadow's work. A shadow covers its slot while the holder is out and takes the slot if the holder is deleted or the department expands. Shadows count in agent totals. | Not built yet (see OPEN-QUESTIONS #17-#20) |
+| A7 | 2026-09-25 | **Shadows are interns**: students in the last phase before graduation, attached to the department they studied for (not to a specific agent). They learn by working alongside its graduated agents. They count in agent totals (under student, labelled intern). | `agent.interned`, `INTERN_BADGE` |
+| A8 | 2026-09-25 | **Departments have no slots.** A department is the agents who specialise in it. The New Department form drops "agent-slot count". **The Mayor appoints shadow promotions** (student → intern → graduated) on its own, with no Marc intent. Higher promotions (active, senior, dept-lead), placement, moves and deletion stay Mayor + Marc via the DM. | `agent.interned`, `agent.graduated`; `slots` removed |
 
 ## How Security and the jail work (A3, A6)
 

@@ -52,7 +52,7 @@ describe('write-guard: who may write what', () => {
       () => w.ledger.append(owner, {
         type: 'intent.create_department',
         city,
-        payload: { districtId: dist, name: 'Intake', scope: 's', slots: 1, botTokenRef: '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw' },
+        payload: { districtId: dist, name: 'Intake', scope: 's', botTokenRef: '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw' },
       }),
       /bot token/,
     );
@@ -65,7 +65,8 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     const city = w.city();
     const dept = w.department(city, w.district(city));
     const id = w.agent(city, dept, 'Iris');
-    assert.throws(() => w.ledger.append(mayorOf(city), { type: 'agent.graduated', city, subject: id, payload: {} }), /must cite an owner intent/);
+    w.promote(city, id, 'probationer');
+    assert.throws(() => w.ledger.append(mayorOf(city), { type: 'agent.promoted', city, subject: id, payload: { to: 'active' } }), /must cite an owner intent/);
   });
 
   it('an intent the DM has not routed authorizes nothing', () => {
@@ -93,8 +94,10 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     const dept = w.department(city, w.district(city));
     const a = w.agent(city, dept, 'Iris');
     const b = w.agent(city, dept, 'Juno');
-    const i = w.intent('promote_agent', city, { agentId: a, to: 'probationer' });
-    assert.throws(() => w.ledger.append(mayorOf(city), { type: 'agent.graduated', city, subject: b, payload: {}, authorizedBy: i.seq }), /is for agent/);
+    w.promote(city, a, 'probationer');
+    w.promote(city, b, 'probationer');
+    const i = w.intent('promote_agent', city, { agentId: a, to: 'active' });
+    assert.throws(() => w.ledger.append(mayorOf(city), { type: 'agent.promoted', city, subject: b, payload: { to: 'active' }, authorizedBy: i.seq }), /is for agent/);
   });
 
   it('the DM routes each intent once, under the intent\'s own city tag', () => {
@@ -119,14 +122,35 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     );
   });
 
-  it('enforces department slot counts', () => {
+  it('departments have no slot cap (A8) and reject a slots field', () => {
     const w = new TestWorld();
     const city = w.city();
-    const dept = w.department(city, w.district(city), 1);
-    w.agent(city, dept, 'Iris');
-    assert.throws(() => w.agent(city, dept, 'Juno'), /no free agent slot/);
-    // Juno was enrolled but could not be placed: she stays in intake.
-    assert.equal(w.state.cityAgentCounts(city).enrolled, 1);
+    const dist = w.district(city);
+    const dept = w.department(city, dist);
+    for (const name of ['Iris', 'Juno', 'Kai', 'Lark', 'Mira']) w.agent(city, dept, name);
+    assert.equal(w.state.departmentAgents(dept).length, 5);
+    assert.throws(
+      () => w.ledger.append(owner, { type: 'intent.create_department', city, payload: { districtId: dist, name: 'X', scope: 's', slots: 1 } }),
+      /slots is not a known field/,
+    );
+  });
+
+  it('shadows: the Mayor appoints student -> intern -> graduated; no skipping the internship', () => {
+    const w = new TestWorld();
+    const city = w.city();
+    const dept = w.department(city, w.district(city));
+    const id = w.agent(city, dept, 'Iris');
+    const mayor = mayorOf(city);
+    assert.throws(() => w.fact(mayor, { type: 'agent.graduated', city, subject: id, payload: {} }), /only an intern/);
+    w.fact(mayor, { type: 'agent.interned', city, subject: id, payload: {} });
+    const rec = w.state.agents.get(id)!;
+    assert.deepEqual([rec.state, rec.badges], ['student', ['intern']]);
+    assert.equal(w.state.cityAgentCounts(city).student, 1, 'interns count under student');
+    // Neither Marc nor the DM can appoint it; nor can another city's Mayor.
+    assert.throws(() => w.ledger.append(owner, { type: 'agent.graduated', city, subject: id, payload: {} }), /may not write/);
+    assert.throws(() => w.ledger.append(mayorOf('elsewhere'), { type: 'agent.graduated', city, subject: id, payload: {} }), /outside .* write scope/);
+    w.fact(mayor, { type: 'agent.graduated', city, subject: id, payload: {} });
+    assert.deepEqual([rec.state, rec.badges, rec.graduated], ['probationer', [], true]);
   });
 
   it('agent names are data: persona text is stored, never interpreted', () => {

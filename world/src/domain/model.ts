@@ -30,6 +30,11 @@ export type AgentState = (typeof AGENT_STATES)[number];
 /** Promotion ladder: student -> probationer -> active -> senior. dept-lead is a badge on senior. */
 export const PROMOTION_LADDER: readonly AgentState[] = ['student', 'probationer', 'active', 'senior'];
 export const DEPT_LEAD_BADGE = 'dept-lead';
+/**
+ * Shadow = intern: a student in the last phase before graduation, learning alongside the
+ * department's graduated agents. A badge on `student`, counted under student. Amendment A7.
+ */
+export const INTERN_BADGE = 'intern';
 export const DEPT_LEAD_MIN_AGENTS = 3;
 
 /** 3 chances total: miss #1 -> school, miss #2 -> school, miss #3 -> deleted. */

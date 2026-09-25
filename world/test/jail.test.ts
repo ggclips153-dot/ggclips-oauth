@@ -11,11 +11,11 @@ const setup = () => {
   const security = w.city('Security City', 'essentials');
   const innovations = w.city('Innovations City', 'essentials');
   const other = w.city('Personal Finance City');
-  const dept = w.department(city, w.district(city), 5);
+  const dept = w.department(city, w.district(city));
   const agent = w.agent(city, dept, 'Iris');
   w.promote(city, agent, 'probationer');
 
-  const patrol = w.department(security, w.district(security, 'Patrol'), 5);
+  const patrol = w.department(security, w.district(security, 'Patrol'));
   const guard = w.agent(security, patrol, 'Sentinel');
   w.promote(security, guard, 'probationer');
   const d = w.intent('deploy_agent', security, { agentId: guard, toCity: city });
@@ -70,7 +70,7 @@ describe('Security: deployment and task strikes', () => {
 
   it('only a Security agent deployed to the agent\'s city can observe a strike', () => {
     const s = setup();
-    const otherDept = s.w.department(s.other, s.w.district(s.other), 3);
+    const otherDept = s.w.department(s.other, s.w.district(s.other));
     const elsewhere = s.w.agent(s.other, otherDept, 'Kai');
     assert.throws(() => taskStrike(s.w, s.security, elsewhere, s.guard), /not deployed to personal-finance-city/);
     assert.throws(() => taskStrike(s.w, s.security, s.guard, s.guard), /cannot strike itself|not deployed/);

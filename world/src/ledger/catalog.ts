@@ -46,7 +46,6 @@ const departmentFields: Schema = {
   districtId: { t: 'str', max: 20 },
   name: { t: 'str', max: 120 },
   scope: { t: 'str', max: 2000 },
-  slots: { t: 'int', min: 1, max: 1000 },
   // Name of the stored secret, never the token itself.
   botTokenRef: { t: 'str', max: 120, opt: true },
 };
@@ -101,7 +100,8 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: {
       agentId: { t: 'str', max: 20 },
-      to: { t: 'str', oneOf: ['probationer', 'active', 'senior', 'dept-lead'] },
+      // Graduation (intern -> probationer) is appointed by the Mayor alone (A8); not an owner intent.
+      to: { t: 'str', oneOf: ['active', 'senior', 'dept-lead'] },
     },
   },
   'intent.move_agent': {
@@ -215,14 +215,9 @@ export const CATALOG: Record<string, EventSpec> = {
     authorizedBy: ['intent.create_agent', 'intent.place_agent'],
     subject: 'agent',
   },
-  'agent.graduated': {
-    kind: 'fact',
-    writers: MAYOR,
-    scope: 'city',
-    schema: {},
-    authorizedBy: ['intent.promote_agent'],
-    subject: 'agent',
-  },
+  // Shadow promotions are appointed by the Mayor (A8): student -> intern -> graduated (probationer).
+  'agent.interned': { kind: 'fact', writers: MAYOR, scope: 'city', schema: {}, subject: 'agent' },
+  'agent.graduated': { kind: 'fact', writers: MAYOR, scope: 'city', schema: {}, subject: 'agent' },
   'agent.promoted': {
     kind: 'fact',
     writers: MAYOR,

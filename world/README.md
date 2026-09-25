@@ -8,7 +8,7 @@ dashboard UI (world map, city view, forms) builds on this in the next phases.
 WORLD (Marc) ── only DM + Bob cross cities, read-only
  └ CITY (Mayor + bot, FAMILY = revenue | claude | gemini | essentials)
     └ DISTRICT (supervisor)
-       └ DEPARTMENT (owns agent slots)
+       └ DEPARTMENT (the agents who specialise in it; no slots, A8)
           └ AGENT (unique, never-reused ID)
 ```
 
@@ -42,7 +42,7 @@ No agent executes its own exit, move or promotion.
 | Canonical identity record: ID, name, placement card, tier, graduation state, ledger pointer, own memory scope | `Agent` in `src/domain/state.ts` |
 | Ladder student → probationer → active → senior; dept-lead badge on a senior only with 3+ agents in the dept | guard rules |
 | 3 chances: miss #1 → school, #2 → school, #3 → 3rd strike → deletion (with archive + lesson record refs) | guard rules |
-| Department slot counts | guard rules |
+| Shadows: the Mayor appoints student → intern (shadow) → graduated; higher promotions need Marc's routed intent | guard rules |
 | Name generator: a New Agent intent with no name gets one generated and recorded in the intent | `src/domain/names.ts` |
 | Strict payloads: unknown fields rejected; bot tokens can never enter the ledger (only a `botTokenRef`) | `src/ledger/validate.ts` |
 | Mayors read only their own city; Marc, DM, Bob and **Essentials** Mayors (Innovations, Security) read everything. Nobody edits another city | `src/domain/view.ts` |
@@ -55,7 +55,7 @@ between the VPS and a local PC as-is: copy the folder plus `data/world.db` and `
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 47 tests
+npm test                    # 48 tests
 npm run profile -- add --id marc --role owner
 npm run profile -- add --id dm --role dm
 npm run profile -- add --id bob --role architect

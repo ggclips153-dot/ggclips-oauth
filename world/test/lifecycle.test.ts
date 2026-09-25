@@ -5,7 +5,7 @@ import { TestWorld, mayorOf, persona } from './helpers.ts';
 const setup = () => {
   const w = new TestWorld();
   const city = w.city();
-  const dept = w.department(city, w.district(city), 5);
+  const dept = w.department(city, w.district(city));
   return { w, city, dept };
 };
 
@@ -57,7 +57,8 @@ describe('lifecycle: enrollment -> school -> graduation -> active -> promotion',
     w.promote(city, a, 'senior');
     const rec = w.state.agents.get(a)!;
     assert.equal(rec.state, 'senior');
-    assert.deepEqual(rec.lifecycle.map((l) => l.stage), ['enrollment', 'school', 'graduation', 'active', 'promotion']);
+    assert.deepEqual(rec.lifecycle.map((l) => l.stage), ['enrollment', 'school', 'school', 'graduation', 'active', 'promotion']);
+    assert.equal(rec.lifecycle[2]!.detail, 'intern');
   });
 
   it('cannot skip rungs', () => {
@@ -110,10 +111,15 @@ describe('lifecycle: 3 chances total', () => {
     const rec = w.state.agents.get(a)!;
     assert.deepEqual(
       rec.lifecycle.map((l) => l.stage),
-      ['enrollment', 'school', 'graduation', 'school-return', 'graduation', 'school-return', 'graduation', '3rd-strike', 'deletion'],
+      [
+        'enrollment', 'school', 'school', 'graduation',
+        'school-return', 'school', 'graduation',
+        'school-return', 'school', 'graduation',
+        '3rd-strike', 'deletion',
+      ],
     );
     assert.equal(rec.deleted!.lessonRecordRef, 'lessons/AGT-000001.md');
-    assert.equal(rec.departmentId, null, 'slot freed');
+    assert.equal(rec.departmentId, null, 'removed from its department');
   });
 
   it('deletion is not possible before the 3rd strike, even with an intent', () => {

@@ -4,6 +4,7 @@ import type { Payload } from '../ledger/validate.ts';
 import {
   AGENT_STATES,
   DEPT_LEAD_BADGE,
+  INTERN_BADGE,
   JAIL_TERMS_HOURS,
   TASK_STRIKES_PER_JAIL,
   type AgentState,
@@ -66,7 +67,6 @@ export interface Department {
   districtId: string;
   name: string;
   scope: string;
-  slots: number;
   botTokenRef: string | null;
 }
 
@@ -177,7 +177,7 @@ export class WorldState {
     return this.retiredNames.has(nameKey(name));
   }
 
-  /** Living agents currently filling a slot in the department (placed, not deleted). */
+  /** Living agents placed in the department (students, interns and graduated; not deleted). */
   departmentAgents(departmentId: string): Agent[] {
     return [...this.agents.values()].filter((a) => !a.deleted && a.departmentId === departmentId);
   }
@@ -235,7 +235,6 @@ export class WorldState {
           districtId: p.districtId,
           name: p.name,
           scope: p.scope,
-          slots: p.slots,
           botTokenRef: p.botTokenRef ?? null,
         });
         break;
@@ -272,8 +271,14 @@ export class WorldState {
         agent.state = 'student';
         mark('school');
         break;
+      case 'agent.interned':
+        if (!agent) break;
+        agent.badges.push(INTERN_BADGE);
+        mark('school', INTERN_BADGE);
+        break;
       case 'agent.graduated':
         if (!agent) break;
+        agent.badges = agent.badges.filter((b) => b !== INTERN_BADGE);
         agent.state = 'probationer';
         agent.graduated = true;
         mark('graduation');

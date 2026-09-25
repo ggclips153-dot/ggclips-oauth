@@ -16,7 +16,7 @@ describe('name generator', () => {
   it('skips living and retired names, then falls back to First Surname', () => {
     const w = new TestWorld();
     const city = w.city();
-    const dept = w.department(city, w.district(city), 5);
+    const dept = w.department(city, w.district(city));
     w.agent(city, dept, 'Iris');
     w.state.retiredNames.add('juno');
     const names = suggestNames(w.state, 3, { first: ['Iris', 'Juno', 'Kai'], last: ['Stone'], rand: () => 0 });

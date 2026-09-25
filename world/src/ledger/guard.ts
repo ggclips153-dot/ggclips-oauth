@@ -8,6 +8,7 @@ import { consumeKey, isJailed, type Agent, type LedgerEvent, type WorldState } f
 import {
   DEPT_LEAD_BADGE,
   DEPT_LEAD_MIN_AGENTS,
+  INTERN_BADGE,
   MAX_STRIKES,
   SECURITY_CITY_ID,
   WORLD_TAG,
@@ -106,6 +107,7 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
 /** A jailed agent does no work: it cannot climb, move, or be measured while inside. */
 const BLOCKED_IN_JAIL = new Set([
   'security.task_strike',
+  'agent.interned',
   'agent.graduated',
   'agent.promoted',
   'agent.lead_assigned',
@@ -136,10 +138,6 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (a.cityId !== city) forbid(`agent ${a.id} is not in ${city}`);
     if (a.deleted) conflict(`agent ${a.id} is deleted; its ID is retired`);
     return a;
-  };
-  const slotFree = (deptId: string) => {
-    const dept = state.departments.get(deptId)!;
-    if (state.departmentAgents(deptId).length >= dept.slots) conflict(`department ${deptId} has no free agent slot (${dept.slots})`);
   };
   const missed = () => {
     if (!(p.value < p.target)) invalid('a strike requires a KPI miss (value < target)');
@@ -222,7 +220,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       }
       break;
     case 'department.created': {
-      match(['districtId', 'name', 'scope', 'slots', 'botTokenRef']);
+      match(['districtId', 'name', 'scope', 'botTokenRef']);
       const dist = state.districts.get(String(p.districtId)) ?? notFound(`unknown district: ${p.districtId}`);
       if (dist.cityId !== d.city) forbid(`district ${dist.id} is not in ${d.city}`);
       break;
@@ -244,12 +242,15 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
         match(['departmentId']);
       }
       departmentIn(p.departmentId, d.city);
-      slotFree(p.departmentId);
+      break;
+    case 'agent.interned':
+      if (agent!.state !== 'student') conflict(`only a student becomes an intern (agent is ${agent!.state})`);
+      if (agent!.badges.includes(INTERN_BADGE)) conflict(`agent ${agent!.id} is already an intern`);
       break;
     case 'agent.graduated':
-      intentAgent();
-      if (ip.to !== 'probationer') forbid(`intent #${intent!.seq} promotes to ${ip.to}, not probationer`);
-      if (agent!.state !== 'student') conflict(`only a student graduates (agent is ${agent!.state})`);
+      if (agent!.state !== 'student' || !agent!.badges.includes(INTERN_BADGE)) {
+        conflict(`only an intern (shadow) graduates (agent is ${agent!.state}${agent!.badges.includes(INTERN_BADGE) ? ', intern' : ''})`);
+      }
       break;
     case 'agent.promoted': {
       intentAgent();
@@ -273,7 +274,6 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       if (!agent!.departmentId) conflict(`agent ${agent!.id} is not placed yet`);
       if (agent!.departmentId === p.toDepartmentId) conflict(`agent ${agent!.id} is already in ${p.toDepartmentId}`);
       departmentIn(p.toDepartmentId, d.city);
-      slotFree(p.toDepartmentId);
       break;
     case 'agent.deployed':
       intentAgent();

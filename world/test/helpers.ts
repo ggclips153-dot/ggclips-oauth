@@ -48,8 +48,8 @@ export class TestWorld {
     return this.fact(mayorOf(city), { type: 'district.created', city, payload, authorizedBy: i.seq }).subject!;
   }
 
-  department(city: string, districtId: string, slots = 3): string {
-    const payload = { districtId, name: 'Booking', scope: 'Book qualified appointments', slots };
+  department(city: string, districtId: string): string {
+    const payload = { districtId, name: 'Booking', scope: 'Book qualified appointments' };
     const i = this.intent('create_department', city, payload);
     return this.fact(mayorOf(city), { type: 'department.created', city, payload, authorizedBy: i.seq }).subject!;
   }
@@ -63,9 +63,17 @@ export class TestWorld {
     return id;
   }
 
+  /** 'probationer' = graduation, appointed by the Mayor alone: student -> intern (shadow) -> graduated. */
   promote(city: string, agentId: string, to: 'probationer' | 'active' | 'senior' | 'dept-lead') {
+    if (to === 'probationer') {
+      const mayor = mayorOf(city);
+      if (!this.state.agents.get(agentId)!.badges.includes('intern')) {
+        this.fact(mayor, { type: 'agent.interned', city, subject: agentId, payload: {} });
+      }
+      return this.fact(mayor, { type: 'agent.graduated', city, subject: agentId, payload: {} });
+    }
     const i = this.intent('promote_agent', city, { agentId, to });
-    const type = to === 'probationer' ? 'agent.graduated' : to === 'dept-lead' ? 'agent.lead_assigned' : 'agent.promoted';
+    const type = to === 'dept-lead' ? 'agent.lead_assigned' : 'agent.promoted';
     const payload = type === 'agent.promoted' ? { to } : {};
     return this.fact(mayorOf(city), { type, city, subject: agentId, payload, authorizedBy: i.seq });
   }
