@@ -226,12 +226,35 @@ export function isJailed(a: Agent, now: Date): boolean {
   return a.jail.until === null || Date.parse(a.jail.until) > now.getTime();
 }
 
-export interface Constitution {
+export interface ConstitutionVersion {
   version: string;
   docRef: string;
+  sha256: string;
   summary: string;
+  proposalSeq: number | null;
   seq: number;
   ts: string;
+}
+
+export interface Constitution {
+  current: ConstitutionVersion | null;
+  /** Every ratified version, oldest first. */
+  history: ConstitutionVersion[];
+}
+
+export interface ConstitutionProposal {
+  seq: number;
+  ts: string;
+  /** Proposing city tag (Innovations / Security) or WORLD for Bob via the DM. */
+  city: string;
+  proposer: string;
+  title: string;
+  rationale: string;
+  text: string;
+  status: 'open' | 'ratified' | 'declined';
+  decidedSeq: number | null;
+  ratifiedAs: string | null;
+  declineReason: string | null;
 }
 
 const KPI_HISTORY = 52;
@@ -266,7 +289,8 @@ export class WorldState {
   readonly retiredNames = new Set<string>();
   /** Task strikes recorded by Security City, oldest first. */
   readonly taskStrikes: TaskStrike[] = [];
-  constitution: Constitution | null = null;
+  constitution: Constitution = { current: null, history: [] };
+  readonly proposals = new Map<number, ConstitutionProposal>();
   worldRollup: { seq: number; period: string; periodStart: string; rollup: unknown } | null = null;
 
   isNameRetired(name: string) {
@@ -355,9 +379,42 @@ export class WorldState {
           lastHealthReport: null,
         });
         break;
-      case 'constitution.amended':
-        this.constitution = { version: p.version, docRef: p.docRef, summary: p.summary, seq: e.seq, ts: e.ts };
+      case 'constitution.amended': {
+        const v: ConstitutionVersion = {
+          version: p.version,
+          docRef: p.docRef,
+          sha256: p.sha256,
+          summary: p.summary,
+          proposalSeq: p.proposalSeq ?? null,
+          seq: e.seq,
+          ts: e.ts,
+        };
+        this.constitution.current = v;
+        this.constitution.history.push(v);
+        const prop = v.proposalSeq ? this.proposals.get(v.proposalSeq) : undefined;
+        if (prop) Object.assign(prop, { status: 'ratified', decidedSeq: e.seq, ratifiedAs: v.version });
         break;
+      }
+      case 'constitution.proposed':
+        this.proposals.set(e.seq, {
+          seq: e.seq,
+          ts: e.ts,
+          city: e.city,
+          proposer: p.proposer,
+          title: p.title,
+          rationale: p.rationale,
+          text: p.text,
+          status: 'open',
+          decidedSeq: null,
+          ratifiedAs: null,
+          declineReason: null,
+        });
+        break;
+      case 'constitution.declined': {
+        const prop = this.proposals.get(p.proposalSeq);
+        if (prop) Object.assign(prop, { status: 'declined', decidedSeq: e.seq, declineReason: p.reason });
+        break;
+      }
       case 'world.kpi_rollup':
         this.worldRollup = { seq: e.seq, period: p.period, periodStart: p.periodStart, rollup: p.rollup };
         break;

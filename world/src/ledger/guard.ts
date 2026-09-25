@@ -5,7 +5,9 @@ import { specFor, type EventKind, type EventSpec } from './catalog.ts';
 import { conflict, forbid, invalid, notFound } from './errors.ts';
 import { validate, type Payload } from './validate.ts';
 import { consumeKey, isJailed, type Agent, type LedgerEvent, type WorldState } from '../domain/state.ts';
+import { softeningIn } from '../domain/constitution.ts';
 import {
+  CROSS_CITY_READ_FAMILIES,
   DEPT_LEAD_BADGE,
   DEPT_LEAD_MIN_AGENTS,
   INTERN_BADGE,
@@ -61,6 +63,13 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
 
   if (spec.scope === 'world' && city !== WORLD_TAG) invalid(`${input.type} is a world event; city tag must be ${WORLD_TAG}`);
   if (spec.scope === 'city' && !state.cities.has(city)) notFound(`unknown city: ${city}`);
+  if (spec.scope === 'proposal') {
+    if (profile.role === 'dm' && city !== WORLD_TAG) invalid(`the DM records Bob's proposals under ${WORLD_TAG}`);
+    if (profile.role === 'mayor') {
+      const family = state.cities.get(city)?.family ?? notFound(`unknown city: ${city}`);
+      if (!CROSS_CITY_READ_FAMILIES.includes(family)) forbid('only Innovations, Security (Essentials) and Bob may propose a Constitution amendment');
+    }
+  }
 
   const payload = validate(spec.schema, input.payload ?? {});
 
@@ -174,6 +183,13 @@ export const NON_REWARDS: { re: RegExp; why: string }[] = [
   { re: /\b(base\s+lane|job\s+tools?|essential)\b/i, why: 'essentials come from role, lane catalog and SOUL, never from currency' },
 ];
 
+const newerVersion = (a: string, b: string) => {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i]! > y[i]!;
+  return false;
+};
+
 /** Weeks start on Monday. */
 const isMonday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 1;
 
@@ -191,6 +207,11 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     const dept = state.departments.get(String(id)) ?? notFound(`unknown department: ${id}`);
     if (dept.cityId !== city) forbid(`department ${dept.id} is not in ${city}`);
     return dept;
+  };
+  const openProposal = (seq: unknown) => {
+    const prop = state.proposals.get(Number(seq)) ?? notFound(`Constitution proposal #${seq} not found`);
+    if (prop.status !== 'open') conflict(`proposal #${prop.seq} is already ${prop.status}`);
+    return prop;
   };
   const agentIn = (id: unknown, city: string) => {
     const a = state.agents.get(String(id)) ?? notFound(`unknown agent: ${id}`);
@@ -369,9 +390,29 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       match(['name', 'family', 'mayorName']);
       familyHasRoom();
       break;
-    case 'constitution.amended':
-      match(['version', 'docRef', 'summary']);
+    case 'intent.amend_constitution':
+    case 'constitution.amended': {
+      if (d.type === 'constitution.amended') match(['version', 'docRef', 'sha256', 'summary', 'proposalSeq']);
+      const c = state.constitution;
+      if (c?.history.some((h) => h.version === p.version)) conflict(`Constitution ${p.version} is already ratified; use a new version`);
+      if (c?.current && !newerVersion(p.version, c.current.version)) conflict(`version ${p.version} must be newer than ${c.current.version}`);
+      if (c?.current?.sha256 === p.sha256) conflict(`the file is unchanged since ${c.current!.version}; edit it before ratifying a new version`);
+      if (p.proposalSeq !== undefined) openProposal(p.proposalSeq);
       break;
+    }
+    case 'intent.decline_proposal':
+      openProposal(p.proposalSeq);
+      break;
+    case 'constitution.declined':
+      match(['proposalSeq', 'reason']);
+      openProposal(p.proposalSeq);
+      break;
+    case 'constitution.proposed': {
+      if (d.city === WORLD_TAG && p.proposer.toLowerCase() !== 'bob') forbid('under WORLD, the DM records only Bob\'s proposals');
+      const soft = softeningIn(`${p.title}\n${p.rationale}\n${p.text}`);
+      if (soft.length) forbid(`out of order: the proposal softens the inviolable floor (${soft[0]!.why})`);
+      break;
+    }
 
     // ---- Mayor: structure ----
     case 'district.created':

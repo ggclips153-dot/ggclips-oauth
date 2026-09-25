@@ -147,7 +147,12 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
     taskStrikes,
     escalations,
     economy,
-    constitution: state.constitution,
+    // Everyone is bound by the Constitution, so every reader sees the ratified record. Proposals come from
+    // Essentials cities and Bob, so only world-wide readers see them.
+    constitution: {
+      ...state.constitution,
+      proposals: scope === '*' ? [...state.proposals.values()] : [],
+    },
     worldRollup: scope === '*' ? state.worldRollup : null,
     cities,
     pendingIntents,

@@ -382,3 +382,22 @@ ul.pending { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 
   .c3d-panel { max-height: 38%; }
   .c3d .c3d-dept span, .c3d .w3d-label span { display: none; }
 }
+
+/* ---------- World Constitution ---------- */
+pre.pointer, pre.proposal-text { font-family: inherit; }
+pre.pointer { font-family: var(--mono, ui-monospace, monospace); }
+pre.pointer, pre.proposal-text { white-space: pre-wrap; word-break: break-word; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 8px 0; }
+.proposal { border-top: 1px solid var(--border); padding: 12px 0; }
+.proposal:first-of-type { border-top: 0; padding-top: 4px; }
+.proposal h3 { margin: 0 0 2px; }
+.constitution .md { max-width: 75ch; line-height: 1.6; }
+.constitution .md h2 { margin-top: 0; }
+.constitution .md h3 { margin-top: 28px; }
+.constitution .md pre { overflow-x: auto; background: var(--surface-2); border-radius: 8px; padding: 12px; font-size: 12.5px; line-height: 1.4; }
+.constitution .md code { font-size: 0.92em; }
+.constitution .md li { margin: 4px 0; }
+.constitution .md hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+.const-status h3 { margin: 16px 0 4px; }
+.stat .value { overflow-wrap: anywhere; }
+.constitution, .constitution .md { min-width: 0; overflow-wrap: anywhere; }
+.constitution .md pre { max-width: 100%; overflow-wrap: normal; }

@@ -3,7 +3,7 @@
 import { invalid } from './errors.ts';
 
 export type Field =
-  | { t: 'str'; min?: number; max?: number; opt?: boolean; oneOf?: readonly string[] }
+  | { t: 'str'; min?: number; max?: number; opt?: boolean; oneOf?: readonly string[]; re?: RegExp; reWhy?: string }
   | { t: 'int'; min?: number; max?: number; opt?: boolean }
   | { t: 'num'; min?: number; opt?: boolean }
   | { t: 'date'; opt?: boolean }
@@ -46,6 +46,7 @@ function checkField(field: Field, v: unknown, p: string): unknown {
       if (s.length < (field.min ?? 1)) invalid(`${p} must not be empty`);
       if (s.length > (field.max ?? 200)) invalid(`${p} exceeds ${field.max ?? 200} characters`);
       if (field.oneOf && !field.oneOf.includes(s)) invalid(`${p} must be one of: ${field.oneOf.join(', ')}`);
+      if (field.re && !field.re.test(s)) invalid(`${p} must be ${field.reWhy ?? `like ${field.re}`}`);
       if (TELEGRAM_TOKEN.test(s)) invalid(`${p} looks like a bot token; store it as a secret and pass a ref`);
       return s;
     }

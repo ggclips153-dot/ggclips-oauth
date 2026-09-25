@@ -58,6 +58,8 @@ function facts(ledger: Ledger, i: LedgerEvent): [Profile, AppendInput][] {
       return [by('agent.deployed', { toCity: p.toCity }, p.agentId)];
     case 'intent.amend_constitution':
       return [[DM, { type: 'constitution.amended', city: 'WORLD', payload: p, authorizedBy: i.seq }]];
+    case 'intent.decline_proposal':
+      return [[DM, { type: 'constitution.declined', city: 'WORLD', payload: p, authorizedBy: i.seq }]];
     default:
       return []; // e.g. message_mayor: routed only
   }

@@ -3,6 +3,7 @@
 
 import { h, s } from './dom.js';
 import { formsFor, plainIntent } from './forms.js';
+import { renderMarkdown } from './markdown.js';
 
 // ---------- constants ----------
 const FAMILIES = [
@@ -405,6 +406,7 @@ function topbar() {
       link('#/jail', 'Security', data.jail.length + (data.surfaceFlags?.filter((f) => f.decision === 'quarantine').length ?? 0), true),
       link('#/inbox', 'Inbox', data.escalations.length, true),
       link('#/economy', 'Economy', awaitingCredit(index()).length || null, false),
+      link('#/constitution', 'Constitution', openProposals().length || null, false),
       link('#/activity', 'Activity')),
     h('span', { class: 'spacer' }),
     h('span', { class: `live ${live}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), live === 'on' ? 'Live' : 'Reconnecting…'),
@@ -426,6 +428,7 @@ function render() {
   else if (route === '/activity') view = activityView(ix);
   else if (route.startsWith('/live')) view = liveView(ix);
   else if (route === '/economy') view = economyView(ix);
+  else if (route === '/constitution') view = constitutionView(ix);
   else view = mapView(ix);
   app.replaceChildren(topbar(), h('main', {}, view));
   if (w3dContainer.isConnected) ensure3D();
@@ -775,6 +778,85 @@ function economyView(ix) {
           e.kind === 'earned' ? `Earned for deliverable #${e.deliverableSeq}` : `${e.reward}: ${e.detail}`,
           `${e.kind === 'earned' ? '+' : '−'}${usd(e.amountCents)}`]),
         'No entries yet.')),
+  ];
+}
+
+// ---------- World Constitution (phase 7) ----------
+let constitutionInfo = null;
+let constitutionKey = null;
+let constitutionLoading = false;
+const openProposals = () => (data.constitution.proposals ?? []).filter((p) => p.status === 'open');
+
+/** Fetches /api/constitution again whenever a new version is ratified. */
+function loadConstitution() {
+  const key = data.constitution.current?.seq ?? 0;
+  if (constitutionLoading || (constitutionInfo && constitutionKey === key)) return;
+  constitutionLoading = true;
+  api('/api/constitution')
+    .then((info) => {
+      constitutionInfo = info;
+      constitutionKey = key;
+    })
+    .catch((err) => toast(`Could not load the Constitution: ${err.message}`))
+    .finally(() => {
+      constitutionLoading = false;
+      if (location.hash === '#/constitution') render();
+    });
+}
+
+function constitutionView(ix) {
+  loadConstitution();
+  const info = constitutionInfo;
+  const cur = data.constitution.current;
+  const proposerCity = (p) => (p.city === 'WORLD' ? 'Bob, via the DM' : `${p.proposer}, ${ix.cities.get(p.city)?.name ?? p.city}`);
+  const status = !info
+    ? h('p', { class: 'muted' }, 'Loading…')
+    : info.inForce
+      ? statusChip('good', 'In force: the file matches the ratified fingerprint')
+      : !cur
+        ? statusChip('warning', 'Not ratified yet')
+        : statusChip('critical', `The file on disk differs from ratified ${cur.version}; not in force until you ratify it`);
+  const changed = info && cur && info.file && !info.inForce;
+  const proposals = data.constitution.proposals ?? [];
+  const open = proposals.filter((p) => p.status === 'open');
+  const decided = proposals.filter((p) => p.status !== 'open');
+
+  return [
+    h('div', { class: 'page-head' },
+      h('h1', {}, 'World Constitution'),
+      h('div', { class: 'toolbar' },
+        isOwner() && info?.file && (changed || !cur) ? act(cur ? 'Ratify edited file' : 'Ratify 1.0.0', () => forms.ratifyConstitution(info), 'primary') : null)),
+    h('p', { class: 'secondary' }, 'The one boundary document every city, Mayor, college and agent inherits. SOULs reference it by a pointer line; they never copy or soften it. Only you ratify changes; Innovations, Security and Bob may propose.'),
+    h('div', { class: 'kpi-row' },
+      stat('Ratified version', cur ? cur.version : '—', cur ? `${ago(cur.ts)} · ledger #${cur.seq}` : 'none yet'),
+      stat('Fingerprint', cur ? cur.sha256.slice(0, 8) : '—', 'first 8 of the SHA-256'),
+      stat('Open proposals', whole.format(open.length)),
+      stat('Versions', whole.format(data.constitution.history.length))),
+    h('div', { class: 'card section const-status' }, h('h2', {}, 'Status'), h('div', {}, status),
+      info?.pointer && [
+        h('h3', {}, 'SOUL pointer line'),
+        h('p', { class: 'small secondary' }, 'Every SOUL carries exactly this line and nothing else from the Constitution. Check SOULs with npm run constitution -- check <files>.'),
+        h('pre', { class: 'pointer' }, h('code', {}, info.pointer)),
+        h('div', {}, h('button', { class: 'small-btn', type: 'button', onclick: () => navigator.clipboard?.writeText(info.pointer).then(() => toast('Pointer line copied.'), () => toast('Copy failed; select the line instead.')) }, 'Copy pointer line')),
+      ]),
+    open.length || isOwner() ? h('div', { class: 'card section' }, h('h2', {}, 'Proposals'),
+      open.length
+        ? open.map((p) => h('div', { class: 'proposal' },
+            h('h3', {}, p.title),
+            h('p', { class: 'small muted' }, `Proposed by ${proposerCity(p)} · ${ago(p.ts)} · #${p.seq}`),
+            h('p', {}, p.rationale),
+            h('pre', { class: 'proposal-text' }, p.text),
+            isOwner() && h('div', { class: 'toolbar' },
+              info?.file && changed ? act('Ratify with edited file', () => forms.ratifyConstitution(info, p), 'primary') : h('span', { class: 'small muted' }, 'To adopt it, edit the Constitution file first, then ratify here.'),
+              act('Decline', () => forms.declineProposal(p)))))
+        : h('p', { class: 'muted small' }, 'No open proposals.'),
+      decided.length ? [h('h3', {}, 'Decided'), table(['Proposal', 'By', 'Outcome'], decided.map((p) => [p.title, proposerCity(p), p.status === 'ratified' ? `Ratified as ${p.ratifiedAs}` : `Declined: ${p.declineReason}`]))] : null) : null,
+    h('div', { class: 'card section' }, h('h2', {}, 'History'),
+      table(['Version', 'Ratified', 'Fingerprint', 'What changed'],
+        data.constitution.history.slice().reverse().map((v) => [v.version, ago(v.ts), h('span', { class: 'mono' }, `${v.sha256?.slice(0, 12) ?? '—'}…`), v.summary]),
+        'No version ratified yet.')),
+    h('article', { class: 'card section constitution' },
+      info?.file ? renderMarkdown(info.file.text) : h('p', { class: 'muted' }, info ? 'The Constitution file is missing from docs/constitution/.' : 'Loading…')),
   ];
 }
 

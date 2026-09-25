@@ -10,6 +10,7 @@ import { LoginThrottle, SESSION_COOKIE, SESSION_TTL_MS, Sessions, readCookie } f
 import { Secrets } from '../auth/secrets.ts';
 import { Users } from '../auth/users.ts';
 import { SurfaceGuard, type SurfaceNote } from '../security/surfaceGuard.ts';
+import { CONSTITUTION_DOC_REF, pointerLine, readConstitution } from '../domain/constitution.ts';
 import { readScope } from '../domain/view.ts';
 import { canRead, worldView } from '../domain/view.ts';
 import type { LedgerEvent } from '../domain/state.ts';
@@ -46,6 +47,8 @@ export interface AppOptions {
   cookieSecure?: boolean;
   /** Take the client IP from X-Forwarded-For (only behind a trusted reverse proxy). */
   trustProxy?: boolean;
+  /** The World Constitution file (default docs/constitution/WORLD-CONSTITUTION.md). */
+  constitutionPath?: string;
 }
 
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -221,6 +224,20 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
       if (req.method === 'GET' && url.pathname === '/api/verify') {
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
         return send(res, 200, ledger.verify());
+      }
+      if (req.method === 'GET' && url.pathname === '/api/constitution') {
+        // Every profile is bound by it, so every signed-in profile may read it.
+        const file = readConstitution(opts.constitutionPath);
+        const { current, history } = ledger.state.constitution;
+        return send(res, 200, {
+          docRef: CONSTITUTION_DOC_REF,
+          file: file && { text: file.text, sha256: file.sha256 },
+          ratified: current,
+          // In force only when the file on disk is exactly the ratified one.
+          inForce: !!(file && current && file.sha256 === current.sha256),
+          pointer: current ? pointerLine(current.version, current.sha256) : null,
+          history,
+        });
       }
       if (req.method === 'GET' && url.pathname === '/api/stream') {
         return stream(req, res, url, ledger, profile, surface);

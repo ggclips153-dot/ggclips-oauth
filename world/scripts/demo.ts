@@ -6,6 +6,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { AppendInput, Profile } from '../src/ledger/guard.ts';
 import { Ledger } from '../src/ledger/ledger.ts';
+import { CONSTITUTION_DOC_REF, readConstitution } from '../src/domain/constitution.ts';
 
 const path = resolve(import.meta.dirname, '..', process.env.WORLD_DEMO_DB ?? 'data/demo.db');
 if (resolve(path) === resolve(import.meta.dirname, '..', 'data/world.db')) throw new Error('refusing to write demo data into the real ledger');
@@ -78,7 +79,7 @@ function pulses(c: string, metric: string, values: number[], target: number) {
 const reception = city('AI Receptionist City', 'revenue', 'Ana');
 const finance = city('Personal Finance City', 'revenue', 'Greg');
 const gaming = city('GGClutchPlays', 'revenue', 'Kevin');
-city('Innovations City', 'essentials', 'Soren');
+const innovations = city('Innovations City', 'essentials', 'Soren');
 const security = city('Security City', 'essentials', 'Odette');
 const claudeCity = city('Claude Research City', 'claude', 'Imani');
 const geminiCity = city('Gemini Studio', 'gemini', 'Pax');
@@ -194,6 +195,44 @@ const report = fact(mayor(reception), {
   payload: { deanId: dean, agentId: intakeAgent, reason: 'skipped study sessions', evidence: 'no study log for 3 days' },
 });
 fact(mayor(security), { type: 'security.escalated', city: security, payload: { reportSeq: report.seq, summary: 'Intake student idle for 3 days' } });
+
+// ---- World Constitution: 1.0.0 ratified; open proposals from Innovations, Security and Bob (via the DM) ----
+const doc = readConstitution();
+if (doc) {
+  const payload = { version: '1.0.0', docRef: CONSTITUTION_DOC_REF, sha256: doc.sha256, summary: 'First World Constitution: the brief and ratified amendments A1-A18.' };
+  const i = intent('amend_constitution', 'WORLD', payload);
+  fact(dm, { type: 'constitution.amended', city: 'WORLD', payload, authorizedBy: i.seq });
+}
+fact(mayor(innovations), {
+  type: 'constitution.proposed',
+  city: innovations,
+  payload: {
+    proposer: 'Soren',
+    title: 'Token cost vs quality review each week',
+    rationale: 'Article VII.3 names the review but not its cadence.',
+    text: 'Add to Article VII.3: Innovations publishes the token-cost-vs-quality review weekly, alongside the Mayors\' health reports.',
+  },
+});
+fact(mayor(security), {
+  type: 'constitution.proposed',
+  city: security,
+  payload: {
+    proposer: 'Odette',
+    title: 'Quarantined notes are reviewed within 24 hours',
+    rationale: 'Quarantined surface notes wait for a human; nothing says how long.',
+    text: 'Add to Article V.3: Security reviews every quarantined note within 24 hours and brings anything unresolved to Marc.',
+  },
+});
+fact(dm, {
+  type: 'constitution.proposed',
+  city: 'WORLD',
+  payload: {
+    proposer: 'Bob',
+    title: 'Name the college in the world model diagram',
+    rationale: 'Clarity for new SOUL authors.',
+    text: 'Article I diagram: label COLLEGE as "one per city, run by a dean".',
+  },
+});
 
 ledger.close();
 console.log(`Demo world written to ${path} (${ledger.state.lastSeq} events).`);

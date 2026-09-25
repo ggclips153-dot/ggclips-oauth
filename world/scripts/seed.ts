@@ -2,6 +2,7 @@
 // Idempotent by name: a city that already exists is skipped.
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { CONSTITUTION_DOC_REF, readConstitution } from '../src/domain/constitution.ts';
 import { WORLD_TAG } from '../src/domain/model.ts';
 import type { Profile } from '../src/ledger/guard.ts';
 import { Ledger } from '../src/ledger/ledger.ts';
@@ -36,5 +37,14 @@ for (const city of seed.cities) {
   ledger.append(dm, { type: 'dm.routed', city: WORLD_TAG, payload: { intentSeq: intent.seq, to: 'world' } });
   const created = ledger.append(dm, { type: 'city.created', city: WORLD_TAG, payload, authorizedBy: intent.seq });
   console.log(`city  ${city.name} -> city=${created.subject}`);
+}
+// Ratify the first World Constitution (1.0.0) once, with the file's fingerprint.
+const doc = readConstitution();
+if (!ledger.state.constitution.current && doc) {
+  const payload = { version: '1.0.0', docRef: CONSTITUTION_DOC_REF, sha256: doc.sha256, summary: 'First World Constitution: the brief and ratified amendments A1-A18.' };
+  const intent = ledger.append(marc, { type: 'intent.amend_constitution', city: WORLD_TAG, payload });
+  ledger.append(dm, { type: 'dm.routed', city: WORLD_TAG, payload: { intentSeq: intent.seq, to: 'world' } });
+  ledger.append(dm, { type: 'constitution.amended', city: WORLD_TAG, payload, authorizedBy: intent.seq });
+  console.log(`constitution 1.0.0 ratified sha256:${doc.sha256.slice(0, 12)}…`);
 }
 ledger.close();

@@ -129,6 +129,10 @@ but `data/demo.db`: the real world is never auto-executed.
   Marc and the Mayor (more than one QC rework in a week loses that week's credit); spent only on rewards
   R1-R5; the express non-rewards (authority, cross-city reach, skipping school, memory or knowledge, ledger
   exemptions, deletion-immunity, essentials) are rejected. No agent holds or spends its own money.
+- **Constitution**: the World Constitution (`docs/constitution/WORLD-CONSTITUTION.md`), the ratified
+  version and its SHA-256 fingerprint, whether the file on disk is in force (it is only when it matches
+  the ratified fingerprint), the SOUL pointer line to copy, proposals from Innovations, Security and Bob
+  (Ratify / Decline, owner only), and the version history.
 - **Security**: the jail, recent task strikes, and notes the shared-surface guard rejected or quarantined.
 - **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
 - **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
@@ -158,6 +162,7 @@ Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie
 | POST | `/api/events` | append `{type, city, subject?, payload, authorizedBy?}` |
 | GET | `/api/names?count=5` | owner only: suggested agent names (never retired, in use or reserved) |
 | GET | `/api/verify` | owner only: verify the hash chain |
+| GET | `/api/constitution` | the Constitution file, its fingerprint, the ratified record, in-force status and the SOUL pointer line |
 | POST | `/api/surface/check` | gateway (Hermes): may this agent write this note to the shared surface? See `docs/SURFACE-GUARD.md` |
 
 Example: the Mayor places an agent the DM routed to it:
@@ -188,7 +193,25 @@ The full list of event types, their writers and payloads is in `src/ledger/catal
 4. ✅ City layer: Mayor, per-agent lifecycle strip, live agent-status panel; 3D world view
 5. ✅ Shared-surface write-guard (cross-city), no-agent-instructs-agent (logged hand-offs only), injection quarantine, red-team corpus — see `docs/SURFACE-GUARD.md`
 6. ✅ Currency ledger (dollars), graduation-vetting gate, clean attribution (weekly), rewards R1-R5 with non-rewards rejected
-7. World Constitution doc + templates
+7. ✅ World Constitution (ratified in the ledger by fingerprint; proposals; SOUL pointer check) + templates
+
+## The World Constitution
+
+SOULs reference it by one pointer line and never copy or soften it (Article XII).
+
+```bash
+npm run constitution -- hash                  # fingerprint of the file on disk
+npm run constitution -- pointer               # the pointer line for the ratified version
+npm run constitution -- check souls/*.md      # verify SOULs: pointer, no copies, no softening
+```
+
+`npm run seed` ratifies 1.0.0 once. To change it: edit the file, then Ratify on the Constitution page
+(Marc's intent; the DM records `constitution.amended` with the new fingerprint). Innovations and Security
+propose with `constitution.proposed` under their own city tag; the DM records Bob's under `WORLD`. A
+proposal that softens the inviolable floor is rejected as out of order.
+
+Templates in [`docs/templates/`](docs/templates/): SOUL, vetting record, basic-task handoff, training
+corpus, lesson record, ledger retention.
 
 Marc's changes to the brief are recorded in [`docs/BRIEF-AMENDMENTS.md`](docs/BRIEF-AMENDMENTS.md).
 Open questions for the DM are tracked in [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md).

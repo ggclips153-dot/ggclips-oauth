@@ -22,5 +22,9 @@ so nothing is decided silently. Answer here or via the DM.
 | 33 | **Consequences of a dean's review.** Marc will decide after testing. | Reviews are recorded (exceeds / meets / below); no automatic consequence. |
 | 35 | **The outgoing dean** when replaced. | Returns to teaching as a professor at the same college. |
 | 36 | **R4 "first-retry grace" in practice.** What does the grace change when the agent next misses KPI? | Recorded as a reward only; strikes and deletion are unchanged (never deletion-immunity). |
+| 37 | **Adopting a proposal.** Proposals carry suggested wording; who edits the Constitution file itself? | Marc (or Hermes on his instruction) edits the file, then ratifies it on the Constitution page. Nothing edits the file automatically. |
+| 38 | **Version numbers.** Any rule for major vs minor? | Any newer `x.y.z`; the Ratify form suggests the next minor. |
+| 39 | **Ledger backups** (`docs/templates/LEDGER-RETENTION.md`): how often, where, how many kept? | None automated. |
+| 40 | **Proposals from other cities.** Only Innovations, Security and Bob may propose. Should a revenue Mayor be able to raise one through the DM? | No; they message Marc instead. |
 
 Resolved: A1-A18, see `BRIEF-AMENDMENTS.md`.

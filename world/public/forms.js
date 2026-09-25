@@ -28,7 +28,8 @@ const PLAIN = {
   'intent.message_mayor': 'Message to Mayor',
   'intent.grant_earning': 'Earning credit',
   'intent.grant_reward': 'Reward',
-  'intent.amend_constitution': 'Constitution amendment',
+  'intent.amend_constitution': 'Ratify Constitution version',
+  'intent.decline_proposal': 'Decline Constitution proposal',
 };
 export const plainIntent = (type) => PLAIN[type] ?? type;
 
@@ -393,6 +394,45 @@ export function formsFor(ctx) {
           if (!Number.isFinite(v.amountCents) || v.amountCents < 0) throw new Error('Enter a cost of $0 or more.');
           await intent('intent.grant_reward', city.id, { agentId: agent.id, ...v });
           return `Reward for ${agent.name} sent to the DM.`;
+        },
+      });
+    },
+
+    /** Ratify the file on disk as a new version (Article X). `info` is /api/constitution. */
+    ratifyConstitution(info, proposal) {
+      const cur = info.ratified?.version;
+      const [maj, min] = (cur ?? '0.0.0').split('.').map(Number);
+      const next = cur ? `${maj}.${min + 1}.0` : '1.0.0';
+      openForm(ctx, {
+        title: proposal ? `Ratify "${proposal.title}"` : 'Ratify a new Constitution version',
+        intro: `Ratifies the file exactly as it is now on disk (sha256 ${info.file.sha256.slice(0, 12)}…). Edit ${info.docRef} first; ratifying records its fingerprint, and SOULs must then carry the new pointer line.`,
+        fields: [
+          { name: 'version', label: 'Version', type: 'text', required: true, value: next, help: cur ? `Must be newer than ${cur}.` : 'The first ratified version.' },
+          { name: 'summary', label: 'What changed', type: 'textarea', required: true, value: proposal ? `${proposal.title} (proposed by ${proposal.proposer}).` : '' },
+        ],
+        submitLabel: 'Ratify',
+        onSubmit: async (v) => {
+          await intent('intent.amend_constitution', 'WORLD', {
+            version: v.version,
+            docRef: info.docRef,
+            sha256: info.file.sha256,
+            summary: v.summary,
+            proposalSeq: proposal?.seq,
+          });
+          return `Constitution ${v.version} sent to the DM.`;
+        },
+      });
+    },
+
+    declineProposal(proposal) {
+      openForm(ctx, {
+        title: `Decline "${proposal.title}"`,
+        intro: `Proposed by ${proposal.proposer}. The reason is recorded in the ledger.`,
+        fields: [{ name: 'reason', label: 'Reason', type: 'textarea', required: true }],
+        submitLabel: 'Decline',
+        onSubmit: async (v) => {
+          await intent('intent.decline_proposal', 'WORLD', { proposalSeq: proposal.seq, reason: v.reason });
+          return 'Decline sent to the DM.';
         },
       });
     },

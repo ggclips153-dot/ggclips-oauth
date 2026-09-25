@@ -11,11 +11,15 @@ import {
   KPI_PERIODS,
   type Role,
 } from '../domain/model.ts';
+import { SHA256_RE, VERSION_RE } from '../domain/constitution.ts';
 import type { Schema } from './validate.ts';
 
 export type EventKind = 'fact' | 'intent';
-/** world: city tag must be WORLD. city: tag must be an existing city. routed: tag of the intent routed. */
-export type EventScope = 'world' | 'city' | 'routed';
+/**
+ * world: city tag must be WORLD. city: tag must be an existing city. routed: tag of the intent routed.
+ * proposal: an Essentials city's own tag (its Mayor) or WORLD (the DM, for Bob).
+ */
+export type EventScope = 'world' | 'city' | 'routed' | 'proposal';
 
 export interface EventSpec {
   kind: EventKind;
@@ -48,6 +52,14 @@ const departmentSettings: Schema = {
   maxShadows: { t: 'int', min: 0, max: 10000, opt: true },
   // Approved "basic tasks" graduated agents may hand to the department's shadows.
   basicTasks: { t: 'json', maxBytes: 12000, opt: true },
+};
+
+const constitutionFields: Schema = {
+  version: { t: 'str', max: 40, re: VERSION_RE, reWhy: 'a version like 1.0.0' },
+  docRef: { t: 'str', max: 300 },
+  sha256: { t: 'str', max: 64, re: SHA256_RE, reWhy: 'the file\'s SHA-256 fingerprint (64 hex characters)' },
+  summary: { t: 'str', max: 4000 },
+  proposalSeq: { t: 'int', min: 1, opt: true },
 };
 
 const departmentFields: Schema = {
@@ -197,15 +209,18 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { agentId: { t: 'str', max: 20 }, toCity: { t: 'str', max: 60 } },
   },
+  // Marc ratifies a version of the World Constitution (Article X), optionally adopting a proposal.
   'intent.amend_constitution': {
     kind: 'intent',
     writers: OWNER,
     scope: 'world',
-    schema: {
-      version: { t: 'str', max: 40 },
-      docRef: { t: 'str', max: 300 },
-      summary: { t: 'str', max: 4000 },
-    },
+    schema: constitutionFields,
+  },
+  'intent.decline_proposal': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'world',
+    schema: { proposalSeq: { t: 'int', min: 1 }, reason: { t: 'str', max: 2000 } },
   },
   // Marc -> (DM) -> Mayor. The DM relays it to the Mayor's bot.
   'intent.message_mayor': {
@@ -238,12 +253,28 @@ export const CATALOG: Record<string, EventSpec> = {
     kind: 'fact',
     writers: DM,
     scope: 'world',
-    schema: {
-      version: { t: 'str', max: 40 },
-      docRef: { t: 'str', max: 300 },
-      summary: { t: 'str', max: 4000 },
-    },
+    schema: constitutionFields,
     authorizedBy: ['intent.amend_constitution'],
+  },
+  'constitution.declined': {
+    kind: 'fact',
+    writers: DM,
+    scope: 'world',
+    schema: { proposalSeq: { t: 'int', min: 1 }, reason: { t: 'str', max: 2000 } },
+    authorizedBy: ['intent.decline_proposal'],
+  },
+  // Innovations and Security propose under their own city tag; the DM records Bob's proposals under WORLD
+  // (Bob is read-only and never writes). Proposals change nothing: only Marc ratifies.
+  'constitution.proposed': {
+    kind: 'fact',
+    writers: [...MAYOR, ...DM],
+    scope: 'proposal',
+    schema: {
+      proposer: { t: 'str', max: 80 },
+      title: { t: 'str', max: 200 },
+      rationale: { t: 'str', max: 4000 },
+      text: { t: 'str', max: 12000 },
+    },
   },
   'world.kpi_rollup': {
     kind: 'fact',
