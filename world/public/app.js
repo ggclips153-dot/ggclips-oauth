@@ -139,6 +139,7 @@ function connect() {
   stream = new EventSource('/api/stream');
   stream.onopen = () => setLive('on');
   stream.onerror = () => setLive('off');
+  stream.addEventListener('surface', scheduleRefresh);
   stream.addEventListener('ledger', (msg) => {
     const e = JSON.parse(msg.data);
     feed.unshift(e);
@@ -360,7 +361,7 @@ function topbar() {
     h('nav', { class: 'nav', 'aria-label': 'Sections' },
       link('#/', 'Map'),
       link('#/live', 'Live', countWorking(), false),
-      link('#/jail', 'Jail', data.jail.length, true),
+      link('#/jail', 'Security', data.jail.length + (data.surfaceFlags?.filter((f) => f.decision === 'quarantine').length ?? 0), true),
       link('#/inbox', 'Inbox', data.escalations.length, true),
       link('#/activity', 'Activity')),
     h('span', { class: 'spacer' }),
@@ -617,11 +618,24 @@ function jailView(ix) {
     j.jail.status === 'awaiting_deletion' && ix.cities.get(j.cityId) ? act('Delete', () => forms.remove(ix.cities.get(j.cityId), j), 'danger') : null,
   ]);
   const strikes = data.taskStrikes.slice(-20).reverse().map((t) => [ago(t.ts), agentLabel(ix, t.agentId), cityName(t.agentCity), t.task, agentLabel(ix, t.observedBy)]);
+  const flags = (data.surfaceFlags ?? []).map((f) => [
+    ago(f.ts),
+    agentLabel(ix, f.writer),
+    f.city ? cityName(f.city) : h('span', { class: 'muted' }, 'no tag'),
+    f.decision === 'quarantine' ? statusChip('serious', 'Quarantined') : statusChip('critical', 'Rejected'),
+    h('div', { class: 'small' }, f.reasons.join(' · ')),
+    h('div', { class: 'small secondary excerpt' }, f.excerpt),
+  ]);
   return [
-    h('h1', {}, 'Security jail'),
+    h('h1', {}, 'Security'),
+    h('h2', {}, 'Jail'),
     h('p', { class: 'secondary' }, 'Every 3 task strikes means a jail term: 6 hours, then 24 hours, then 3 days. The 4th time, or a 3rd KPI or teaching strike, the agent waits here for your deletion decision. Timed terms end on their own.'),
     h('div', { class: 'card' }, table(['Agent', 'City', 'Cause', { label: 'Term', num: true }, 'Release', ''], rows, 'Nobody is in jail.')),
     h('div', { class: 'card section' }, h('h2', {}, 'Recent task strikes'), table(['When', 'Agent', 'City', 'Task', 'Observed by'], strikes, 'No task strikes recorded.')),
+    h('div', { class: 'card section' },
+      h('h2', {}, 'Shared-surface guard'),
+      h('p', { class: 'small secondary' }, 'Notes the guard stopped before they reached the shared surface: wrong city tag, one agent instructing another, or text that reads like prompt injection. Quarantined notes are for Security to review.'),
+      table(['When', 'Writer', 'City tag', 'Decision', 'Why', 'Excerpt'], flags, 'Nothing stopped. All notes so far were in scope and clean.')),
   ];
 }
 

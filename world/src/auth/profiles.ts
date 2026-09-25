@@ -32,6 +32,9 @@ export function checkProfile(p: ProfileRecord): ProfileRecord {
     case 'architect':
       if (scope.length !== 0) throw new Error(`${where}: Bob is read-only; writeScope must be []`);
       break;
+    case 'gateway':
+      if (scope.length !== 0) throw new Error(`${where}: the surface gateway never writes the ledger; writeScope must be []`);
+      break;
   }
   return p;
 }

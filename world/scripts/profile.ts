@@ -3,6 +3,7 @@
 //   npm run profile -- add --id dm --role dm
 //   npm run profile -- add --id bob --role architect
 //   npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
+//   npm run profile -- add --id hermes-gateway --role gateway   (shared-surface guard only)
 //   npm run profile -- list
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -25,7 +26,7 @@ switch (positionals[0]) {
     const role = values.role as Role;
     if (!values.id || !role) throw new Error('--id and --role are required');
     if (list.some((p) => p.id === values.id)) throw new Error(`profile ${values.id} already exists`);
-    const writeScope = role === 'mayor' ? [values.city ?? ''] : role === 'architect' ? [] : ['*'];
+    const writeScope = role === 'mayor' ? [values.city ?? ''] : role === 'architect' || role === 'gateway' ? [] : ['*'];
     const token = newToken();
     const record = checkProfile({ id: values.id, role, writeScope, label: values.label, tokenSha256: hashToken(token) });
     list.push(record);

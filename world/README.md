@@ -60,7 +60,7 @@ and `config/users.json`.
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 89 tests
+npm test                    # 98 tests
 
 # API profiles (bots use the bearer token printed once)
 npm run profile -- add --id marc --role owner --label Marc
@@ -118,7 +118,8 @@ but `data/demo.db`: the real world is never auto-executed.
   `public/vendor/three`).
 - **Live**: every department agent's current status and activity across the cities you can see, filtered by
   city and status, working agents first.
-- **Jail**, **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
+- **Security**: the jail, recent task strikes, and notes the shared-surface guard rejected or quarantined.
+- **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
 - **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
   New District, New Department (caps, basic tasks, bot token stored as a server secret), department
   settings, college: Create agent / Create professor / Create or Replace dean, Assign an existing agent to a
@@ -146,6 +147,7 @@ Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie
 | POST | `/api/events` | append `{type, city, subject?, payload, authorizedBy?}` |
 | GET | `/api/names?count=5` | owner only: suggested agent names (never retired, in use or reserved) |
 | GET | `/api/verify` | owner only: verify the hash chain |
+| POST | `/api/surface/check` | gateway (Hermes): may this agent write this note to the shared surface? See `docs/SURFACE-GUARD.md` |
 
 Example: the Mayor places an agent the DM routed to it:
 
@@ -173,7 +175,7 @@ The full list of event types, their writers and payloads is in `src/ledger/catal
 2. ✅ Password sign-in; world map with family homes, city tiles, live KPI pulse + agent counts; city view; jail, inbox, activity
 3. ✅ Entity forms: city, district, department, college agents, professors, dean; assign, promote, retire, delete, deploy, message Mayor
 4. ✅ City layer: Mayor, per-agent lifecycle strip, live agent-status panel; 3D world view
-5. Shared-surface write-guard + no-agent-instructs-agent enforcement + injection red-team tests
+5. ✅ Shared-surface write-guard (cross-city), no-agent-instructs-agent (logged hand-offs only), injection quarantine, red-team corpus — see `docs/SURFACE-GUARD.md`
 6. Currency ledger + graduation-vetting gate + clean attribution
 7. World Constitution doc + templates
 

@@ -7,6 +7,8 @@ import type { Profiles } from '../auth/profiles.ts';
 import { LoginThrottle, SESSION_COOKIE, SESSION_TTL_MS, Sessions, readCookie } from '../auth/sessions.ts';
 import { Secrets } from '../auth/secrets.ts';
 import { Users } from '../auth/users.ts';
+import { SurfaceGuard, type SurfaceNote } from '../security/surfaceGuard.ts';
+import { readScope } from '../domain/view.ts';
 import { canRead, worldView } from '../domain/view.ts';
 import type { LedgerEvent } from '../domain/state.ts';
 import { LedgerError } from '../ledger/errors.ts';
@@ -35,6 +37,7 @@ const SECURITY_HEADERS = {
 export interface AppOptions {
   users?: Users;
   secrets?: Secrets;
+  surface?: SurfaceGuard;
   sessions?: Sessions;
   throttle?: LoginThrottle;
   /** Mark the session cookie Secure (default true; set false only for plain-http local testing). */
@@ -100,6 +103,7 @@ const intParam = (url: URL, name: string, fallback: number, max = Number.MAX_SAF
 export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions = {}): Server {
   const users = opts.users ?? new Users([]);
   const secrets = opts.secrets ?? new Secrets(null);
+  const surface = opts.surface ?? new SurfaceGuard(ledger.db, ledger.state, () => ledger.clock());
   const sessions = opts.sessions ?? new Sessions();
   const throttle = opts.throttle ?? new LoginThrottle();
   const secure = opts.cookieSecure ?? true;
@@ -148,11 +152,21 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         throw new LedgerError('FORBIDDEN', 'missing x-world-request header');
       }
 
+      // Shared-surface guard: Hermes' gateway (and Marc, for testing) ask before any agent writes a note.
+      if (req.method === 'POST' && url.pathname === '/api/surface/check') {
+        if (profile.role !== 'gateway' && profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'only the surface gateway may ask');
+        const note = (await readJson(req)) as SurfaceNote;
+        return send(res, 200, surface.check(note));
+      }
+      if (profile.role === 'gateway') throw new LedgerError('FORBIDDEN', 'the surface gateway may only call /api/surface/check');
+
       if (req.method === 'GET' && url.pathname === '/api/me') {
         return send(res, 200, profile);
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
-        return send(res, 200, worldView(ledger.state, profile, ledger.clock()));
+        const scope = readScope(profile, ledger.state);
+        const surfaceFlags = surface.recentFlags(50).filter((f) => scope === '*' || f.writerCity === scope || f.city === scope);
+        return send(res, 200, { ...worldView(ledger.state, profile, ledger.clock()), surfaceFlags });
       }
       if (req.method === 'GET' && url.pathname === '/api/events') {
         const after = intParam(url, 'after', 0);
@@ -188,7 +202,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         return send(res, 200, ledger.verify());
       }
       if (req.method === 'GET' && url.pathname === '/api/stream') {
-        return stream(req, res, url, ledger, profile);
+        return stream(req, res, url, ledger, profile, surface);
       }
       send(res, 404, { error: 'NOT_FOUND', message: 'no such route' });
     } catch (err) {
@@ -200,7 +214,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
 }
 
 /** Server-sent events: replay from Last-Event-ID / ?after, then live. */
-function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Ledger, profile: Profile) {
+function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Ledger, profile: Profile, surface: SurfaceGuard) {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-store',
@@ -220,9 +234,16 @@ function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Led
     cursor = batch.at(-1)!.seq;
   }
   ledger.events.on('event', write);
+  // Shared-surface guard flags are not ledger events; tell readers in scope so their Security page refreshes.
+  const flag = (f: { writerCity: string | null; city: string | null }) => {
+    const scope = readScope(profile, ledger.state);
+    if (scope === '*' || f.writerCity === scope || f.city === scope) res.write('event: surface\ndata: {}\n\n');
+  };
+  surface.events.on('flag', flag);
   const beat = setInterval(() => res.write(': heartbeat\n\n'), HEARTBEAT_MS);
   req.on('close', () => {
     clearInterval(beat);
     ledger.events.off('event', write);
+    surface.events.off('flag', flag);
   });
 }

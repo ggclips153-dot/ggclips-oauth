@@ -48,6 +48,7 @@ export function inWriteScope(profile: Profile, city: string): boolean {
 
 export function checkWrite(state: WorldState, profile: Profile, input: AppendInput, now: Date): Draft {
   if (profile.role === 'architect') forbid('Bob the Architect is read-only; no writes');
+  if (profile.role === 'gateway') forbid('the surface gateway may only ask the surface guard; it never writes the ledger');
 
   const spec = specFor(String(input.type)) ?? invalid(`unknown event type: ${input.type}`);
   if (!spec.writers.includes(profile.role)) {

@@ -317,3 +317,4 @@ ul.pending { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 
 }
 
 .filters select { font: inherit; font-size: 14px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--axis); background: var(--surface); color: var(--ink); }
+.excerpt { max-width: 360px; overflow-wrap: anywhere; }

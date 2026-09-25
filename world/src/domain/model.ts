@@ -62,8 +62,9 @@ export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
  * dm        = District Messenger. Writes world events and routes intents.
  * mayor     = one per city. Writes its own city's events only.
  * architect = Bob. Cross-city READ only, never writes.
+ * gateway   = Hermes' shared-surface gateway. May only ask the surface guard; never reads or writes the ledger.
  */
-export const ROLES = ['owner', 'dm', 'mayor', 'architect'] as const;
+export const ROLES = ['owner', 'dm', 'mayor', 'architect', 'gateway'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const AGENT_STATUSES = ['working', 'idle', 'blocked', 'offline'] as const;
