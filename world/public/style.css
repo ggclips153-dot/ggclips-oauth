@@ -281,3 +281,31 @@ dialog.modal form { display: grid; gap: 14px; }
   background: var(--ink); color: var(--page); font-size: 14px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
 }
 ul.pending { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+
+/* ---------- 3D world ---------- */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; padding: 2px; background: var(--surface); }
+.seg button { border: 0; background: transparent; padding: 5px 12px; border-radius: 7px; font-size: 14px; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.w3d { position: relative; height: min(72vh, 760px); min-height: 360px; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--page); }
+.w3d-canvas, .w3d-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.w3d-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.w3d-label {
+  position: absolute; left: 0; top: 0; display: grid; justify-items: center; white-space: nowrap;
+  font-size: 12px; color: var(--ink-2); text-shadow: 0 0 3px var(--page), 0 0 6px var(--page);
+}
+.w3d-label b { color: var(--ink); font-size: 13px; }
+.w3d-family b { font-size: 17px; }
+.w3d-family span { font-size: 12.5px; }
+.w3d-jail b { color: var(--critical); }
+.w3d-tip {
+  position: absolute; left: 0; top: 0; max-width: 300px; pointer-events: none; opacity: 0; transition: opacity 0.1s;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.w3d-tip.on { opacity: 1; }
+.w3d-reset { position: absolute; right: 12px; top: 12px; }
+@media (max-width: 640px) {
+  .w3d { height: 70vh; }
+  .w3d-city span { display: none; }
+  .w3d-label b { font-size: 11.5px; }
+}

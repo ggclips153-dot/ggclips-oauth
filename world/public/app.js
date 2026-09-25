@@ -48,6 +48,42 @@ function toast(message) {
   setTimeout(() => el.remove(), 4000);
 }
 const forms = formsFor({ api: (...a) => api(...a), toast });
+
+// ---------- 3D world (loaded only when chosen) ----------
+const w3dContainer = h('div', { class: 'w3d' });
+let world3d = null;
+let world3dBuiltFrom = null;
+const VIEW_KEY = 'world.mapView';
+function mapMode() {
+  try {
+    return localStorage.getItem(VIEW_KEY) === '3d' ? '3d' : 'map';
+  } catch {
+    return 'map';
+  }
+}
+function setMapMode(mode) {
+  try {
+    localStorage.setItem(VIEW_KEY, mode);
+  } catch {
+    /* per-viewer convenience only */
+  }
+  render();
+}
+async function ensure3D() {
+  if (!world3d) {
+    try {
+      const { mount3D } = await import('./world3d.js');
+      world3d = mount3D(w3dContainer, { onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}`) });
+    } catch (err) {
+      w3dContainer.replaceChildren(h('p', { class: 'empty' }, `The 3D view could not start on this device (${err.message}). The map view has everything.`));
+      return;
+    }
+  }
+  if (world3dBuiltFrom !== data) {
+    world3dBuiltFrom = data;
+    world3d.update(data);
+  }
+}
 /** A small action button, owner only. */
 const act = (label, onclick, cls = '') => (isOwner() ? h('button', { class: `small-btn ${cls}`.trim(), type: 'button', onclick }, label) : null);
 
@@ -343,6 +379,7 @@ function render() {
   else if (route === '/activity') view = activityView(ix);
   else view = mapView(ix);
   app.replaceChildren(topbar(), h('main', {}, view));
+  if (w3dContainer.isConnected) ensure3D();
 }
 
 // ---------- views ----------
@@ -367,11 +404,22 @@ function mapView(ix) {
       cities.length ? h('div', { class: 'tiles' }, cities.map(cityTile)) : h('div', { class: 'empty' }, `No ${label} cities yet.`));
   });
 
+  const mode = mapMode();
+  const switcher = h('div', { class: 'seg', role: 'group', 'aria-label': 'World view' },
+    h('button', { type: 'button', 'aria-pressed': String(mode === 'map'), onclick: () => setMapMode('map') }, 'Map'),
+    h('button', { type: 'button', 'aria-pressed': String(mode === '3d'), onclick: () => setMapMode('3d') }, '3D world'));
   return [
-    h('div', { class: 'page-head' }, h('h1', {}, 'World map'), act('+ New city', () => forms.newCity(), 'primary')),
+    h('div', { class: 'page-head' }, h('h1', {}, 'World'), h('div', { class: 'toolbar' }, switcher, act('+ New city', () => forms.newCity(), 'primary'))),
     kpis,
     pendingCard(ix),
-    h('div', { class: 'map' }, homes),
+    mode === '3d'
+      ? h('section', { class: 'section' },
+          w3dContainer,
+          h('div', { class: 'legend' },
+            h('span', {}, 'Drag to orbit, scroll or pinch to zoom, click a city to open it.'),
+            STATES.map((st, i) => h('span', {}, h('span', { class: `swatch st-${i}`, 'aria-hidden': 'true' }), cap(st))),
+            h('span', {}, 'Beacon: KPI vs target (green on target, red below) · buildings: departments, taller = more agents · dome: the college')))
+      : h('div', { class: 'map' }, homes),
   ];
 }
 

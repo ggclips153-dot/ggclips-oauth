@@ -110,6 +110,12 @@ but `data/demo.db`: the real world is never auto-executed.
 - **City view**: KPI history (with a table view), the college (dean scorecard, professors' teaching
   records, new agents waiting for a department), every district and department (caps, shadows, unfilled
   roles, delegated tasks), and each agent's live status, strikes and lifecycle strip.
+- **3D world** (switch on the World page): an island with one region per family, a platform per city,
+  a building per department (taller = more agents), the college dome, a KPI beacon (green on target, red
+  below), agents as figures coloured by state (working agents move), and Security's jail holding every
+  jailed agent. Drag to orbit, scroll or pinch to zoom, hover or tap for details, click a city to open it.
+  It is live like the map, loads only when chosen, and runs offline (three.js is vendored in
+  `public/vendor/three`).
 - **Jail**, **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
 - **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
   New District, New Department (caps, basic tasks, bot token stored as a server secret), department
