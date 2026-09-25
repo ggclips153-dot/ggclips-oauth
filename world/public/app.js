@@ -79,6 +79,7 @@ async function ensureCity3D(city, districtId) {
   city3dStarting ??= import('./city3d.js').then(({ mountCity3D }) => {
     city3d = mountCity3D(c3dContainer, {
       onSelectDistrict: (id) => (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}` : ''}`),
+      onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}/3d`),
     });
     return city3d;
   });
@@ -473,7 +474,7 @@ function mapView(ix) {
           h('div', { class: 'legend' },
             h('span', {}, 'Drag to spin the globe, scroll or pinch to zoom, double-click to fly in, click a pin for its card. Zoom in close to see a city.'),
             STATES.map((st, i) => h('span', {}, h('span', { class: `swatch st-${i}`, 'aria-hidden': 'true' }), cap(st))),
-            h('span', {}, 'Up close: beacon = KPI vs target (green on target, red below) · buildings = departments, taller = more agents · dome = the college')))
+            h('span', {}, 'Up close: beacon = KPI vs target (green on target, red below) · towers = departments, taller = more agents · glass dome = the college · people = agents, jacket colour = tier, walking = working · neon tubes = superhighways between cities')))
       : h('div', { class: 'map' }, homes),
   ];
 }

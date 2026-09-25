@@ -110,19 +110,25 @@ but `data/demo.db`: the real world is never auto-executed.
 - **City view**: KPI history (with a table view), the college (dean scorecard, professors' teaching
   records, new agents waiting for a department), every district and department (caps, shadows, unfilled
   roles, delegated tasks), and each agent's live status, strikes and lifecycle strip.
-- **3D world** (switch on the World page): a globe you use like Google Maps. One continent per family
-  (Revenue the largest; Essentials; Claude and Gemini one-city islands), cities as map pins. Drag to spin,
-  scroll or pinch to zoom toward the cursor, double-click to fly in, +/- and reset buttons, a search box
-  that flies to a city, and a card per city with "Open city". Zoom in close and the city appears on the
-  surface: its platform, a building per department (taller = more agents), the college dome and
-  professors, the KPI beacon (green on target, red below), agents coloured by state (working agents walk),
-  and Security's jail. Live like the map; loads only when chosen; runs offline (three.js is vendored in
-  `public/vendor/three-r186`).
+- **3D world** (switch on the World page): a cyberpunk night globe you use like Google Maps. Dark
+  continents (one per family; Revenue the largest) with neon coastlines and city lights, a 3D sprawl of lit
+  towers filling the land between the cities, and elevated **superhighways** joining every city (a minimum
+  spanning network plus each city's nearest neighbour) with traffic running both ways. Cities are neon pins.
+  Drag to spin, scroll or pinch to zoom toward the cursor, double-click to fly in, +/- and reset, a search box
+  that flies to a city, and a card per city. Zoom in and the view tilts toward the horizon: each city's deck
+  shows its towers (taller = more agents), the glass college dome with professors in mortarboards, the KPI
+  beacon and searchlight (green on target, red below), Security's jail, and the agents as people (jacket
+  colour = tier; working agents walk). Loads only when chosen; runs offline (three.js is vendored).
 - **3D city** (the "Details | 3D city" switch on a city's page, or "Enter 3D city" on the globe's card): the
-  city as a small town. City Hall (the Mayor) with the KPI beacon, the college campus (dean, professors,
-  new agents), and each district as its own neighbourhood with a building per department and its agents
-  walking about. Choose a district from the buttons or by clicking its ground: the camera flies there and
-  a panel lists its departments and agents. Live; the camera stays where you leave it.
+  city at night, cyberpunk style. City Hall is a spire with a crown in the family colour; the college is a
+  glass dome with the dean, professors and new agents; each district is a neon-edged neighbourhood with a
+  street grid and a detailed tower per department (stepped tiers, lit windows, neon trims, rooftop antennas,
+  the department's name in neon). Agents are people: working ones walk their block, the rest stand by the
+  door. Avenues run from City Hall to each district, streets join neighbouring districts, a beltway circles
+  the city, and elevated superhighways leave toward the other cities in their real direction on the globe
+  (click one to go to that city). Blocks fill the land between, a skyline surrounds the city, and cars and
+  flying cars move through it. Choose a district from the buttons or by clicking its ground: the camera
+  flies there and a panel lists its departments and agents. Live; the camera stays where you leave it.
 - **Live**: every department agent's current status and activity across the cities you can see, filtered by
   city and status, working agents first.
 - **Economy**: dollars earned only from real-revenue deliverables by active or senior agents, vetted by
