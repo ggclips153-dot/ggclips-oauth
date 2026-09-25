@@ -533,3 +533,39 @@ export function skyline(spots, seed = 'sky', { billboards = 12, footprintY = 0, 
   });
   return g;
 }
+
+// ---------- renderer health ----------
+/**
+ * A renderer tuned for laptops: pixel ratio capped at 1.5 (retina at 2x draws 78% more pixels for little
+ * visible gain here). If the graphics driver resets (WebGL context lost), the view pauses with a notice
+ * instead of freezing, and resumes on its own when the browser restores the context.
+ * Returns { renderer, isLost() }.
+ */
+export function makeRenderer(container) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  let lost = false;
+  const notice = document.createElement('div');
+  notice.className = 'w3d-lost';
+  notice.setAttribute('role', 'status');
+  notice.hidden = true;
+  const text = document.createElement('p');
+  text.textContent = 'The graphics card reset, so the 3D view paused. It should come back by itself in a moment.';
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'small-btn primary';
+  retry.textContent = 'Reload the page';
+  retry.addEventListener('click', () => location.reload());
+  notice.append(text, retry);
+  container.append(notice);
+  renderer.domElement.addEventListener('webglcontextlost', (ev) => {
+    ev.preventDefault(); // lets the browser restore the context
+    lost = true;
+    notice.hidden = false;
+  });
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    lost = false;
+    notice.hidden = true;
+  });
+  return { renderer, isLost: () => lost };
+}

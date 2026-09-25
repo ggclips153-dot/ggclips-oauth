@@ -11,7 +11,7 @@ import * as THREE from './vendor/three-r186/three.module.min.js';
 import { OrbitControls } from './vendor/three-r186/OrbitControls.min.js';
 import { h } from './dom.js';
 import { bearing, cityPlaces, rng } from './geo.js';
-import { NEON, NEON_SET, NIGHT, animatePerson, car, disposeTree, glow, groundTexture, neon, person, road as roadMesh, sign, skyTexture, skyline, solid, streetlight, tower } from './cyber.js';
+import { NEON, NEON_SET, NIGHT, animatePerson, car, disposeTree, glow, makeRenderer, groundTexture, neon, person, road as roadMesh, sign, skyTexture, skyline, solid, streetlight, tower } from './cyber.js';
 
 const STATES = ['enrolled', 'student', 'probationer', 'active', 'senior'];
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
@@ -33,8 +33,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   container.classList.add('c3d');
   container.replaceChildren(canvasHost, labels, tip, picker, panel, reset);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const { renderer, isLost } = makeRenderer(container);
   canvasHost.append(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -420,14 +419,14 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
       const dir = new THREE.Vector3(Math.sin(e.heading * (Math.PI / 180)), 0, -Math.cos(e.heading * (Math.PI / 180)));
       corridors.push(dir);
       const names = e.cities.map((c) => c.name).join(' · ');
-      const info = { tip: `Superhighway to ${names}${onOpenCity ? ' · click to go there' : ''}`, openCity: e.cities[0].id };
+      const info = { tip: `To ${names}${onOpenCity ? ` · click to go to ${e.cities[0].name}` : ''}`, openCity: e.cities[0].id };
       const rampStart = dir.clone().multiplyScalar(beltR + 2.5);
       const rampTop = dir.clone().multiplyScalar(beltR + 28).setY(HIGHWAY_Y);
       const end = dir.clone().multiplyScalar(WORLD_EDGE + 40).setY(HIGHWAY_Y);
       for (const [a, b] of [[rampStart, rampTop], [rampTop, end]]) {
         const deck = road(a, b, { width: 6, kerb: NEON.cyan, deck: 0.6 });
         world.add(deck);
-        pick(deck.children[0], info);
+        pick(deck.children[0], { tip: `Superhighway to ${names} · click the green sign to go there` });
         traffic(a.clone().setY(a.y + 0.03), b.clone().setY(b.y + 0.03), a === rampStart ? 2 : 6, rand, { lane: 1.3 });
       }
       // Pillars under the elevated span.
@@ -496,10 +495,13 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
       label(city.id === 'security-city' ? 'Jail' : "In Security's jail", `${inside.length}`, jailPos.clone().setY(5.2), 'jail');
     }
 
-    // Picker buttons.
+    renderPicker(city);
+  }
+
+  function renderPicker(city) {
     picker.replaceChildren(
       h('button', { type: 'button', 'aria-pressed': String(!current.districtId), onclick: () => onSelectDistrict(null) }, 'Whole city'),
-      ...districts.map((d) => h('button', { type: 'button', 'aria-pressed': String(current.districtId === d.id), onclick: () => onSelectDistrict(d.id) }, d.name)),
+      ...city.districts.map((d) => h('button', { type: 'button', 'aria-pressed': String(current.districtId === d.id), onclick: () => onSelectDistrict(d.id) }, d.name)),
     );
   }
 
@@ -617,7 +619,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   let frame = 0;
   function loop(t) {
     frame = requestAnimationFrame(loop);
-    if (document.hidden || !container.isConnected) return;
+    if (document.hidden || !container.isConnected || isLost()) return;
     timer.update();
     const elapsed = timer.getElapsed();
     stepAnim(t ?? performance.now());
@@ -683,8 +685,11 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     show(city, data, districtId) {
       const first = current.city?.id !== city.id;
       const districtChanged = current.districtId !== (districtId ?? null);
-      current = { city, districtId: districtId ?? null };
-      build(city, data);
+      // Rebuild only for a new city or fresh ledger data; choosing a district just moves the camera.
+      const rebuild = first || current.data !== data;
+      current = { city, districtId: districtId ?? null, data };
+      if (rebuild) build(city, data);
+      else renderPicker(city);
       renderPanel(city);
       // A live refresh keeps the camera where you left it; only a new city or district moves it.
       if (first || districtChanged) focus(first);

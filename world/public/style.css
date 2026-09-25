@@ -400,3 +400,6 @@ pre.pointer, pre.proposal-text { white-space: pre-wrap; word-break: break-word; 
 .constitution, .constitution .md { min-width: 0; overflow-wrap: anywhere; }
 .constitution .md pre { max-width: 100%; overflow-wrap: normal; }
 .topbar .build { white-space: nowrap; }
+.w3d-lost { position: absolute; inset: 0; display: grid; place-content: center; gap: 10px; justify-items: center; padding: 24px; text-align: center; background: rgba(5, 3, 12, 0.88); color: #e8f6ff; z-index: 5; }
+.w3d-lost[hidden] { display: none; }
+.w3d-lost p { max-width: 36ch; margin: 0; }

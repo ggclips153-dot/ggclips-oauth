@@ -9,7 +9,7 @@ import * as THREE from './vendor/three-r186/three.module.min.js';
 import { OrbitControls } from './vendor/three-r186/OrbitControls.min.js';
 import { h } from './dom.js';
 import { CONTINENTS, DEG, FAMILY_ORDER, arcDegrees, cityPlaces, coastNoise, highwayLinks, landAt, rng } from './geo.js';
-import { NEON, NEON_SET, animatePerson, disposeTree, facade, facadeBox, glow, neon, person, solid, tower } from './cyber.js';
+import { NEON, NEON_SET, animatePerson, disposeTree, facade, facadeBox, glow, makeRenderer, neon, person, solid, tower } from './cyber.js';
 
 const R = 50; // globe radius
 const FAMILY_LABEL = { revenue: 'Revenue', claude: 'Claude', gemini: 'Gemini', essentials: 'Essentials' };
@@ -200,8 +200,7 @@ export function mount3D(container, { onOpenCity }) {
     h('div', { class: 'w3d-zoom' }, zoomIn, zoomOut, home),
   );
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const { renderer, isLost } = makeRenderer(container);
   canvasHost.append(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -762,7 +761,7 @@ export function mount3D(container, { onOpenCity }) {
   let frame = 0;
   function loop(t) {
     frame = requestAnimationFrame(loop);
-    if (document.hidden || !container.isConnected) return;
+    if (document.hidden || !container.isConnected || isLost()) return;
     timer.update();
     const elapsed = timer.getElapsed();
     stepAnim(t ?? performance.now());
