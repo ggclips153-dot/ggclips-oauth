@@ -118,7 +118,31 @@ const BLOCKED_IN_JAIL = new Set([
   'agent.third_strike',
   'intent.promote_agent',
   'intent.move_agent',
+  'intent.retire_to_professor',
+  'agent.retired_to_professor',
 ]);
+
+/** Department-ladder actions that never apply to a professor (professors belong to the college). */
+const AGENT_ONLY = new Set([
+  'agent.placed',
+  'agent.interned',
+  'agent.graduated',
+  'agent.promoted',
+  'agent.lead_assigned',
+  'agent.moved',
+  'agent.deployed',
+  'agent.retired_to_professor',
+  'exam.graded',
+  'task.delegated',
+  'task.returned',
+  'intent.place_agent',
+  'intent.promote_agent',
+  'intent.move_agent',
+  'intent.deploy_agent',
+  'intent.retire_to_professor',
+]);
+
+const GRADUATED = ['probationer', 'active', 'senior'];
 
 function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, intent: LedgerEvent | undefined, now: Date) {
   const p = d.payload as Record<string, any>;
@@ -157,10 +181,14 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (cap !== null && count >= cap) conflict(`department ${deptId} is at its ${kind} cap (${cap})`);
   };
   const professorIn = (id: unknown, city: string) => {
-    const prof = state.professors.get(String(id)) ?? notFound(`unknown professor: ${id}`);
+    const prof = state.agents.get(String(id));
+    if (!prof || prof.role !== 'professor' || prof.deleted) return notFound(`unknown professor: ${id}`);
     if (prof.cityId !== city) forbid(`professor ${prof.id} is not in ${city}`);
+    if (isJailed(prof, now)) conflict(`professor ${prof.id} is in jail`);
     return prof;
   };
+  // KPI strikes apply to graduated agents and to professors (same strike rules as everybody else).
+  const canMissKpi = (a: Agent) => a.role === 'professor' || GRADUATED.includes(a.state);
   const missed = () => {
     if (!(p.value < p.target)) invalid('a strike requires a KPI miss (value < target)');
   };
@@ -172,6 +200,9 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
   if (target && isJailed(target, now) && BLOCKED_IN_JAIL.has(d.type)) {
     const j = target.jail!;
     conflict(`agent ${target.id} is in jail (${j.status === 'serving' ? `term ${j.term} until ${j.until}` : 'awaiting deletion'})`);
+  }
+  if (target?.role === 'professor' && AGENT_ONLY.has(d.type)) {
+    conflict(`${target.id} is a professor at the college; ${d.type} applies to department agents only`);
   }
 
   switch (d.type) {
@@ -189,7 +220,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       checkSettings();
       break;
     case 'intent.create_professor':
-      departmentIn(p.departmentId, d.city);
+      if (p.departmentId !== undefined) departmentIn(p.departmentId, d.city);
       if (state.isNameRetired(p.name)) conflict(`name "${p.name}" belonged to a deleted agent and is retired forever`);
       break;
     case 'intent.create_department': {
@@ -199,7 +230,6 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     }
     case 'intent.create_agent':
-      departmentIn(p.departmentId, d.city);
       if (state.isNameRetired(p.name)) conflict(`name "${p.name}" belonged to a deleted agent and is retired forever`);
       break;
     case 'intent.place_agent':
@@ -220,6 +250,16 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'intent.move_agent':
       agentIn(p.agentId, d.city);
       departmentIn(p.toDepartmentId, d.city);
+      break;
+    case 'intent.retire_to_professor': {
+      const a = agentIn(p.agentId, d.city);
+      if (a.state !== 'senior') conflict(`only a senior (tier 5) agent can retire into a professor (agent is ${a.state})`);
+      if (p.departmentId !== undefined) departmentIn(p.departmentId, d.city);
+      break;
+    }
+    case 'intent.specialize_professor':
+      professorIn(p.professorId, d.city);
+      departmentIn(p.departmentId, d.city);
       break;
 
     // ---- DM ----
@@ -265,22 +305,44 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     // ---- Mayor: professors, exams, delegation ----
     case 'professor.enrolled':
       match(['name', 'persona', 'domainFocus', 'departmentId']);
-      departmentIn(p.departmentId, d.city);
+      if (p.departmentId !== undefined) departmentIn(p.departmentId, d.city);
       if (state.isNameRetired(p.name)) conflict(`name "${p.name}" belonged to a deleted agent and is retired forever`);
       break;
-    case 'professor.stepped_in':
-      professorIn(p.professorId, d.city);
+    case 'agent.retired_to_professor':
+      intentAgent();
+      match(['departmentId']);
+      if (agent!.state !== 'senior') conflict(`only a senior (tier 5) agent can retire into a professor (agent is ${agent!.state})`);
+      if (p.departmentId !== undefined) departmentIn(p.departmentId, d.city);
       break;
+    case 'professor.specialized':
+      match(['professorId', 'departmentId']);
+      professorIn(p.professorId, d.city);
+      departmentIn(p.departmentId, d.city);
+      break;
+    case 'department.role_requested':
+      departmentIn(p.departmentId, d.city);
+      break;
+    case 'professor.stepped_in': {
+      const prof = professorIn(p.professorId, d.city);
+      departmentIn(p.departmentId, d.city);
+      if (prof.specialtyDepartmentId !== p.departmentId) forbid(`professor ${prof.id} does not specialise in ${p.departmentId}`);
+      if (p.requestSeq !== undefined) {
+        const req = state.roleRequests.get(p.requestSeq) ?? notFound(`role request #${p.requestSeq} not found`);
+        if (req.departmentId !== p.departmentId) forbid(`role request #${req.seq} is for ${req.departmentId}`);
+        if (req.filledBy) conflict(`role request #${req.seq} is already filled`);
+      }
+      break;
+    }
     case 'exam.graded': {
       if (agent!.state !== 'student') conflict(`only a student sits an exam (agent is ${agent!.state})`);
       const prof = professorIn(p.professorId, d.city);
-      if (prof.departmentId !== agent!.departmentId) forbid(`professor ${prof.id} does not teach ${agent!.departmentId}`);
+      if (prof.specialtyDepartmentId !== agent!.departmentId) forbid(`professor ${prof.id} does not teach ${agent!.departmentId}`);
       break;
     }
     case 'task.delegated': {
       if (!agent!.badges.includes(INTERN_BADGE)) conflict(`agent ${agent!.id} is not a shadow; only shadows take delegated tasks`);
       const from = state.agents.get(String(p.fromAgentId)) ?? notFound(`unknown agent: ${p.fromAgentId}`);
-      if (from.deleted || from.cityId !== d.city || from.departmentId !== agent!.departmentId) {
+      if (from.deleted || from.role !== 'agent' || from.cityId !== d.city || from.departmentId !== agent!.departmentId) {
         forbid(`only a graduated agent in ${agent!.departmentId} may delegate to its shadows`);
       }
       if (!['probationer', 'active', 'senior'].includes(from.state)) forbid(`agent ${from.id} is not graduated (${from.state})`);
@@ -298,19 +360,13 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
 
     // ---- Mayor: agent lifecycle ----
     case 'agent.enrolled':
-      match(['name', 'persona', 'domainFocus', 'departmentId']);
-      departmentIn(p.departmentId, d.city);
+      match(['name', 'persona', 'domainFocus']);
       if (state.isNameRetired(p.name)) conflict(`name "${p.name}" belonged to a deleted agent and is retired forever`);
       break;
     case 'agent.placed':
       if (agent!.state !== 'enrolled') conflict(`agent ${agent!.id} is already placed`);
-      if (intent!.type === 'intent.create_agent') {
-        if (agent!.enrolledBy !== intent!.seq) forbid(`intent #${intent!.seq} did not enroll ${agent!.id}`);
-        if (p.departmentId !== agent!.assignedDepartmentId) forbid(`placement must be the assigned department ${agent!.assignedDepartmentId}`);
-      } else {
-        intentAgent();
-        match(['departmentId']);
-      }
+      intentAgent();
+      match(['departmentId']);
       departmentIn(p.departmentId, d.city);
       break;
     case 'agent.interned':
@@ -360,9 +416,9 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} records task strikes`);
       const a = state.agents.get(String(p.agentId)) ?? notFound(`unknown agent: ${p.agentId}`);
       if (a.deleted) conflict(`agent ${a.id} is deleted`);
-      if (a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet; it has no tasks`);
+      if (a.role === 'agent' && a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet; it has no tasks`);
       const obs = state.agents.get(String(p.observedBy)) ?? notFound(`unknown observer: ${p.observedBy}`);
-      if (obs.cityId !== SECURITY_CITY_ID || obs.deleted) forbid(`observer ${obs.id} is not a Security City agent`);
+      if (obs.cityId !== SECURITY_CITY_ID || obs.deleted || obs.role !== 'agent') forbid(`observer ${obs.id} is not a Security City agent`);
       if (obs.id === a.id) forbid('an agent cannot strike itself');
       if (obs.deployedTo !== a.cityId) forbid(`observer ${obs.id} is not deployed to ${a.cityId}`);
       if (isJailed(obs, now)) conflict(`observer ${obs.id} is in jail`);
@@ -370,12 +426,12 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     }
     case 'agent.school_returned':
       missed();
-      if (!['probationer', 'active', 'senior'].includes(agent!.state)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated agents can miss KPI`);
+      if (!canMissKpi(agent!)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated agents and professors can miss KPI`);
       if (agent!.strikes >= MAX_STRIKES - 1) conflict(`miss #${agent!.strikes + 1} is the 3rd strike; write agent.third_strike`);
       break;
     case 'agent.third_strike':
       missed();
-      if (!['probationer', 'active', 'senior'].includes(agent!.state)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated agents can miss KPI`);
+      if (!canMissKpi(agent!)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated agents and professors can miss KPI`);
       if (agent!.strikes !== MAX_STRIKES - 1) conflict(`3rd strike requires ${MAX_STRIKES - 1} prior strikes (agent has ${agent!.strikes})`);
       break;
     case 'agent.deleted':

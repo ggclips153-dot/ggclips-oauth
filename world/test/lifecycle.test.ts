@@ -165,10 +165,7 @@ describe('moves', () => {
 });
 
 function deleteAfterThreeStrikes(w: TestWorld, city: string, dept: string, name: string): string {
-  const payload = { name, persona, domainFocus: 'x', departmentId: dept };
-  const i = w.intent('create_agent', city, payload);
-  const a = w.fact(mayorOf(city), { type: 'agent.enrolled', city, payload, authorizedBy: i.seq }).subject!;
-  w.fact(mayorOf(city), { type: 'agent.placed', city, subject: a, payload: { departmentId: dept }, authorizedBy: i.seq });
+  const a = w.agent(city, dept, name);
   for (let n = 0; n < 3; n++) {
     w.promote(city, a, 'probationer');
     w.miss(city, a, n === 2);

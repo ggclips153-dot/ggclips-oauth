@@ -35,11 +35,11 @@ const persona: Schema = {
   temperament: { t: 'str', max: 500 },
 };
 
+/** New agents are created at the city's college, unplaced (A11). A department then takes an existing agent. */
 const agentFields: Schema = {
   name: { t: 'str', max: 80 },
   persona: { t: 'obj', fields: persona },
   domainFocus: { t: 'str', max: 500 },
-  departmentId: { t: 'str', max: 20 },
 };
 
 /** Optional department settings (A9). Absent cap = no cap. */
@@ -59,11 +59,10 @@ const departmentFields: Schema = {
   ...departmentSettings,
 };
 
+/** Professors are created at the college, optionally specialising in an existing department. */
 const professorFields: Schema = {
-  name: { t: 'str', max: 80 },
-  persona: { t: 'obj', fields: persona },
-  domainFocus: { t: 'str', max: 500 },
-  departmentId: { t: 'str', max: 20 },
+  ...agentFields,
+  departmentId: { t: 'str', max: 20, opt: true },
 };
 
 const strikeFields: Schema = {
@@ -105,6 +104,19 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { departmentId: { t: 'str', max: 20 }, ...departmentSettings },
   },
   // Leave `name` out and the ledger generates one.
+  // Retire a senior (tier 5) agent into a professor at the college.
+  'intent.retire_to_professor': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, departmentId: { t: 'str', max: 20, opt: true } },
+  },
+  'intent.specialize_professor': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { professorId: { t: 'str', max: 20 }, departmentId: { t: 'str', max: 20 } },
+  },
   'intent.create_professor': {
     kind: 'intent',
     writers: OWNER,
@@ -258,14 +270,38 @@ export const CATALOG: Record<string, EventSpec> = {
     },
     subject: 'agent',
   },
+  'agent.retired_to_professor': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { departmentId: { t: 'str', max: 20, opt: true } },
+    authorizedBy: ['intent.retire_to_professor'],
+    subject: 'agent',
+  },
+  'professor.specialized': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { professorId: { t: 'str', max: 20 }, departmentId: { t: 'str', max: 20 } },
+    authorizedBy: ['intent.specialize_professor'],
+  },
+  // A department reports an unfilled role; the Mayor answers with a professor of that specialty.
+  'department.role_requested': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { departmentId: { t: 'str', max: 20 }, role: { t: 'str', max: 300 } },
+  },
   'professor.stepped_in': {
     kind: 'fact',
     writers: MAYOR,
     scope: 'city',
     schema: {
       professorId: { t: 'str', max: 20 },
+      departmentId: { t: 'str', max: 20 },
       role: { t: 'str', max: 300 },
       hours: { t: 'int', min: 1, max: 720 },
+      requestSeq: { t: 'int', min: 1, opt: true },
     },
   },
 
@@ -308,7 +344,7 @@ export const CATALOG: Record<string, EventSpec> = {
     writers: MAYOR,
     scope: 'city',
     schema: { departmentId: { t: 'str', max: 20 } },
-    authorizedBy: ['intent.create_agent', 'intent.place_agent'],
+    authorizedBy: ['intent.place_agent'],
     subject: 'agent',
   },
   // Shadow promotions are appointed by the Mayor (A8): student -> intern -> graduated (probationer).

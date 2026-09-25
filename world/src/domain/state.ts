@@ -75,19 +75,14 @@ export interface Department {
   basicTasks: string[];
 }
 
-/** Custom-created department specialist (A10). Shares the never-reused AGT- ID space. */
-export interface Professor {
-  id: string;
-  name: string;
+/** A department asking for an unfilled role; the Mayor answers by sending a professor (A11). */
+export interface RoleRequest {
+  seq: number;
+  ts: string;
   cityId: string;
   departmentId: string;
-  persona: { voice: string; temperament: string };
-  domainFocus: string;
-  enrolledAt: string;
-  ledgerPointer: string;
-  memoryScope: string;
-  /** Temporarily filling a role; ends on its own at `until`. */
-  steppedIn: { role: string; seq: number; ts: string; until: string } | null;
+  role: string;
+  filledBy: { professorId: string; seq: number } | null;
 }
 
 export interface Delegation {
@@ -114,7 +109,12 @@ export interface Agent {
   id: string;
   name: string;
   cityId: string;
-  /** Placement card: current department (null while enrolled, before placement). */
+  /**
+   * `agent` = works in departments. `professor` = belongs to the city's college (A10, A11): teaches,
+   * examines, may step in. Professors follow the same strike and jail rules as everybody else.
+   */
+  role: 'agent' | 'professor';
+  /** Placement card: current department (null at the college: enrolled, or a professor). */
   departmentId: string | null;
   /** Tier. */
   state: AgentState;
@@ -127,7 +127,6 @@ export interface Agent {
   // ---- profile ----
   persona: { voice: string; temperament: string };
   domainFocus: string;
-  assignedDepartmentId: string;
   enrolledBy: number;
   strikes: number;
   status: { status: string; activity: string | null; ts: string; seq: number } | null;
@@ -143,6 +142,12 @@ export interface Agent {
   deployedTo: string | null;
   /** Latest exam from a professor. A pass is required to graduate; reset on each return to school. */
   lastExam: { seq: number; ts: string; professorId: string; result: 'pass' | 'fail' } | null;
+  /** Professors only: the department it specialises in (may be none yet). */
+  specialtyDepartmentId: string | null;
+  /** Professors only: temporarily filling a role in a department; ends on its own at `until`. */
+  steppedIn: { departmentId: string; role: string; seq: number; ts: string; until: string } | null;
+  /** Set when a senior agent was retired into a professor. */
+  professorSince: string | null;
 }
 
 export interface Jail {
@@ -197,8 +202,8 @@ export class WorldState {
   readonly districts = new Map<string, District>();
   readonly departments = new Map<string, Department>();
   readonly agents = new Map<string, Agent>();
-  readonly professors = new Map<string, Professor>();
   readonly delegations = new Map<number, Delegation>();
+  readonly roleRequests = new Map<number, RoleRequest>();
   readonly intents = new Map<number, LedgerEvent>();
   /** intent seq -> dm.routed seq */
   readonly routed = new Map<number, number>();
@@ -213,6 +218,11 @@ export class WorldState {
 
   isNameRetired(name: string) {
     return this.retiredNames.has(nameKey(name));
+  }
+
+  /** Living professors (the college). */
+  professors(cityId?: string): Agent[] {
+    return [...this.agents.values()].filter((a) => a.role === 'professor' && !a.deleted && (!cityId || a.cityId === cityId));
   }
 
   /** Living agents placed in the department (students, interns and graduated; not deleted). */
@@ -233,7 +243,7 @@ export class WorldState {
   cityAgentCounts(cityId: string): Record<AgentState, number> {
     const counts = Object.fromEntries(AGENT_STATES.map((s) => [s, 0])) as Record<AgentState, number>;
     for (const a of this.agents.values()) {
-      if (a.cityId === cityId && !a.deleted) counts[a.state]++;
+      if (a.cityId === cityId && !a.deleted && a.role === 'agent') counts[a.state]++;
     }
     return counts;
   }
@@ -297,28 +307,39 @@ export class WorldState {
         dept.basicTasks = p.basicTasks ?? [];
         break;
       }
-      case 'professor.enrolled': {
-        const id = e.subject!;
-        this.professors.set(id, {
-          id,
-          name: p.name,
-          cityId: e.city,
-          departmentId: p.departmentId,
-          persona: p.persona,
-          domainFocus: p.domainFocus,
-          enrolledAt: e.ts,
-          ledgerPointer: agentLedgerPointer(id),
-          memoryScope: agentMemoryScope(id),
-          steppedIn: null,
+      case 'professor.enrolled':
+        this.agents.set(e.subject!, {
+          ...newAgent(e, p),
+          role: 'professor',
+          state: 'senior',
+          specialtyDepartmentId: p.departmentId ?? null,
+          professorSince: e.ts,
         });
         break;
+      case 'agent.retired_to_professor':
+        if (!agent) break;
+        agent.role = 'professor';
+        agent.specialtyDepartmentId = p.departmentId ?? agent.departmentId;
+        agent.departmentId = null;
+        agent.badges = agent.badges.filter((b) => b !== DEPT_LEAD_BADGE);
+        agent.professorSince = e.ts;
+        break;
+      case 'professor.specialized': {
+        const prof = this.agents.get(p.professorId);
+        if (prof) prof.specialtyDepartmentId = p.departmentId;
+        break;
       }
+      case 'department.role_requested':
+        this.roleRequests.set(e.seq, { seq: e.seq, ts: e.ts, cityId: e.city, departmentId: p.departmentId, role: p.role, filledBy: null });
+        break;
       case 'professor.stepped_in': {
-        const prof = this.professors.get(p.professorId);
+        const prof = this.agents.get(p.professorId);
         if (prof) {
           const until = new Date(Date.parse(e.ts) + p.hours * 3_600_000).toISOString();
-          prof.steppedIn = { role: p.role, seq: e.seq, ts: e.ts, until };
+          prof.steppedIn = { departmentId: p.departmentId, role: p.role, seq: e.seq, ts: e.ts, until };
         }
+        const req = p.requestSeq ? this.roleRequests.get(p.requestSeq) : undefined;
+        if (req) req.filledBy = { professorId: p.professorId, seq: e.seq };
         break;
       }
       case 'exam.graded':
@@ -346,34 +367,9 @@ export class WorldState {
         if (del) del.returned = { seq: e.seq, ts: e.ts, outcome: p.outcome, resultRef: p.resultRef ?? null };
         break;
       }
-      case 'agent.enrolled': {
-        const id = e.subject!;
-        this.agents.set(id, {
-          id,
-          name: p.name,
-          cityId: e.city,
-          departmentId: null,
-          state: 'enrolled',
-          badges: [],
-          graduated: false,
-          ledgerPointer: agentLedgerPointer(id),
-          memoryScope: agentMemoryScope(id),
-          persona: p.persona,
-          domainFocus: p.domainFocus,
-          assignedDepartmentId: p.departmentId,
-          enrolledBy: e.authorizedBy!,
-          strikes: 0,
-          status: null,
-          lifecycle: [{ stage: 'enrollment', seq: e.seq, ts: e.ts }],
-          deleted: null,
-          taskStrikes: 0,
-          jailTerms: 0,
-          jail: null,
-          deployedTo: null,
-          lastExam: null,
-        });
+      case 'agent.enrolled':
+        this.agents.set(e.subject!, newAgent(e, p));
         break;
-      }
       case 'agent.placed':
         if (!agent) break;
         agent.departmentId = p.departmentId;
@@ -412,7 +408,8 @@ export class WorldState {
       case 'agent.school_returned':
         if (!agent) break;
         agent.strikes += 1;
-        agent.state = 'student';
+        // A professor keeps its post at the college: the strike counts, but it isn't sent to school.
+        if (agent.role === 'agent') agent.state = 'student';
         agent.badges = agent.badges.filter((b) => b !== DEPT_LEAD_BADGE);
         agent.lastExam = null;
         mark('school-return', `strike ${agent.strikes}`);
@@ -469,6 +466,7 @@ export class WorldState {
         agent.departmentId = null;
         agent.status = null;
         agent.jail = null;
+        agent.steppedIn = null;
         this.retiredNames.add(nameKey(agent.name));
         mark('deletion');
         break;
@@ -504,6 +502,38 @@ export class WorldState {
 
     if (e.authorizedBy !== null) this.consumed.add(consumeKey(e));
   }
+}
+
+/** A fresh identity record at the college: enrolled, unplaced. */
+function newAgent(e: LedgerEvent, p: Record<string, any>): Agent {
+  const id = e.subject!;
+  return {
+    id,
+    name: p.name,
+    cityId: e.city,
+    role: 'agent',
+    departmentId: null,
+    state: 'enrolled',
+    badges: [],
+    graduated: false,
+    ledgerPointer: agentLedgerPointer(id),
+    memoryScope: agentMemoryScope(id),
+    persona: p.persona,
+    domainFocus: p.domainFocus,
+    enrolledBy: e.authorizedBy!,
+    strikes: 0,
+    status: null,
+    lifecycle: [{ stage: 'enrollment', seq: e.seq, ts: e.ts }],
+    deleted: null,
+    taskStrikes: 0,
+    jailTerms: 0,
+    jail: null,
+    deployedTo: null,
+    lastExam: null,
+    specialtyDepartmentId: null,
+    steppedIn: null,
+    professorSince: null,
+  };
 }
 
 /** One intent authorizes each fact type once (per district name for a city's initial districts). */

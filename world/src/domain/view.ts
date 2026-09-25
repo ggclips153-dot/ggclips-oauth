@@ -42,6 +42,13 @@ const agentView = (a: Agent) => ({
   lastExam: a.lastExam,
 });
 
+const professorView = (a: Agent, now: Date) => ({
+  ...agentView(a),
+  specialtyDepartmentId: a.specialtyDepartmentId,
+  professorSince: a.professorSince,
+  steppedIn: a.steppedIn && Date.parse(a.steppedIn.until) > now.getTime() ? a.steppedIn : null,
+});
+
 export function worldView(state: WorldState, profile: Profile, now: Date) {
   const scope = readScope(profile, state);
   const agents = [...state.agents.values()];
@@ -64,13 +71,18 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
                 graduatedCount: state.graduatedIn(dp.id).length,
                 shadowCount: state.shadowsIn(dp.id).length,
                 agents: living.filter((a) => a.departmentId === dp.id).map(agentView),
-                professors: [...state.professors.values()]
-                  .filter((pr) => pr.departmentId === dp.id)
-                  .map((pr) => ({ ...pr, steppedIn: pr.steppedIn && Date.parse(pr.steppedIn.until) > now.getTime() ? pr.steppedIn : null })),
+                // Professors of this specialty at the college; `steppedIn` shows who is filling a role here now.
+                professors: state.professors(c.id).filter((pr) => pr.specialtyDepartmentId === dp.id).map((pr) => professorView(pr, now)),
+                openRoleRequests: [...state.roleRequests.values()].filter((r) => r.departmentId === dp.id && !r.filledBy),
                 openDelegations: [...state.delegations.values()].filter((dl) => dl.departmentId === dp.id && !dl.returned),
               })),
           })),
-        enrolled: living.filter((a) => a.state === 'enrolled').map(agentView),
+        // The city's college: where agents and professors are created. New agents wait here, unplaced,
+        // until a department takes them.
+        college: {
+          enrolled: living.filter((a) => a.role === 'agent' && a.state === 'enrolled').map(agentView),
+          professors: state.professors(c.id).map((pr) => professorView(pr, now)),
+        },
         retired: agents
           .filter((a) => a.cityId === c.id && a.deleted)
           .map((a) => ({ id: a.id, name: a.name, deleted: a.deleted, lifecycle: a.lifecycle })),

@@ -131,7 +131,7 @@ describe('professors (A10)', () => {
     assert.ok((i.payload.name as string).length > 0);
     const prof = w.fact(mayorOf(city), { type: 'professor.enrolled', city, payload: i.payload, authorizedBy: i.seq }).subject!;
     assert.match(prof, /^AGT-\d{6}$/);
-    assert.equal(w.state.professors.get(prof)!.departmentId, dept);
+    assert.equal(w.state.agents.get(prof)!.specialtyDepartmentId, dept);
     // Professors are not graduated agents: they don't count toward caps or dept-lead.
     assert.equal(w.state.graduatedIn(dept).length, 0);
   });
@@ -161,7 +161,7 @@ describe('professors (A10)', () => {
   it('can step in to fill a role for a set time, ending on its own', () => {
     const { w, city, dept } = setup();
     const prof = w.professor(city, dept);
-    w.fact(mayorOf(city), { type: 'professor.stepped_in', city, payload: { professorId: prof, role: 'cover Iris while jailed', hours: 6 } });
+    w.fact(mayorOf(city), { type: 'professor.stepped_in', city, payload: { professorId: prof, departmentId: dept, role: 'cover Iris while jailed', hours: 6 } });
     const view = () => worldView(w.state, owner, w.time).cities[0]!.districts[0]!.departments[0]!.professors[0]!;
     assert.equal(view().steppedIn!.role, 'cover Iris while jailed');
     w.advanceHours(6);

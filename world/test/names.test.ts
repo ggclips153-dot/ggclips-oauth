@@ -27,16 +27,16 @@ describe('name generator', () => {
     const w = new TestWorld();
     const city = w.city();
     const dept = w.department(city, w.district(city));
-    const intent = w.ledger.append(owner, { type: 'intent.create_agent', city, payload: { persona, domainFocus: 'hvac', departmentId: dept } });
+    const intent = w.ledger.append(owner, { type: 'intent.create_agent', city, payload: { persona, domainFocus: 'hvac' } });
     const name = intent.payload.name as string;
     assert.ok(name.length > 0);
     w.ledger.append({ id: 'dm', role: 'dm', writeScope: ['*'] }, { type: 'dm.routed', city, payload: { intentSeq: intent.seq, to: 'mayor' } });
     // The Mayor must enroll exactly the generated name.
     assert.throws(
-      () => w.fact(mayorOf(city), { type: 'agent.enrolled', city, payload: { name: 'Other', persona, domainFocus: 'hvac', departmentId: dept }, authorizedBy: intent.seq }),
+      () => w.fact(mayorOf(city), { type: 'agent.enrolled', city, payload: { name: 'Other', persona, domainFocus: 'hvac' }, authorizedBy: intent.seq }),
       /does not match/,
     );
-    const e = w.fact(mayorOf(city), { type: 'agent.enrolled', city, payload: { name, persona, domainFocus: 'hvac', departmentId: dept }, authorizedBy: intent.seq });
+    const e = w.fact(mayorOf(city), { type: 'agent.enrolled', city, payload: { name, persona, domainFocus: 'hvac' }, authorizedBy: intent.seq });
     assert.equal(w.state.agents.get(e.subject!)!.name, name);
   });
 

@@ -54,18 +54,28 @@ export class TestWorld {
     return this.fact(mayorOf(city), { type: 'department.created', city, payload, authorizedBy: i.seq }).subject!;
   }
 
-  /** Enroll + place: returns an agent in school (student). */
+  /** Create a beginner agent at the city's college: enrolled, unplaced. */
+  collegeAgent(city: string, name?: string): string {
+    const i = this.intent('create_agent', city, { ...(name ? { name } : {}), persona, domainFocus: 'dental bookings' });
+    return this.fact(mayorOf(city), { type: 'agent.enrolled', city, payload: i.payload, authorizedBy: i.seq }).subject!;
+  }
+
+  /** A department takes an EXISTING agent from the college: it becomes a student there. */
+  place(city: string, agentId: string, departmentId: string) {
+    const i = this.intent('place_agent', city, { agentId, departmentId });
+    return this.fact(mayorOf(city), { type: 'agent.placed', city, subject: agentId, payload: { departmentId }, authorizedBy: i.seq });
+  }
+
+  /** College + placement: returns an agent in school (student) in the department. */
   agent(city: string, departmentId: string, name: string): string {
-    const payload = { name, persona, domainFocus: 'dental bookings', departmentId };
-    const i = this.intent('create_agent', city, payload);
-    const id = this.fact(mayorOf(city), { type: 'agent.enrolled', city, payload, authorizedBy: i.seq }).subject!;
-    this.fact(mayorOf(city), { type: 'agent.placed', city, subject: id, payload: { departmentId }, authorizedBy: i.seq });
+    const id = this.collegeAgent(city, name);
+    this.place(city, id, departmentId);
     return id;
   }
 
   /** A professor for the department (created once, name generated). */
   professor(city: string, departmentId: string): string {
-    const existing = [...this.state.professors.values()].find((p) => p.departmentId === departmentId);
+    const existing = this.state.professors().find((p) => p.specialtyDepartmentId === departmentId);
     if (existing) return existing.id;
     const i = this.intent('create_professor', city, { persona, domainFocus: 'teaching', departmentId });
     return this.fact(mayorOf(city), { type: 'professor.enrolled', city, payload: i.payload, authorizedBy: i.seq }).subject!;
