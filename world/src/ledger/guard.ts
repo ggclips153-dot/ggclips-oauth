@@ -9,6 +9,7 @@ import {
   DEPT_LEAD_BADGE,
   DEPT_LEAD_MIN_AGENTS,
   MAX_STRIKES,
+  SECURITY_CITY_ID,
   WORLD_TAG,
   type Role,
 } from '../domain/model.ts';
@@ -102,6 +103,18 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
   return draft;
 }
 
+/** A jailed agent does no work: it cannot climb, move, or be measured until released or deleted. */
+const BLOCKED_IN_JAIL = new Set([
+  'agent.graduated',
+  'agent.promoted',
+  'agent.lead_assigned',
+  'agent.moved',
+  'agent.school_returned',
+  'agent.third_strike',
+  'intent.promote_agent',
+  'intent.move_agent',
+]);
+
 function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, intent: LedgerEvent | undefined) {
   const p = d.payload as Record<string, any>;
   const ip = (intent?.payload ?? {}) as Record<string, any>;
@@ -134,6 +147,11 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (ip.agentId !== agent!.id) forbid(`intent #${intent!.seq} is for agent ${ip.agentId}, not ${agent!.id}`);
   };
 
+  const target = agent ?? (typeof p.agentId === 'string' ? state.agents.get(p.agentId) : undefined);
+  if (target?.jail && BLOCKED_IN_JAIL.has(d.type)) {
+    conflict(`agent ${target.id} is in jail (${target.jail.reason}); release it first`);
+  }
+
   switch (d.type) {
     // ---- intents: early checks so Marc sees mistakes before the DM routes them ----
     case 'intent.create_city': {
@@ -161,6 +179,21 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'intent.delete_agent':
       agentIn(p.agentId, d.city);
       break;
+    case 'intent.jail_agent': {
+      const a = agentIn(p.agentId, d.city);
+      if (a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet`);
+      if (a.jail) conflict(`agent ${a.id} is already in jail`);
+      if (p.flagSeq !== undefined) {
+        const flag = state.securityFlags.find((f) => f.seq === p.flagSeq) ?? notFound(`security flag #${p.flagSeq} not found`);
+        if (flag.agentId !== a.id) forbid(`security flag #${p.flagSeq} is about ${flag.agentId}, not ${a.id}`);
+      }
+      break;
+    }
+    case 'intent.release_agent': {
+      const a = agentIn(p.agentId, d.city);
+      if (a.jail?.reason !== 'not_doing_tasks') conflict(`agent ${a.id} is not jailed for not doing tasks${a.jail ? ' (awaiting deletion cannot be released)' : ''}`);
+      break;
+    }
     case 'intent.move_agent':
       agentIn(p.agentId, d.city);
       departmentIn(p.toDepartmentId, d.city);
@@ -248,6 +281,22 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       departmentIn(p.toDepartmentId, d.city);
       slotFree(p.toDepartmentId);
       break;
+    case 'agent.jailed':
+      intentAgent();
+      match(['reason', 'flagSeq']);
+      if (agent!.jail) conflict(`agent ${agent!.id} is already in jail`);
+      if (agent!.state === 'enrolled') conflict(`agent ${agent!.id} is not placed yet`);
+      break;
+    case 'agent.released':
+      intentAgent();
+      if (agent!.jail?.reason !== 'not_doing_tasks') conflict(`agent ${agent!.id} cannot be released${agent!.jail ? ' (awaiting deletion)' : ' (not in jail)'}`);
+      break;
+    case 'security.flagged': {
+      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} files security flags`);
+      const a = state.agents.get(String(p.agentId)) ?? notFound(`unknown agent: ${p.agentId}`);
+      if (a.deleted) conflict(`agent ${a.id} is deleted`);
+      break;
+    }
     case 'agent.school_returned':
       missed();
       if (!['probationer', 'active', 'senior'].includes(agent!.state)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated agents can miss KPI`);

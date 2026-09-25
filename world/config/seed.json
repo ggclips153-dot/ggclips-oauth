@@ -1,10 +1,10 @@
 {
-  "_comment": "First cities. Run: npm run seed. Writes the real ledger path: Marc intent -> DM routes -> DM city.created. Soren and Odette came from the name generator. Family for Innovations/Security is interim (see docs/OPEN-QUESTIONS.md #12).",
+  "_comment": "First cities. Run: npm run seed. Writes the real ledger path: Marc intent -> DM routes -> DM city.created. Soren and Odette came from the name generator.",
   "cities": [
     { "name": "AI Receptionist City", "family": "revenue", "mayorName": "Ana" },
     { "name": "Personal Finance City", "family": "revenue", "mayorName": "Greg" },
     { "name": "GGClutchPlays", "family": "revenue", "mayorName": "Kevin" },
-    { "name": "Innovations City", "family": "revenue", "mayorName": "Soren" },
-    { "name": "Security City", "family": "revenue", "mayorName": "Odette" }
+    { "name": "Innovations City", "family": "essentials", "mayorName": "Soren" },
+    { "name": "Security City", "family": "essentials", "mayorName": "Odette" }
   ]
 }

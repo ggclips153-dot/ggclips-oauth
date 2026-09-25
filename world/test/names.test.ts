@@ -7,10 +7,10 @@ import { TestWorld, mayorOf, owner, persona } from './helpers.ts';
 describe('name generator', () => {
   it('suggests distinct names, never a reserved name or a Mayor\'s', () => {
     const w = new TestWorld();
-    w.city(); // Mayor Ada
-    const names = suggestNames(w.state, 20, { first: ['Marc', 'Bob', 'Ada', 'Iris', ...Array.from({ length: 30 }, (_, i) => `N${i}`)] });
+    w.city(); // Mayor is "Mayor Ada"
+    const names = suggestNames(w.state, 20, { first: ['Marc', 'Bob', 'Mayor Ada', 'Iris', ...Array.from({ length: 30 }, (_, i) => `N${i}`)] });
     assert.equal(new Set(names).size, 20);
-    for (const n of ['Marc', 'Bob', 'Ada']) assert.ok(!names.includes(n));
+    for (const n of ['Marc', 'Bob', 'Mayor Ada']) assert.ok(!names.includes(n));
   });
 
   it('skips living and retired names, then falls back to First Surname', () => {
@@ -19,9 +19,8 @@ describe('name generator', () => {
     const dept = w.department(city, w.district(city), 5);
     w.agent(city, dept, 'Iris');
     w.state.retiredNames.add('juno');
-    const names = suggestNames(w.state, 3, { first: ['Iris', 'Juno', 'Kai'], last: ['Stone'] });
-    assert.equal(names[0], 'Kai');
-    assert.deepEqual(names.slice(1).sort(), ['Iris Stone', 'Juno Stone']);
+    const names = suggestNames(w.state, 3, { first: ['Iris', 'Juno', 'Kai'], last: ['Stone'], rand: () => 0 });
+    assert.deepEqual(names, ['Kai', 'Iris Stone', 'Juno Stone']);
   });
 
   it('a New Agent intent without a name gets one generated and recorded', () => {

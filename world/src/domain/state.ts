@@ -99,6 +99,25 @@ export interface Agent {
   status: { status: string; activity: string | null; ts: string; seq: number } | null;
   lifecycle: LifecycleEntry[];
   deleted: { seq: number; ts: string; ledgerArchiveRef: string; lessonRecordRef: string } | null;
+  /** In Security's jail: awaiting deletion (3rd strike) or caught not doing its tasks. */
+  jail: Jail | null;
+}
+
+export interface Jail {
+  reason: 'awaiting_deletion' | 'not_doing_tasks';
+  seq: number;
+  ts: string;
+  flagSeq: number | null;
+}
+
+export interface SecurityFlag {
+  seq: number;
+  ts: string;
+  agentId: string;
+  agentCity: string;
+  reason: string;
+  evidence: string;
+  evidenceRef: string | null;
 }
 
 export interface Constitution {
@@ -130,6 +149,8 @@ export class WorldState {
   readonly consumed = new Set<string>();
   /** Names of deleted agents: retired forever. */
   readonly retiredNames = new Set<string>();
+  /** Security City's reports, newest last. */
+  readonly securityFlags: SecurityFlag[] = [];
   constitution: Constitution | null = null;
   worldRollup: { seq: number; period: string; periodStart: string; rollup: unknown } | null = null;
 
@@ -219,6 +240,7 @@ export class WorldState {
           status: null,
           lifecycle: [{ stage: 'enrollment', seq: e.seq, ts: e.ts }],
           deleted: null,
+          jail: null,
         });
         break;
       }
@@ -260,8 +282,30 @@ export class WorldState {
       case 'agent.third_strike':
         if (!agent) break;
         agent.strikes += 1;
+        // Waiting for deletion: held in Security's jail.
+        agent.jail = { reason: 'awaiting_deletion', seq: e.seq, ts: e.ts, flagSeq: null };
         mark('3rd-strike');
         break;
+      case 'agent.jailed':
+        if (!agent) break;
+        agent.jail = { reason: p.reason, seq: e.seq, ts: e.ts, flagSeq: p.flagSeq ?? null };
+        break;
+      case 'agent.released':
+        if (agent) agent.jail = null;
+        break;
+      case 'security.flagged': {
+        const target = this.agents.get(p.agentId);
+        this.securityFlags.push({
+          seq: e.seq,
+          ts: e.ts,
+          agentId: p.agentId,
+          agentCity: target?.cityId ?? '',
+          reason: p.reason,
+          evidence: p.evidence,
+          evidenceRef: p.evidenceRef ?? null,
+        });
+        break;
+      }
       case 'agent.deleted':
         if (!agent) break;
         agent.deleted = {
@@ -272,6 +316,7 @@ export class WorldState {
         };
         agent.departmentId = null;
         agent.status = null;
+        agent.jail = null;
         this.retiredNames.add(nameKey(agent.name));
         mark('deletion');
         break;

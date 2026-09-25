@@ -15,5 +15,8 @@ so nothing is decided silently. Answer here or via the DM.
 | 8 | Families for Personal Finance City and GGClutchPlays? | Both `revenue` in `config/seed.json`. |
 | 10 | KPI metrics for Personal Finance City and GGClutchPlays? | `city.kpi_pulse` takes any metric name; AI Receptionist uses `qualified_bookings`. |
 | 11 | PROPOSAL-2026-09-25-B-REV2 itself was not in the SOUL upload. Is there anything in it beyond what the SOULs show? | Built from the SOULs: district = supervisor that coordinates + QCs; department = scope + own bank; shared notes on the Mnemosyne shared surface (`surface.db`). |
-| 12 | **Family** for Innovations City and Security City. The brief allows only `revenue`, `claude` or `gemini`, and neither city earns revenue. | `revenue` in `config/seed.json` (not yet seeded on the VPS). Say if you want a different value, or a new family added to the brief. |
-| 13 | **Cross-city reach** for Innovations and Security. The brief says only the DM and Bob cross between cities, but Innovations reviews every workflow weekly and Security red-teams everywhere. As separate cities they can't read other cities. | They read only their own city. Findings and proposals go to Marc through the DM. Options: (a) keep that, (b) the DM relays read-only digests to them, (c) grant them cross-city READ like Bob (needs a brief change). |
+| 14 | Does being jailed for not doing tasks count as a **strike**? | No. Jail pauses the agent; strikes come only from KPI misses. |
+| 15 | While jailed for not doing tasks, does the agent keep its **department slot**? | Yes, so it can go back to work on release. A replacement can't take that slot until the agent is released or deleted. |
+| 16 | Can an agent jailed for not doing tasks be **deleted** without 3 strikes? | No, same as #5. Say if repeated jailing should lead to deletion. |
+
+Resolved: Mayor names (A4), Innovations/Security family (A1), their cross-city reach (A2). See `BRIEF-AMENDMENTS.md`.

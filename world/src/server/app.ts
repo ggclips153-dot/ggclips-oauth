@@ -64,7 +64,7 @@ export function createApp(ledger: Ledger, profiles: Profiles): Server {
         const limit = intParam(url, 'limit', 500, 1000);
         const events = ledger.read(after, limit);
         const next = events.at(-1)?.seq ?? after;
-        return send(res, 200, { events: events.filter((e) => canRead(profile, e)), next });
+        return send(res, 200, { events: events.filter((e) => canRead(profile, e, ledger.state)), next });
       }
       if (req.method === 'POST' && url.pathname === '/api/events') {
         const input = (await readJson(req)) as Record<string, unknown>;
@@ -106,7 +106,7 @@ function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Led
     'x-accel-buffering': 'no',
   });
   const write = (e: LedgerEvent) => {
-    if (canRead(profile, e)) res.write(`id: ${e.seq}\nevent: ledger\ndata: ${JSON.stringify(e)}\n\n`);
+    if (canRead(profile, e, ledger.state)) res.write(`id: ${e.seq}\nevent: ledger\ndata: ${JSON.stringify(e)}\n\n`);
   };
   const lastId = Number(req.headers['last-event-id'] ?? url.searchParams.get('after') ?? ledger.state.lastSeq);
   let cursor = Number.isInteger(lastId) && lastId >= 0 ? lastId : ledger.state.lastSeq;

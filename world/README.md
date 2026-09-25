@@ -6,7 +6,7 @@ dashboard UI (world map, city view, forms) builds on this in the next phases.
 
 ```
 WORLD (Marc) ── only DM + Bob cross cities, read-only
- └ CITY (Mayor + bot, FAMILY = revenue | claude | gemini)
+ └ CITY (Mayor + bot, FAMILY = revenue | claude | gemini | essentials)
     └ DISTRICT (supervisor)
        └ DEPARTMENT (owns agent slots)
           └ AGENT (unique, never-reused ID)
@@ -45,7 +45,8 @@ No agent executes its own exit, move or promotion.
 | Department slot counts | guard rules |
 | Name generator: a New Agent intent with no name gets one generated and recorded in the intent | `src/domain/names.ts` |
 | Strict payloads: unknown fields rejected; bot tokens can never enter the ledger (only a `botTokenRef`) | `src/ledger/validate.ts` |
-| Mayors read only their own city; Marc, DM and Bob read everything | `src/domain/view.ts` |
+| Mayors read only their own city; Marc, DM, Bob and **Essentials** Mayors (Innovations, Security) read everything. Nobody edits another city | `src/domain/view.ts` |
+| Security jail: 3rd strike → jailed awaiting deletion; not-doing-tasks → Security flags, Marc jails, home Mayor executes; jailed agents can't climb, move or take strikes | guard rules, `docs/BRIEF-AMENDMENTS.md` |
 
 ## Run it
 
@@ -54,7 +55,7 @@ between the VPS and a local PC as-is: copy the folder plus `data/world.db` and `
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 39 tests
+npm test                    # 46 tests
 npm run profile -- add --id marc --role owner
 npm run profile -- add --id dm --role dm
 npm run profile -- add --id bob --role architect
@@ -100,8 +101,8 @@ POST /api/events
 | AI Receptionist City | revenue | Ana |
 | Personal Finance City | revenue | Greg |
 | GGClutchPlays | revenue | Kevin |
-| Innovations City | revenue (interim) | Soren (generated) |
-| Security City | revenue (interim) | Odette (generated) |
+| Innovations City | essentials | Soren (generated) |
+| Security City | essentials | Odette (generated) |
 
 The full list of event types, their writers and payloads is in `src/ledger/catalog.ts`.
 
@@ -115,4 +116,5 @@ The full list of event types, their writers and payloads is in `src/ledger/catal
 6. Currency ledger + graduation-vetting gate + clean attribution
 7. World Constitution doc + templates
 
+Marc's changes to the brief are recorded in [`docs/BRIEF-AMENDMENTS.md`](docs/BRIEF-AMENDMENTS.md).
 Open questions for the DM are tracked in [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md).

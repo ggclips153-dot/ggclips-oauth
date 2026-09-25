@@ -2,9 +2,16 @@
 
 export const WORLD_TAG = 'WORLD';
 
-/** City FAMILY field. */
-export const FAMILIES = ['revenue', 'claude', 'gemini'] as const;
+/** City FAMILY field. `essentials` added by Marc (docs/BRIEF-AMENDMENTS.md A1). */
+export const FAMILIES = ['revenue', 'claude', 'gemini', 'essentials'] as const;
 export type Family = (typeof FAMILIES)[number];
+
+/** Mayors of these families READ every city (never edit). Amendment A2. */
+export const CROSS_CITY_READ_FAMILIES: readonly Family[] = ['essentials'];
+
+/** The city that runs the jail and files security flags. Amendment A3. */
+export const SECURITY_CITY_ID = 'security-city';
+export const JAIL_REASONS = ['not_doing_tasks'] as const;
 
 /**
  * Agent states shown in live agent-counts.

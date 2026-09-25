@@ -8,6 +8,7 @@
 import {
   AGENT_STATUSES,
   FAMILIES,
+  JAIL_REASONS,
   KPI_PERIODS,
   type Role,
 } from '../domain/model.ts';
@@ -111,6 +112,23 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { agentId: { t: 'str', max: 20 }, toDepartmentId: { t: 'str', max: 20 } },
   },
   'intent.delete_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 } },
+  },
+  // Jail: tagged with the agent's HOME city; the home Mayor executes it.
+  'intent.jail_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: {
+      agentId: { t: 'str', max: 20 },
+      reason: { t: 'str', oneOf: JAIL_REASONS },
+      flagSeq: { t: 'int', min: 1, opt: true },
+    },
+  },
+  'intent.release_agent': {
     kind: 'intent',
     writers: OWNER,
     scope: 'city',
@@ -253,6 +271,35 @@ export const CATALOG: Record<string, EventSpec> = {
     },
     authorizedBy: ['intent.delete_agent'],
     subject: 'agent',
+  },
+  'agent.jailed': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { reason: { t: 'str', oneOf: JAIL_REASONS }, flagSeq: { t: 'int', min: 1, opt: true } },
+    authorizedBy: ['intent.jail_agent'],
+    subject: 'agent',
+  },
+  'agent.released': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {},
+    authorizedBy: ['intent.release_agent'],
+    subject: 'agent',
+  },
+  // Security City's Mayor reports an agent (any city) caught not doing its tasks. It is written under
+  // Security's OWN city tag: a report, not an edit. Marc decides whether to jail.
+  'security.flagged': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      agentId: { t: 'str', max: 20 },
+      reason: { t: 'str', oneOf: JAIL_REASONS },
+      evidence: { t: 'str', max: 4000 },
+      evidenceRef: { t: 'str', max: 300, opt: true },
+    },
   },
   'agent.status': {
     kind: 'fact',
