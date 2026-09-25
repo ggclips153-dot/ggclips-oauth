@@ -121,6 +121,13 @@ export class SurfaceGuard {
     };
 
     const text = typeof note.text === 'string' ? note.text : '';
+    // Fields must be text; anything else is rejected (and dropped, so the checks below can't trip on it).
+    for (const k of ['writer', 'city', 'to', 'kind'] as const) {
+      if (note[k] != null && typeof note[k] !== 'string') {
+        reject(`${k} must be text`);
+        note = { ...note, [k]: undefined };
+      }
+    }
     const writer = this.state.agents.get(String(note.writer));
     if (!writer || writer.deleted) reject(`unknown or deleted writer: ${note.writer}`);
     if (!text.trim()) reject('empty note');

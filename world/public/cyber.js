@@ -26,6 +26,8 @@ const keep = (x) => {
 /** Dispose a scene subtree, skipping the shared (kept) geometries, materials and textures. */
 export function disposeTree(root) {
   root.traverse((o) => {
+    // Instanced meshes hold per-instance GPU buffers that only their own dispose() frees.
+    if (o.isInstancedMesh) o.dispose();
     if (o.geometry && !o.geometry.userData.keep) o.geometry.dispose();
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) {
@@ -274,6 +276,7 @@ export function tower({ w = 4, d = 4, h: height = 10, accent = NEON.cyan, seed =
     const halo = glow(NEON.red, 1.4, 0.7);
     halo.position.copy(lamp.position);
     g.add(lamp, halo);
+    lamp.userData.dynamic = halo.userData.dynamic = true;
     blinkers.push(lamp, halo);
   }
   if (label) {
@@ -300,91 +303,82 @@ const HAIR = ['#141018', '#3a2517', '#6b4a2e', '#d8d2c8', NEON.magenta, NEON.cya
 let P = null;
 function personGeos() {
   if (P) return P;
-  const capsule = (r, len, drop) => keep(new THREE.CapsuleGeometry(r, len, 3, 8).translate(0, drop ? -(len / 2 + r) : 0, 0));
+  const capsule = (r, len, drop) => new THREE.CapsuleGeometry(r, len, 3, 8).translate(0, drop ? -(len / 2 + r) : 0, 0);
   P = {
-    head: keep(new THREE.SphereGeometry(0.13, 14, 10)),
-    hair: keep(new THREE.SphereGeometry(0.138, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55)),
-    neck: keep(new THREE.CylinderGeometry(0.05, 0.06, 0.1, 8)),
+    head: (new THREE.SphereGeometry(0.13, 14, 10)),
+    hair: (new THREE.SphereGeometry(0.138, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55)),
+    neck: (new THREE.CylinderGeometry(0.05, 0.06, 0.1, 8)),
     torso: capsule(0.16, 0.3, false),
-    hips: keep(new THREE.BoxGeometry(0.31, 0.14, 0.19)),
+    hips: (new THREE.BoxGeometry(0.31, 0.14, 0.19)),
     arm: capsule(0.055, 0.42, true),
     leg: capsule(0.075, 0.62, true),
-    hand: keep(new THREE.SphereGeometry(0.052, 8, 6)),
-    shoe: keep(new THREE.BoxGeometry(0.12, 0.07, 0.24)),
-    visor: keep(new THREE.BoxGeometry(0.2, 0.045, 0.07)),
-    stripe: keep(new THREE.BoxGeometry(0.035, 0.34, 0.02)),
-    cap: keep(new THREE.BoxGeometry(0.34, 0.03, 0.34)),
-    capBase: keep(new THREE.CylinderGeometry(0.12, 0.13, 0.08, 10)),
+    hand: (new THREE.SphereGeometry(0.052, 8, 6)),
+    shoe: (new THREE.BoxGeometry(0.12, 0.07, 0.24)),
+    visor: (new THREE.BoxGeometry(0.2, 0.045, 0.07)),
+    stripe: (new THREE.BoxGeometry(0.035, 0.34, 0.02)),
+    cap: (new THREE.BoxGeometry(0.34, 0.03, 0.34)),
+    capBase: (new THREE.CylinderGeometry(0.12, 0.13, 0.08, 10)),
     hit: keep(new THREE.BoxGeometry(0.55, 1.85, 0.45).translate(0, 0.92, 0)),
   };
+  // Merged per person, so kept non-indexed.
+  for (const k of Object.keys(P)) if (k !== 'hit') P[k] = keep(P[k].index ? P[k].toNonIndexed() : P[k]);
   return P;
 }
 
 /**
  * A person, about 1.8 units tall, facing +z. The jacket carries the agent's tier colour; the rest
- * (skin, hair, neon visor) varies by seed. Returns { group, hit, rig } — animate with `animatePerson`.
+ * (skin, hair, neon visor) varies by seed. Built as six meshes (body, neon trim, two arms, two legs)
+ * so a crowd stays cheap to draw. Returns { group, hit, rig } — animate with `animatePerson`.
  */
 export function person({ jacket, seed = 'p', accent = NEON.cyan, cap = null }) {
   const G = personGeos();
   const rand = rng(seed);
-  const skin = solid(SKIN[Math.floor(rand() * SKIN.length)], { rough: 0.8, metal: 0 });
-  const hairMat = solid(HAIR[Math.floor(rand() * HAIR.length)], { rough: 0.6, metal: 0.1 });
-  const coat = solid(jacket, { rough: 0.55, metal: 0.25, glow: 0.28 });
-  const pants = solid('#1a1b28', { rough: 0.8, metal: 0.1 });
-  const shoes = solid('#0a0a10', { rough: 0.5, metal: 0.3 });
+  const skin = SKIN[Math.floor(rand() * SKIN.length)];
+  const hair = HAIR[Math.floor(rand() * HAIR.length)];
+  const pants = '#1a1b28';
+  const shoes = '#0a0a10';
+  const e = new THREE.Euler();
+  const part = (geo, color, x, y, z, { sx = 1, sy = 1, sz = 1, rx = 0, ry = 0 } = {}) => ({
+    g: geo,
+    start: 0,
+    count: geo.attributes.position.count,
+    m: new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(e.set(rx, ry, 0)), new THREE.Vector3(sx, sy, sz)),
+    color: new THREE.Color(color),
+  });
+  const lit = cached('person', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.15 }));
+  const glowing = cached('person-neon', () => new THREE.MeshBasicMaterial({ vertexColors: true }));
+
   const g = new THREE.Group();
   const body = new THREE.Group();
   g.add(body);
+  const bodyParts = [
+    part(G.hips, pants, 0, 0.88, 0),
+    part(G.torso, jacket, 0, 1.22, 0, { sx: 1.12, sz: 0.72 }),
+    part(G.neck, skin, 0, 1.56, 0),
+    part(G.head, skin, 0, 1.69, 0),
+    part(G.hair, hair, 0, 1.705, 0, { rx: -0.25 }),
+  ];
+  const neonParts = [part(G.stripe, accent, 0.06, 1.24, 0.12)];
+  if (rand() < 0.55) neonParts.push(part(G.visor, rand() < 0.5 ? NEON.cyan : NEON.magenta, 0, 1.71, 0.1));
+  if (cap) {
+    bodyParts.push(part(G.capBase, '#111018', 0, 1.8, 0));
+    neonParts.push(part(G.cap, cap, 0, 1.85, 0, { ry: Math.PI / 4 }));
+  }
+  body.add(new THREE.Mesh(mergeParts(bodyParts, { color: true }), lit), new THREE.Mesh(mergeParts(neonParts, { color: true }), glowing));
 
-  const limb = (geo, mat, x, y) => {
+  const limb = (parts, x, y) => {
     const pivot = new THREE.Group();
     pivot.position.set(x, y, 0);
-    pivot.add(new THREE.Mesh(geo, mat));
+    pivot.add(new THREE.Mesh(mergeParts(parts, { color: true }), lit));
     body.add(pivot);
     return pivot;
   };
-  const legL = limb(G.leg, pants, 0.085, 0.82);
-  const legR = limb(G.leg, pants, -0.085, 0.82);
-  for (const leg of [legL, legR]) {
-    const shoe = new THREE.Mesh(G.shoe, shoes);
-    shoe.position.set(0, -0.78, 0.04);
-    leg.add(shoe);
-  }
-  const hips = new THREE.Mesh(G.hips, pants);
-  hips.position.y = 0.88;
-  const torso = new THREE.Mesh(G.torso, coat);
-  torso.position.y = 1.22;
-  torso.scale.set(1.12, 1, 0.72);
-  const stripe = new THREE.Mesh(G.stripe, neon(accent));
-  stripe.position.set(0.06, 1.24, 0.12);
-  const neck = new THREE.Mesh(G.neck, skin);
-  neck.position.y = 1.56;
-  const head = new THREE.Mesh(G.head, skin);
-  head.position.y = 1.69;
-  const hair = new THREE.Mesh(G.hair, hairMat);
-  hair.position.y = 1.705;
-  hair.rotation.x = -0.25;
-  body.add(hips, torso, stripe, neck, head, hair);
-  if (rand() < 0.55) {
-    const visor = new THREE.Mesh(G.visor, neon(rand() < 0.5 ? NEON.cyan : NEON.magenta));
-    visor.position.set(0, 1.71, 0.1);
-    body.add(visor);
-  }
-  if (cap) {
-    const base = new THREE.Mesh(G.capBase, solid('#111018'));
-    base.position.y = 1.8;
-    const board = new THREE.Mesh(G.cap, solid(cap, { glow: 0.4 }));
-    board.position.y = 1.85;
-    board.rotation.y = Math.PI / 4;
-    body.add(base, board);
-  }
-  const armL = limb(G.arm, coat, 0.215, 1.44);
-  const armR = limb(G.arm, coat, -0.215, 1.44);
-  for (const arm of [armL, armR]) {
-    const hand = new THREE.Mesh(G.hand, skin);
-    hand.position.y = -0.56;
-    arm.add(hand);
-  }
+  const leg = () => [part(G.leg, pants, 0, 0, 0), part(G.shoe, shoes, 0, -0.78, 0.04)];
+  const arm = () => [part(G.arm, jacket, 0, 0, 0), part(G.hand, skin, 0, -0.56, 0)];
+  const legL = limb(leg(), 0.085, 0.82);
+  const legR = limb(leg(), -0.085, 0.82);
+  const armL = limb(arm(), 0.215, 1.44);
+  const armR = limb(arm(), -0.215, 1.44);
   armL.rotation.z = 0.06;
   armR.rotation.z = -0.06;
 
@@ -534,23 +528,180 @@ export function skyline(spots, seed = 'sky', { billboards = 12, footprintY = 0, 
   return g;
 }
 
+// ---------- performance: static batching and instanced traffic ----------
+const _m3 = new THREE.Matrix3();
+const _v = new THREE.Vector3();
+
+/** One non-indexed geometry from parts: { g (non-indexed), start, count, m (Matrix4), color? }. */
+function mergeParts(parts, { color = false } = {}) {
+  let total = 0;
+  for (const p of parts) total += p.count;
+  const pos = new Float32Array(total * 3);
+  const nor = new Float32Array(total * 3);
+  const uvs = new Float32Array(total * 2);
+  const col = color ? new Float32Array(total * 3) : null;
+  let o = 0;
+  for (const p of parts) {
+    _m3.getNormalMatrix(p.m);
+    const P = p.g.attributes.position;
+    const N = p.g.attributes.normal;
+    const U = p.g.attributes.uv;
+    for (let i = p.start; i < p.start + p.count; i++, o++) {
+      _v.fromBufferAttribute(P, i).applyMatrix4(p.m);
+      pos[o * 3] = _v.x;
+      pos[o * 3 + 1] = _v.y;
+      pos[o * 3 + 2] = _v.z;
+      if (N) {
+        _v.fromBufferAttribute(N, i).applyMatrix3(_m3).normalize();
+        nor[o * 3] = _v.x;
+        nor[o * 3 + 1] = _v.y;
+        nor[o * 3 + 2] = _v.z;
+      }
+      if (U) {
+        uvs[o * 2] = U.getX(i);
+        uvs[o * 2 + 1] = U.getY(i);
+      }
+      if (col) {
+        col[o * 3] = p.color.r;
+        col[o * 3 + 1] = p.color.g;
+        col[o * 3 + 2] = p.color.b;
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  if (col) geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+/**
+ * Merge every static mesh under `root` that shares a material into one mesh per material, so a city
+ * draws in tens of calls instead of thousands. Skips anything flagged `userData.dynamic` (people,
+ * blinking or spinning parts), anything in `skip` (pickable meshes), hit boxes, sprites and instanced
+ * meshes. A material used by only one mesh is left alone (e.g. per-district pads that get dimmed).
+ */
+export function bakeStatic(root, skip = new Set()) {
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const buckets = new Map();
+  const meshes = [];
+  const walk = (o) => {
+    if (o.userData.dynamic || skip.has(o)) return;
+    if (o.isMesh && !o.isInstancedMesh && o.material !== HIT && o.visible) {
+      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
+      const m = inv.clone().multiply(o.matrixWorld);
+      const entry = { mesh: o, g, parts: [] };
+      const add = (mat, start, count) => {
+        const part = { g, start, count, m, entry };
+        entry.parts.push({ mat, part });
+        if (!buckets.has(mat)) buckets.set(mat, []);
+        buckets.get(mat).push(part);
+      };
+      if (Array.isArray(o.material)) {
+        for (const grp of g.groups) add(o.material[grp.materialIndex], grp.start, Math.min(grp.count, g.attributes.position.count - grp.start));
+      } else add(o.material, 0, g.attributes.position.count);
+      meshes.push(entry);
+    }
+    for (const c of o.children) walk(c);
+  };
+  walk(root);
+  const merged = new Set();
+  for (const [mat, parts] of buckets) {
+    if (parts.length < 2) continue;
+    const mesh = new THREE.Mesh(mergeParts(parts), mat);
+    mesh.userData.baked = true;
+    root.add(mesh);
+    merged.add(mat);
+  }
+  for (const e of meshes) {
+    if (e.g !== e.mesh.geometry) e.g.dispose();
+    if (!e.parts.every((p) => merged.has(p.mat))) continue;
+    e.mesh.parent?.remove(e.mesh);
+    if (!e.mesh.geometry.userData.keep) e.mesh.geometry.dispose();
+  }
+}
+
+let carGeos = null;
+function carGeometries() {
+  if (carGeos) return carGeos;
+  const box = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+  const part = (sx, sy, sz, x, y, z, color) => ({ g: box, start: 0, count: box.attributes.position.count, m: new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz)), color: new THREE.Color(color) });
+  // Body parts are white (tinted per car by instance colour); the cabin stays dark glass.
+  const body = mergeParts([part(0.9, 0.3, 1.9, 0, 0.33, 0, '#ffffff'), part(0.78, 0.26, 0.95, 0, 0.6, -0.1, '#0b0c16')], { color: true });
+  const lights = mergeParts([
+    part(0.2, 0.08, 0.04, -0.3, 0.38, 0.96, '#f4fbff'), part(0.2, 0.08, 0.04, 0.3, 0.38, 0.96, '#f4fbff'),
+    part(0.22, 0.07, 0.04, -0.3, 0.4, -0.96, NEON.red), part(0.22, 0.07, 0.04, 0.3, 0.4, -0.96, NEON.red),
+  ], { color: true });
+  const under = mergeParts([part(0.95, 0.02, 1.8, 0, 0.1, 0, '#ffffff')]);
+  carGeos = { body: keep(body), lights: keep(lights), under: keep(under) };
+  return carGeos;
+}
+
+/**
+ * All the cars in a scene as three instanced meshes (body, lights, neon underglow): three draw calls
+ * however many cars. `place(i, position, yaw)` then `commit()` each frame.
+ */
+export function fleet(count, seed = 'fleet') {
+  const G = carGeometries();
+  const rand = rng(seed);
+  const group = new THREE.Group();
+  const body = new THREE.InstancedMesh(G.body, cached('car-body', () => new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.75, roughness: 0.3 })), count);
+  const lights = new THREE.InstancedMesh(G.lights, cached('car-lights', () => new THREE.MeshBasicMaterial({ vertexColors: true })), count);
+  const under = new THREE.InstancedMesh(G.under, cached('car-under', () => new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.7 })), count);
+  const paints = ['#2a2f48', '#4a1a62', '#15475a', '#5a6078', '#7a1a33', '#1a1a22'];
+  const c = new THREE.Color();
+  for (let i = 0; i < count; i++) {
+    body.setColorAt(i, c.set(paints[Math.floor(rand() * paints.length)]));
+    under.setColorAt(i, c.set(NEON_SET[Math.floor(rand() * NEON_SET.length)]));
+  }
+  for (const m of [body, lights, under]) {
+    m.frustumCulled = false;
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    group.add(m);
+  }
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const one = new THREE.Vector3(1, 1, 1);
+  return {
+    group,
+    place(i, pos, yaw, pitch = 0) {
+      q.setFromAxisAngle(up, yaw);
+      if (pitch) q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitch));
+      m4.compose(pos, q, one);
+      body.setMatrixAt(i, m4);
+      lights.setMatrixAt(i, m4);
+      under.setMatrixAt(i, m4);
+    },
+    commit() {
+      body.instanceMatrix.needsUpdate = lights.instanceMatrix.needsUpdate = under.instanceMatrix.needsUpdate = true;
+    },
+  };
+}
+
 // ---------- renderer health ----------
 /**
- * A renderer tuned for laptops: pixel ratio capped at 1.5 (retina at 2x draws 78% more pixels for little
- * visible gain here). If the graphics driver resets (WebGL context lost), the view pauses with a notice
- * instead of freezing, and resumes on its own when the browser restores the context.
- * Returns { renderer, isLost() }.
+ * A renderer tuned for laptops. Pixel ratio starts at 1.5 at most and drops to 1 by itself when frames
+ * run slow. If the graphics driver resets (WebGL context lost), the view pauses with a notice, then
+ * rebuilds itself at the lighter setting when the browser restores the context. After three resets in
+ * five minutes it stops retrying and says so, rather than flickering on and off.
+ * Returns { renderer, isLost(), tick(now) } — call tick once per rendered frame.
  */
-export function makeRenderer(container) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+export function makeRenderer(container, { onResize = () => {}, onRestore = () => {} } = {}) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  let ratio = Math.min(window.devicePixelRatio, 1.5);
+  renderer.setPixelRatio(ratio);
   let lost = false;
+  let givenUp = false;
+  const losses = [];
   const notice = document.createElement('div');
   notice.className = 'w3d-lost';
   notice.setAttribute('role', 'status');
   notice.hidden = true;
   const text = document.createElement('p');
-  text.textContent = 'The graphics card reset, so the 3D view paused. It should come back by itself in a moment.';
   const retry = document.createElement('button');
   retry.type = 'button';
   retry.className = 'small-btn primary';
@@ -558,14 +709,51 @@ export function makeRenderer(container) {
   retry.addEventListener('click', () => location.reload());
   notice.append(text, retry);
   container.append(notice);
+  const lower = () => {
+    if (ratio <= 1) return;
+    ratio = 1;
+    renderer.setPixelRatio(ratio);
+    onResize();
+  };
   renderer.domElement.addEventListener('webglcontextlost', (ev) => {
-    ev.preventDefault(); // lets the browser restore the context
+    const now = Date.now();
+    losses.push(now);
+    while (losses.length && now - losses[0] > 5 * 60_000) losses.shift();
     lost = true;
+    givenUp = losses.length >= 3;
+    if (!givenUp) ev.preventDefault(); // lets the browser restore the context
+    text.textContent = givenUp
+      ? 'The graphics card keeps resetting, so the 3D view has stopped to protect your computer. The Map and Details views have everything; reload the page to try 3D again.'
+      : 'The graphics card reset, so the 3D view paused. It will come back by itself in a moment, at a lighter setting.';
     notice.hidden = false;
   });
   renderer.domElement.addEventListener('webglcontextrestored', () => {
+    if (givenUp) return;
     lost = false;
     notice.hidden = true;
+    lower();
+    onRestore();
   });
-  return { renderer, isLost: () => lost };
+  // Frame timing: if the average frame over ~2 seconds is slower than ~30 fps, drop to pixel ratio 1.
+  let last = 0;
+  let slow = 0;
+  let frames = 0;
+  return {
+    renderer,
+    isLost: () => lost,
+    tick(now) {
+      if (last) {
+        const dt = now - last;
+        if (dt < 500) {
+          frames++;
+          if (dt > 34) slow++;
+          if (frames >= 120) {
+            if (slow > frames * 0.6) lower();
+            frames = slow = 0;
+          }
+        }
+      }
+      last = now;
+    },
+  };
 }

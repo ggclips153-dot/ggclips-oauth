@@ -105,10 +105,13 @@ export class Ledger {
   /** Append one event. Throws LedgerError if the write-guard rejects it. */
   append(profile: Profile, input: AppendInput): LedgerEvent {
     const now = this.now();
-    const draft = checkWrite(this.state, profile, this.withGeneratedName(input), now);
-    this.db.exec('BEGIN IMMEDIATE');
+    this.db.exec('BEGIN IMMEDIATE'); // holds the write lock: nobody else can append until we commit
     let event: LedgerEvent;
     try {
+      // Another process (e.g. `npm run seed` while the server runs) may have appended: catch up first,
+      // then check the write against the up-to-date world.
+      this.sync();
+      const draft = checkWrite(this.state, profile, this.withGeneratedName(input), now);
       event = this.insert(profile, draft, now);
       this.db.exec('COMMIT');
     } catch (err) {
@@ -118,6 +121,20 @@ export class Ledger {
     this.state.apply(event);
     this.events.emit('event', event);
     return event;
+  }
+
+  /** Apply events that other processes appended since we last looked. Returns how many. */
+  sync(): number {
+    let n = 0;
+    for (;;) {
+      const batch = this.read(this.state.lastSeq, 1000);
+      if (!batch.length) return n;
+      for (const e of batch) {
+        this.state.apply(e);
+        this.events.emit('event', e);
+        n++;
+      }
+    }
   }
 
   /** A New Agent / New Professor intent without a name gets a generated one, recorded in the intent itself. */

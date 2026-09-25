@@ -9,7 +9,7 @@ import * as THREE from './vendor/three-r186/three.module.min.js';
 import { OrbitControls } from './vendor/three-r186/OrbitControls.min.js';
 import { h } from './dom.js';
 import { CONTINENTS, DEG, FAMILY_ORDER, arcDegrees, cityPlaces, coastNoise, highwayLinks, landAt, rng } from './geo.js';
-import { NEON, NEON_SET, animatePerson, disposeTree, facade, facadeBox, glow, makeRenderer, neon, person, solid, tower } from './cyber.js';
+import { NEON, NEON_SET, animatePerson, bakeStatic, disposeTree, facade, facadeBox, glow, makeRenderer, neon, person, solid, tower } from './cyber.js';
 
 const R = 50; // globe radius
 const FAMILY_LABEL = { revenue: 'Revenue', claude: 'Claude', gemini: 'Gemini', essentials: 'Essentials' };
@@ -200,7 +200,7 @@ export function mount3D(container, { onOpenCity }) {
     h('div', { class: 'w3d-zoom' }, zoomIn, zoomOut, home),
   );
 
-  const { renderer, isLost } = makeRenderer(container);
+  const { renderer, isLost, tick } = makeRenderer(container, { onResize: () => resize(), onRestore: () => dataRef && build(dataRef) });
   canvasHost.append(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -295,6 +295,7 @@ export function mount3D(container, { onOpenCity }) {
   /** An agent as a person in a city model; walkers circle `center`, others stand at `at`. */
   function addPerson(g, detail, look, info, { center = null, radius = 0, phase = 0, at = null, face = 0 }) {
     const p = person(look);
+    p.group.userData.dynamic = true;
     p.group.scale.setScalar(PERSON_SCALE);
     pick(p.hit, info);
     g.add(p.group);
@@ -367,6 +368,7 @@ export function mount3D(container, { onOpenCity }) {
       if (dp.openRoleRequests.length) {
         const flag = pick(new THREE.Mesh(new THREE.OctahedronGeometry(0.35), neon(pal.serious)), { tip: `${dp.name}: ${dp.openRoleRequests.length} unfilled role(s)`, cityId: c.id });
         flag.position.set(pos.x, 1.2 + t.top + 0.9, pos.z);
+        flag.userData.dynamic = true;
         g.add(flag);
         movers.push({ kind: 'spin', obj: flag, detail: g });
       }
@@ -618,6 +620,9 @@ export function mount3D(container, { onOpenCity }) {
       label(c.name, `Mayor ${c.mayorName}`, dir.clone().multiplyScalar(R), 'city', { maxDist: R * 4.2 });
     }
     if (securityGroup) securityGroup.add(jailModel(pal, jailed, securityGroup));
+    // Each city model draws in a handful of calls: merge its static parts by material.
+    const pickSet = new Set(pickables);
+    for (const dt of details) bakeStatic(dt.obj, pickSet);
     superhighways(places, pal);
     sprawl(places);
   }
@@ -822,6 +827,7 @@ export function mount3D(container, { onOpenCity }) {
     if (controls.enabled) controls.update();
     tiltView();
     renderer.render(scene, view);
+    tick(t ?? performance.now());
 
     const w = container.clientWidth;
     const hgt = container.clientHeight;

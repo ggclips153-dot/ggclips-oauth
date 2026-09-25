@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import type { Profiles } from '../auth/profiles.ts';
 import { LoginThrottle, SESSION_COOKIE, SESSION_TTL_MS, Sessions, readCookie } from '../auth/sessions.ts';
 import { Secrets } from '../auth/secrets.ts';
@@ -21,7 +21,8 @@ import type { Ledger } from '../ledger/ledger.ts';
 
 const MAX_BODY = 64 * 1024;
 const HEARTBEAT_MS = 25_000;
-const PUBLIC_DIR = new URL('../../public/', import.meta.url).pathname;
+// A real filesystem path (not a URL pathname), so folders with spaces and Windows drives work.
+const PUBLIC_DIR = resolve(import.meta.dirname, '../../public') + sep;
 const WORLD_DIR = resolve(import.meta.dirname, '../..');
 const STATIC_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -100,11 +101,14 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
     if (size > MAX_BODY) throw new LedgerError('INVALID', 'request body too large');
     chunks.push(chunk);
   }
+  let body: unknown;
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+    body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
   } catch {
     throw new LedgerError('INVALID', 'request body must be JSON');
   }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new LedgerError('INVALID', 'request body must be a JSON object');
+  return body;
 }
 
 /** Bots authenticate with a bearer token; the dashboard with a session cookie. */
@@ -136,7 +140,8 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
   const cookie = (value: string, maxAgeS: number) =>
     `${SESSION_COOKIE}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAgeS}${secure ? '; Secure' : ''}`;
   const clientIp = (req: IncomingMessage) =>
-    (opts.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0]!.trim() : '') || req.socket.remoteAddress || 'unknown';
+    // Behind a proxy, the address the proxy itself appended (the last one) is the only one to trust.
+    (opts.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',').at(-1)!.trim() : '') || req.socket.remoteAddress || 'unknown';
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -192,7 +197,12 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
         const scope = readScope(profile, ledger.state);
-        const surfaceFlags = surface.recentFlags(50).filter((f) => scope === '*' || f.writerCity === scope || f.city === scope);
+        // A Mayor sees flags on notes aimed at their city, but the text only when their own agent wrote it:
+        // a note the cross-city guard blocked must not reach the other city after all.
+        const surfaceFlags = surface
+          .recentFlags(50)
+          .filter((f) => scope === '*' || f.writerCity === scope || f.city === scope)
+          .map((f) => (scope === '*' || f.writerCity === scope ? f : { ...f, excerpt: '', writer: '' }));
         return send(res, 200, { ...worldView(ledger.state, profile, ledger.clock()), surfaceFlags });
       }
       if (req.method === 'GET' && url.pathname === '/api/events') {

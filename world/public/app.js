@@ -39,6 +39,7 @@ let stream = null;
 const feed = [];
 let refreshTimer = null;
 let build = null;
+const timers = [];
 
 const serverNow = () => Date.now() + clockSkew;
 const isOwner = () => me?.role === 'owner';
@@ -91,8 +92,8 @@ async function ensureCity3D(city, districtId) {
     c3dContainer.replaceChildren(h('p', { class: 'empty' }, `The 3D city could not start on this device (${err.message}). The Details view has everything.`));
     return;
   }
-  const key = { cityId: city.id, districtId, data };
-  if (city3dShown && city3dShown.cityId === key.cityId && city3dShown.districtId === key.districtId && city3dShown.data === key.data) return;
+  const key = { cityId: city.id, districtId, seq: data.lastSeq };
+  if (city3dShown && city3dShown.cityId === key.cityId && city3dShown.districtId === key.districtId && city3dShown.seq === key.seq) return;
   try {
     scene.show(city, data, districtId);
     city3dShown = key;
@@ -116,10 +117,11 @@ async function ensure3D() {
     w3dContainer.replaceChildren(h('p', { class: 'empty' }, `The 3D view could not start on this device (${err.message}). The map view has everything.`));
     return;
   }
-  if (world3dBuiltFrom === data) return;
+  // Rebuild only when the ledger has moved on; a refresh with no new events changes nothing.
+  if (world3dBuiltFrom === data.lastSeq) return;
   try {
     globe.update(data);
-    world3dBuiltFrom = data;
+    world3dBuiltFrom = data.lastSeq;
   } catch (err) {
     console.error(err);
     toast(`The 3D view hit an error: ${err.message}`);
@@ -155,25 +157,44 @@ async function boot() {
   if (!me) return showLogin();
   await refresh();
   const events = await api(`/api/events?after=${Math.max(0, data.lastSeq - 25)}`);
+  feed.length = 0;
   feed.push(...events.events.reverse());
   connect();
   render();
-  setInterval(render, 30_000); // countdowns
+  stopTimers();
+  // Countdowns (jail terms) tick on the text pages; a 3D page has none, and redrawing it would flicker.
+  timers.push(setInterval(() => !on3DPage() && render(), 30_000));
   // Warm up the 3D globe in the background once the dashboard is idle, so switching to it is instant.
   const idle = window.requestIdleCallback ?? ((fn) => setTimeout(fn, 1500));
   idle(() => import('./world3d.js').then((m) => m.prewarm()).catch(() => {}));
-  setInterval(refresh, 60_000); // timed jail releases, belt-and-braces
+  timers.push(setInterval(refresh, 60_000)); // timed jail releases, belt-and-braces
+}
+
+/** Signed out: stop polling, so the login form is never redrawn under someone typing. */
+function stopTimers() {
+  timers.forEach(clearInterval);
+  timers.length = 0;
+  clearTimeout(refreshTimer);
+}
+
+/** Showing the globe or a 3D city right now? */
+function on3DPage() {
+  const route = location.hash || '#/';
+  return /^#\/city\/[^/]+\/3d/.test(route) || ((route === '#/' || route === '#') && mapMode() === '3d');
 }
 
 async function refresh() {
   const main = document.querySelector('main');
   main?.classList.add('refreshing');
+  const before = data?.lastSeq;
   try {
     data = await api('/api/state');
     clockSkew = Date.parse(data.now) - Date.now();
   } finally {
     main?.classList.remove('refreshing');
   }
+  // Nothing new in the ledger: leave a 3D page alone rather than redraw it.
+  if (before === data.lastSeq && on3DPage()) return;
   render();
 }
 
@@ -184,9 +205,24 @@ function scheduleRefresh() {
 
 function connect() {
   stream?.close();
-  stream = new EventSource('/api/stream');
-  stream.onopen = () => setLive('on');
-  stream.onerror = () => setLive('off');
+  // Resume from what we already have, so nothing between the last refresh and now is missed.
+  stream = new EventSource(`/api/stream?after=${data?.lastSeq ?? 0}`);
+  stream.onopen = () => {
+    setLive('on');
+    scheduleRefresh(); // catch up on anything that happened while disconnected
+  };
+  stream.onerror = () => {
+    setLive('off');
+    // The browser retries by itself unless the stream closed for good (e.g. signed out): check the session.
+    if (stream.readyState === EventSource.CLOSED) {
+      setTimeout(async () => {
+        const session = await api('/api/session').catch(() => null);
+        if (session?.profile) connect();
+        else if (session) showLogin();
+        else setTimeout(connect, 5000);
+      }, 2000);
+    }
+  };
   stream.addEventListener('surface', scheduleRefresh);
   stream.addEventListener('ledger', (msg) => {
     const e = JSON.parse(msg.data);
@@ -213,6 +249,9 @@ window.addEventListener('hashchange', () => {
 // ---------- login ----------
 function showLogin() {
   stream?.close();
+  stopTimers();
+  data = null;
+  feed.length = 0;
   const error = h('p', { class: 'error', role: 'alert' });
   const user = h('input', { name: 'username', autocomplete: 'username', required: true, autofocus: true });
   const pass = h('input', { name: 'password', type: 'password', autocomplete: 'current-password', required: true });
@@ -437,7 +476,12 @@ function render() {
   else if (route === '/economy') view = economyView(ix);
   else if (route === '/constitution') view = constitutionView(ix);
   else view = mapView(ix);
+  // Live updates redraw the page: keep open panels open and the focused control focused.
+  const open = new Set([...app.querySelectorAll('details[open] > summary')].map((x) => x.textContent));
+  const focusKey = document.activeElement?.getAttribute?.('aria-label') ?? document.activeElement?.name;
   app.replaceChildren(topbar(), h('main', {}, view));
+  for (const sm of app.querySelectorAll('details > summary')) if (open.has(sm.textContent)) sm.parentElement.open = true;
+  if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus();
   if (w3dContainer.isConnected) ensure3D();
   if (c3dContainer.isConnected && pending3DCity) ensureCity3D(pending3DCity.city, pending3DCity.districtId);
 }
@@ -597,7 +641,7 @@ function collegeSection(ix, c, deptName) {
       p.teaching?.graduates ?? 0,
       `${p.strikes} / 3`,
       p.jail ? jailChip(p) : p.steppedIn ? badge(`In ${deptName(p.steppedIn.departmentId)}: ${p.steppedIn.role} (${until(p.steppedIn.until)})`) : 'Teaching',
-      act('Specialty', () => forms.specialize(c, p)),
+      c.districts.some((d) => d.departments.length) ? act('Specialty', () => forms.specialize(c, p)) : null,
     ]),
     'No professors yet.');
 
@@ -792,22 +836,27 @@ function economyView(ix) {
 let constitutionInfo = null;
 let constitutionKey = null;
 let constitutionLoading = false;
+let constitutionFailedAt = null; // lastSeq when a load failed: don't retry until the ledger moves
 const openProposals = () => (data.constitution.proposals ?? []).filter((p) => p.status === 'open');
 
 /** Fetches /api/constitution again whenever a new version is ratified. */
 function loadConstitution() {
   const key = data.constitution.current?.seq ?? 0;
-  if (constitutionLoading || (constitutionInfo && constitutionKey === key)) return;
+  if (constitutionLoading || (constitutionInfo && constitutionKey === key) || constitutionFailedAt === data.lastSeq) return;
   constitutionLoading = true;
   api('/api/constitution')
     .then((info) => {
       constitutionInfo = info;
       constitutionKey = key;
+      constitutionFailedAt = null;
+      if (location.hash === '#/constitution') render();
     })
-    .catch((err) => toast(`Could not load the Constitution: ${err.message}`))
+    .catch((err) => {
+      constitutionFailedAt = data?.lastSeq ?? null;
+      toast(`Could not load the Constitution: ${err.message}`);
+    })
     .finally(() => {
       constitutionLoading = false;
-      if (location.hash === '#/constitution') render();
     });
 }
 

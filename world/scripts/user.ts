@@ -4,7 +4,8 @@
 //   npm run user -- list
 //   npm run user -- remove --username ana
 // For automation, WORLD_PASSWORD=... skips the prompt.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { writePrivateJson } from '../src/auth/files.ts';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
@@ -20,7 +21,7 @@ const { positionals, values } = parseArgs({
 const list: UserRecord[] = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : [];
 const save = () => {
   new Users(list); // validates
-  writeFileSync(path, `${JSON.stringify(list, null, 2)}\n`, { mode: 0o600 });
+  writePrivateJson(path, list);
 };
 
 function askHidden(question: string): Promise<string> {

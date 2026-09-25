@@ -5,7 +5,8 @@
 //   npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
 //   npm run profile -- add --id hermes-gateway --role gateway   (shared-surface guard only)
 //   npm run profile -- list
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { writePrivateJson } from '../src/auth/files.ts';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { checkProfile, hashToken, newToken, type ProfileRecord } from '../src/auth/profiles.ts';
@@ -30,7 +31,7 @@ switch (positionals[0]) {
     const token = newToken();
     const record = checkProfile({ id: values.id, role, writeScope, label: values.label, tokenSha256: hashToken(token) });
     list.push(record);
-    writeFileSync(path, `${JSON.stringify(list, null, 2)}\n`, { mode: 0o600 });
+    writePrivateJson(path, list);
     console.log(`Added ${record.id} (${role}). Token (shown once, store it in the bot's secrets):\n${token}`);
     break;
   }

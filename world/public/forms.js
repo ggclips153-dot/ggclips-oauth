@@ -34,6 +34,19 @@ const PLAIN = {
 export const plainIntent = (type) => PLAIN[type] ?? type;
 
 /**
+ * Dollars typed by a person -> integer cents, or NaN when unclear. Accepts "1250", "1,250.50",
+ * "$12.5" and a decimal comma ("12,50"); rejects anything ambiguous rather than guessing.
+ */
+export function parseMoney(text) {
+  const t = text.replace(/[$\s]/g, '');
+  let n = NaN;
+  if (/^\d+(\.\d{1,2})?$/.test(t)) n = Number(t);
+  else if (/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(t)) n = Number(t.replaceAll(',', ''));
+  else if (/^\d+,\d{1,2}$/.test(t)) n = Number(t.replace(',', '.'));
+  return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+}
+
+/**
  * A modal form. fields: { name, label, type, required, options, value, help, placeholder }.
  * types: text | textarea | select | number | lines | secret | name (text + "Suggest" button).
  * onSubmit(values) sends the request; `repeat` adds "Send and add another".
@@ -91,13 +104,15 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
       if (!v) continue;
       if (f.type === 'number') out[name] = Number(v);
       else if (f.type === 'lines') out[name] = v.split('\n').map((x) => x.trim()).filter(Boolean);
-      else if (f.type === 'money') out[name] = Math.round(Number(v.replace(/[$,\s]/g, '')) * 100);
+      else if (f.type === 'money') out[name] = parseMoney(v);
       else out[name] = v;
     }
     return out;
   };
 
+  let busy = false;
   const send = async (again) => {
+    if (busy) return; // a double-click must not send the request twice
     error.textContent = '';
     const values = collect();
     const missing = Object.values(controls).find(({ f, control }) => f.required && !control.value.trim());
@@ -106,6 +121,8 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
       missing.control.focus();
       return;
     }
+    busy = true;
+    for (const b of dialog.querySelectorAll('button')) b.disabled = true;
     try {
       const msg = await onSubmit(values);
       ctx.toast(msg ?? 'Sent to the DM for routing.');
@@ -117,6 +134,9 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
       }
     } catch (err) {
       error.textContent = err.message;
+    } finally {
+      busy = false;
+      for (const b of dialog.querySelectorAll('button')) b.disabled = false;
     }
   };
 

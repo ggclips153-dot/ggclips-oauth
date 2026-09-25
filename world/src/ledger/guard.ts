@@ -268,6 +268,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     const obs = state.agents.get(String(id)) ?? notFound(`unknown observer: ${id}`);
     if (obs.cityId !== SECURITY_CITY_ID || obs.deleted || obs.role !== 'agent') forbid(`observer ${obs.id} is not a Security City agent`);
     if (obs.id === subjectId) forbid('an agent cannot strike itself');
+    if (!GRADUATED.includes(obs.state)) forbid(`observer ${obs.id} is ${obs.state}, not a working agent`);
     if (obs.deployedTo !== city) forbid(`observer ${obs.id} is not deployed to ${city}`);
     if (isJailed(obs, now)) conflict(`observer ${obs.id} is in jail`);
     return obs;
@@ -360,7 +361,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'intent.deploy_agent': {
       if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} agents are deployed`);
       const a = agentIn(p.agentId, d.city);
-      if (!a.graduated) conflict(`agent ${a.id} must be graduated to deploy`);
+      if (!GRADUATED.includes(a.state)) conflict(`agent ${a.id} must be graduated (a working agent) to deploy; it is ${a.state}`);
       if (!state.cities.has(String(p.toCity))) notFound(`unknown city: ${p.toCity}`);
       break;
     }
@@ -553,6 +554,9 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
         conflict(`only an intern (shadow) graduates (agent is ${agent!.state}${agent!.badges.includes(INTERN_BADGE) ? ', intern' : ''})`);
       }
       if (agent!.lastExam?.result !== 'pass') conflict(`agent ${agent!.id} needs a passed exam from a professor to graduate`);
+      if (state.agents.get(agent!.lastExam!.professorId)?.specialtyDepartmentId !== agent!.departmentId) {
+        conflict(`agent ${agent!.id}'s passed exam was not from a professor of ${agent!.departmentId}`);
+      }
       underCap(agent!.departmentId!, 'graduated');
       break;
     case 'agent.promoted': {
@@ -583,7 +587,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'agent.deployed':
       intentAgent();
       match(['toCity']);
-      if (!agent!.graduated) conflict(`agent ${agent!.id} must be graduated to deploy`);
+      if (!GRADUATED.includes(agent!.state)) conflict(`agent ${agent!.id} must be graduated (a working agent) to deploy; it is ${agent!.state}`);
       if (!state.cities.has(String(p.toCity))) notFound(`unknown city: ${p.toCity}`);
       break;
     case 'security.task_strike': {

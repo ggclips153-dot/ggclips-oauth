@@ -55,7 +55,8 @@ export class LoginThrottle {
   private recent(key: string) {
     const cutoff = this.now() - LoginThrottle.WINDOW_MS;
     const list = (this.failures.get(key) ?? []).filter((t) => t > cutoff);
-    this.failures.set(key, list);
+    if (list.length) this.failures.set(key, list);
+    else this.failures.delete(key); // don't keep an entry per address forever
     return list;
   }
 
@@ -64,7 +65,9 @@ export class LoginThrottle {
   }
 
   fail(key: string) {
-    this.recent(key).push(this.now());
+    const list = this.recent(key);
+    list.push(this.now());
+    this.failures.set(key, list);
   }
 
   succeed(key: string) {

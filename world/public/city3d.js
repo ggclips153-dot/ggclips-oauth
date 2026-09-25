@@ -11,7 +11,7 @@ import * as THREE from './vendor/three-r186/three.module.min.js';
 import { OrbitControls } from './vendor/three-r186/OrbitControls.min.js';
 import { h } from './dom.js';
 import { bearing, cityPlaces, rng } from './geo.js';
-import { NEON, NEON_SET, NIGHT, animatePerson, car, disposeTree, glow, makeRenderer, groundTexture, neon, person, road as roadMesh, sign, skyTexture, skyline, solid, streetlight, tower } from './cyber.js';
+import { NEON, NEON_SET, NIGHT, animatePerson, bakeStatic, disposeTree, fleet, glow, makeRenderer, groundTexture, neon, person, road as roadMesh, sign, skyTexture, skyline, solid, streetlight, tower } from './cyber.js';
 
 const STATES = ['enrolled', 'student', 'probationer', 'active', 'senior'];
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
@@ -33,7 +33,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   container.classList.add('c3d');
   container.replaceChildren(canvasHost, labels, tip, picker, panel, reset);
 
-  const { renderer, isLost } = makeRenderer(container);
+  const { renderer, isLost, tick } = makeRenderer(container, { onResize: () => resize(), onRestore: () => current.city && build(current.city, current.data) });
   canvasHost.append(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -67,6 +67,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   let world = new THREE.Group();
   scene.add(world);
   let movers = [];
+  let cars = [];
+  let cars3d = null;
   let anchors = [];
   const pickables = [];
   let districtSpots = new Map(); // districtId -> { center, radius, plot }
@@ -95,6 +97,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     world = new THREE.Group();
     scene.add(world);
     movers = [];
+    cars = [];
+    cars3d = null;
     anchors = [];
     pickables.length = 0;
     districtSpots = new Map();
@@ -104,6 +108,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   /** An agent as a person; walkers circle `center` at `radius`, others stand at `at` facing `face`. */
   function addPerson(opts, info, { center = null, radius = 0, phase = 0, speed = 1.2, at = null, face = 0 } = {}) {
     const p = person(opts);
+    p.group.userData.dynamic = true;
     pick(p.hit, info);
     world.add(p.group);
     if (center) {
@@ -125,9 +130,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     const side = new THREE.Vector3(dir.z, 0, -dir.x);
     for (let k = 0; k < count; k++) {
       const forward = k % 2 === 0;
-      const c = car(`${a.x}|${b.z}|${k}`);
-      world.add(c);
-      movers.push({ kind: 'car', obj: c, a: forward ? a : b, b: forward ? b : a, off: side.clone().multiplyScalar(forward ? -lane : lane), len, t: rand(), speed: (7 + rand() * 6) / len, y });
+      cars.push({ kind: 'car', a: forward ? a : b, b: forward ? b : a, off: side.clone().multiplyScalar(forward ? -lane : lane), len, t: rand(), speed: (7 + rand() * 6) / len, y });
     }
   }
 
@@ -164,6 +167,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     const crownGlow = glow(pal.family, 12, 0.5);
     crownGlow.position.y = hall.top + 1.4;
     world.add(crown, crownGlow);
+    crown.userData.dynamic = true;
     movers.push({ kind: 'spin', obj: crown, axis: 'z', rate: 0.6 });
     label('City Hall', `Mayor ${city.mayorName}`, new THREE.Vector3(0, hall.top + 4, 0), 'hall');
 
@@ -308,6 +312,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
           const fg = glow(pal.serious, 4, 0.7);
           fg.position.copy(flag.position);
           world.add(flag, fg);
+          flag.userData.dynamic = true;
           movers.push({ kind: 'spin', obj: flag, axis: 'y', rate: 1.5 });
         }
         // Agents: working ones walk the block, the rest stand by the door.
@@ -447,9 +452,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
 
     // ---- Flying cars overhead ----
     for (let k = 0; k < 16; k++) {
-      const c = car(`${city.id}-fly-${k}`, { flying: true });
-      world.add(c);
-      movers.push({ kind: 'fly', obj: c, r: 20 + rand() * (beltR + 30), y: 14 + rand() * 22, phase: rand() * Math.PI * 2, speed: (0.04 + rand() * 0.06) * (k % 2 ? 1 : -1) });
+      cars.push({ kind: 'fly', r: 20 + rand() * (beltR + 30), y: 14 + rand() * 22, phase: rand() * Math.PI * 2, speed: (0.04 + rand() * 0.06) * (k % 2 ? 1 : -1) });
     }
 
     // ---- The skyline filling the land beyond the beltway, clear of the superhighways ----
@@ -495,6 +498,10 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
       label(city.id === 'security-city' ? 'Jail' : "In Security's jail", `${inside.length}`, jailPos.clone().setY(5.2), 'jail');
     }
 
+    // All the traffic in three draw calls, then merge the static scenery by material.
+    cars3d = fleet(cars.length, city.id);
+    world.add(cars3d.group);
+    bakeStatic(world, new Set(pickables));
     renderPicker(city);
   }
 
@@ -636,20 +643,6 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
         case 'idle':
           if (!still) animatePerson(m.p.rig, elapsed, false);
           break;
-        case 'car': {
-          const t = (m.t + (still ? 0 : elapsed * m.speed)) % 1;
-          m.obj.position.lerpVectors(m.a, m.b, t).add(m.off);
-          m.obj.position.y = m.a.y + (m.b.y - m.a.y) * t + m.y;
-          m.obj.lookAt(m.b.x + m.off.x, m.obj.position.y + (m.b.y - m.a.y) / 40, m.b.z + m.off.z);
-          break;
-        }
-        case 'fly': {
-          const a = m.phase + (still ? 0 : elapsed * m.speed);
-          m.obj.position.set(Math.cos(a) * m.r, m.y + Math.sin(a * 3) * 0.6, Math.sin(a) * m.r);
-          // Heading along the circle, in the direction of travel.
-          m.obj.rotation.y = -a + (m.speed > 0 ? 0 : Math.PI);
-          break;
-        }
         case 'spin':
           if (!still) m.obj.rotation[m.axis] = elapsed * m.rate;
           break;
@@ -663,8 +656,24 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
           break;
       }
     }
+    if (cars3d) {
+      cars.forEach((c, i) => {
+        if (c.kind === 'fly') {
+          const a = c.phase + (still ? 0 : elapsed * c.speed);
+          v.set(Math.cos(a) * c.r, c.y + Math.sin(a * 3) * 0.6, Math.sin(a) * c.r);
+          cars3d.place(i, v, -a + (c.speed > 0 ? 0 : Math.PI));
+        } else {
+          const t = (c.t + (still ? 0 : elapsed * c.speed)) % 1;
+          v.lerpVectors(c.a, c.b, t).add(c.off);
+          v.y += c.y;
+          cars3d.place(i, v, Math.atan2(c.b.x - c.a.x, c.b.z - c.a.z), -Math.atan2(c.b.y - c.a.y, Math.hypot(c.b.x - c.a.x, c.b.z - c.a.z)));
+        }
+      });
+      cars3d.commit();
+    }
     controls.update();
     renderer.render(scene, camera);
+    tick(t ?? performance.now());
     const w = container.clientWidth;
     const hgt = container.clientHeight;
     const dist = camera.position.distanceTo(controls.target);
@@ -686,7 +695,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
       const first = current.city?.id !== city.id;
       const districtChanged = current.districtId !== (districtId ?? null);
       // Rebuild only for a new city or fresh ledger data; choosing a district just moves the camera.
-      const rebuild = first || current.data !== data;
+      // A refresh that brings no new ledger events (the same lastSeq) changes nothing on screen.
+      const rebuild = first || current.data?.lastSeq !== data.lastSeq;
       current = { city, districtId: districtId ?? null, data };
       if (rebuild) build(city, data);
       else renderPicker(city);

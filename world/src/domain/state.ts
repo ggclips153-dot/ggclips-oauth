@@ -460,6 +460,9 @@ export class WorldState {
         agent.badges = agent.badges.filter((b) => b !== DEPT_LEAD_BADGE);
         agent.professorSince = e.ts;
         agent.teaching = { examsGiven: 0, examsPassed: 0, graduates: 0 };
+        // A professor's strikes are teaching strikes (A13): KPI strikes from its agent career don't carry over.
+        agent.strikes = 0;
+        agent.deployedTo = null;
         break;
       case 'professor.specialized': {
         const prof = this.agents.get(p.professorId);
@@ -635,6 +638,8 @@ export class WorldState {
       case 'agent.moved':
         if (!agent) break;
         agent.departmentId = p.toDepartmentId;
+        // An exam is for one department: a pass there doesn't graduate the agent somewhere else.
+        agent.lastExam = null;
         // A lead badge belongs to a department; it does not travel.
         agent.badges = agent.badges.filter((b) => b !== DEPT_LEAD_BADGE);
         break;
@@ -642,7 +647,11 @@ export class WorldState {
         if (!agent) break;
         agent.strikes += 1;
         // A professor keeps its post at the college: the strike counts, but it isn't sent to school.
-        if (agent.role === 'agent') agent.state = 'student';
+        if (agent.role === 'agent') {
+          agent.state = 'student';
+          // Back in school: no longer fit to serve as a deployed Security observer.
+          agent.deployedTo = null;
+        }
         agent.badges = agent.badges.filter((b) => b !== DEPT_LEAD_BADGE);
         agent.lastExam = null;
         mark('school-return', `strike ${agent.strikes}`);

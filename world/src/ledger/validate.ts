@@ -60,7 +60,8 @@ function checkField(field: Field, v: unknown, p: string): unknown {
       if (field.min !== undefined && v < field.min) invalid(`${p} must be >= ${field.min}`);
       return v;
     case 'date':
-      if (typeof v !== 'string' || !ISO_DATE.test(v) || Number.isNaN(Date.parse(v))) {
+      // Round-trip, so an impossible date like 2026-02-30 (which Date would roll over) is rejected.
+      if (typeof v !== 'string' || !ISO_DATE.test(v) || Number.isNaN(Date.parse(v)) || new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) !== v) {
         return invalid(`${p} must be a YYYY-MM-DD date`);
       }
       return v;

@@ -29,7 +29,8 @@ if (!integrity.ok) {
 const profiles = Profiles.load(profilesPath);
 if (profiles.size === 0) console.warn(`No profiles in ${profilesPath}. Create one with: npm run profile -- add ...`);
 
-if (process.env.DM_WEBHOOK_URL) {
+// Demo data never reaches the real District Messenger.
+if (!demo && process.env.DM_WEBHOOK_URL) {
   if (!process.env.DM_WEBHOOK_SECRET) throw new Error('DM_WEBHOOK_SECRET is required with DM_WEBHOOK_URL');
   attachDmWebhook(ledger, { url: process.env.DM_WEBHOOK_URL, secret: process.env.DM_WEBHOOK_SECRET });
 }
@@ -38,6 +39,14 @@ const users = Users.load(resolve(root, process.env.WORLD_USERS ?? 'config/users.
 if (users.size === 0) console.warn('No dashboard logins yet. Create one with: npm run user -- add --username marc --profile marc');
 
 if (demo) attachDemoAutopilot(ledger, dbPath);
+// Pick up events written by other processes (e.g. `npm run seed` while the server is running).
+setInterval(() => {
+  try {
+    ledger.sync();
+  } catch (err) {
+    console.error('ledger sync failed:', err);
+  }
+}, 5000).unref();
 
 createApp(ledger, profiles, {
   users,
