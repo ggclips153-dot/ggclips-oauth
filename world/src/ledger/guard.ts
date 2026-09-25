@@ -4,7 +4,7 @@
 import { specFor, type EventKind, type EventSpec } from './catalog.ts';
 import { conflict, forbid, invalid, notFound } from './errors.ts';
 import { validate, type Payload } from './validate.ts';
-import { consumeKey, type Agent, type LedgerEvent, type WorldState } from '../domain/state.ts';
+import { consumeKey, isJailed, type Agent, type LedgerEvent, type WorldState } from '../domain/state.ts';
 import {
   DEPT_LEAD_BADGE,
   DEPT_LEAD_MIN_AGENTS,
@@ -44,7 +44,7 @@ export function inWriteScope(profile: Profile, city: string): boolean {
   return profile.writeScope.includes('*') || profile.writeScope.includes(city);
 }
 
-export function checkWrite(state: WorldState, profile: Profile, input: AppendInput): Draft {
+export function checkWrite(state: WorldState, profile: Profile, input: AppendInput, now: Date): Draft {
   if (profile.role === 'architect') forbid('Bob the Architect is read-only; no writes');
 
   const spec = specFor(String(input.type)) ?? invalid(`unknown event type: ${input.type}`);
@@ -99,12 +99,13 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
     invalid(`${input.type} takes no authorizedBy`);
   }
 
-  checkRules(state, draft, agent, intent);
+  checkRules(state, draft, agent, intent, now);
   return draft;
 }
 
-/** A jailed agent does no work: it cannot climb, move, or be measured until released or deleted. */
+/** A jailed agent does no work: it cannot climb, move, or be measured while inside. */
 const BLOCKED_IN_JAIL = new Set([
+  'security.task_strike',
   'agent.graduated',
   'agent.promoted',
   'agent.lead_assigned',
@@ -115,7 +116,7 @@ const BLOCKED_IN_JAIL = new Set([
   'intent.move_agent',
 ]);
 
-function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, intent: LedgerEvent | undefined) {
+function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, intent: LedgerEvent | undefined, now: Date) {
   const p = d.payload as Record<string, any>;
   const ip = (intent?.payload ?? {}) as Record<string, any>;
   const match = (keys: string[]) => {
@@ -148,8 +149,9 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
   };
 
   const target = agent ?? (typeof p.agentId === 'string' ? state.agents.get(p.agentId) : undefined);
-  if (target?.jail && BLOCKED_IN_JAIL.has(d.type)) {
-    conflict(`agent ${target.id} is in jail (${target.jail.reason}); release it first`);
+  if (target && isJailed(target, now) && BLOCKED_IN_JAIL.has(d.type)) {
+    const j = target.jail!;
+    conflict(`agent ${target.id} is in jail (${j.status === 'serving' ? `term ${j.term} until ${j.until}` : 'awaiting deletion'})`);
   }
 
   switch (d.type) {
@@ -179,19 +181,11 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'intent.delete_agent':
       agentIn(p.agentId, d.city);
       break;
-    case 'intent.jail_agent': {
+    case 'intent.deploy_agent': {
+      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} agents are deployed`);
       const a = agentIn(p.agentId, d.city);
-      if (a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet`);
-      if (a.jail) conflict(`agent ${a.id} is already in jail`);
-      if (p.flagSeq !== undefined) {
-        const flag = state.securityFlags.find((f) => f.seq === p.flagSeq) ?? notFound(`security flag #${p.flagSeq} not found`);
-        if (flag.agentId !== a.id) forbid(`security flag #${p.flagSeq} is about ${flag.agentId}, not ${a.id}`);
-      }
-      break;
-    }
-    case 'intent.release_agent': {
-      const a = agentIn(p.agentId, d.city);
-      if (a.jail?.reason !== 'not_doing_tasks') conflict(`agent ${a.id} is not jailed for not doing tasks${a.jail ? ' (awaiting deletion cannot be released)' : ''}`);
+      if (!a.graduated) conflict(`agent ${a.id} must be graduated to deploy`);
+      if (!state.cities.has(String(p.toCity))) notFound(`unknown city: ${p.toCity}`);
       break;
     }
     case 'intent.move_agent':
@@ -281,20 +275,22 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       departmentIn(p.toDepartmentId, d.city);
       slotFree(p.toDepartmentId);
       break;
-    case 'agent.jailed':
+    case 'agent.deployed':
       intentAgent();
-      match(['reason', 'flagSeq']);
-      if (agent!.jail) conflict(`agent ${agent!.id} is already in jail`);
-      if (agent!.state === 'enrolled') conflict(`agent ${agent!.id} is not placed yet`);
+      match(['toCity']);
+      if (!agent!.graduated) conflict(`agent ${agent!.id} must be graduated to deploy`);
+      if (!state.cities.has(String(p.toCity))) notFound(`unknown city: ${p.toCity}`);
       break;
-    case 'agent.released':
-      intentAgent();
-      if (agent!.jail?.reason !== 'not_doing_tasks') conflict(`agent ${agent!.id} cannot be released${agent!.jail ? ' (awaiting deletion)' : ' (not in jail)'}`);
-      break;
-    case 'security.flagged': {
-      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} files security flags`);
+    case 'security.task_strike': {
+      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} records task strikes`);
       const a = state.agents.get(String(p.agentId)) ?? notFound(`unknown agent: ${p.agentId}`);
       if (a.deleted) conflict(`agent ${a.id} is deleted`);
+      if (a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet; it has no tasks`);
+      const obs = state.agents.get(String(p.observedBy)) ?? notFound(`unknown observer: ${p.observedBy}`);
+      if (obs.cityId !== SECURITY_CITY_ID || obs.deleted) forbid(`observer ${obs.id} is not a Security City agent`);
+      if (obs.id === a.id) forbid('an agent cannot strike itself');
+      if (obs.deployedTo !== a.cityId) forbid(`observer ${obs.id} is not deployed to ${a.cityId}`);
+      if (isJailed(obs, now)) conflict(`observer ${obs.id} is in jail`);
       break;
     }
     case 'agent.school_returned':
@@ -309,7 +305,9 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     case 'agent.deleted':
       intentAgent();
-      if (agent!.strikes < MAX_STRIKES) conflict(`deletion follows the 3rd strike (agent has ${agent!.strikes})`);
+      if (!isJailed(agent!, now) || agent!.jail!.status !== 'awaiting_deletion') {
+        conflict(`deletion only for an agent jailed awaiting deletion (3rd KPI strike, or 4th task-strike jailing)`);
+      }
       break;
   }
 }

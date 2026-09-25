@@ -15,8 +15,9 @@ so nothing is decided silently. Answer here or via the DM.
 | 8 | Families for Personal Finance City and GGClutchPlays? | Both `revenue` in `config/seed.json`. |
 | 10 | KPI metrics for Personal Finance City and GGClutchPlays? | `city.kpi_pulse` takes any metric name; AI Receptionist uses `qualified_bookings`. |
 | 11 | PROPOSAL-2026-09-25-B-REV2 itself was not in the SOUL upload. Is there anything in it beyond what the SOULs show? | Built from the SOULs: district = supervisor that coordinates + QCs; department = scope + own bank; shared notes on the Mnemosyne shared surface (`surface.db`). |
-| 14 | Does being jailed for not doing tasks count as a **strike**? | No. Jail pauses the agent; strikes come only from KPI misses. |
-| 15 | While jailed for not doing tasks, does the agent keep its **department slot**? | Yes, so it can go back to work on release. A replacement can't take that slot until the agent is released or deleted. |
-| 16 | Can an agent jailed for not doing tasks be **deleted** without 3 strikes? | No, same as #5. Say if repeated jailing should lead to deletion. |
+| 17 | **Shadows and slots.** Does a student in school fill one of the department's slots, or do slots hold only graduated agents? "The shadow takes the slot when we expand" suggests slots are working positions and students/interns are extra. | Not built yet. Proposal: slots = graduated agents. An agent who goes back to school keeps its slot, and its shadow covers meanwhile. |
+| 18 | **One shadow per slot?** Is each intern assigned to one specific slot (agent), and does Marc approve that assignment? | Not built yet. Proposal: Marc assigns the intern to a slot (routed by the DM). |
+| 19 | **Professors.** Are professors senior agents in the same department, or a separate School (e.g. a district in each city, or its own city)? Does Marc appoint them? | Not built yet. |
+| 20 | **Taking over a slot.** When a slot frees up (holder deleted, or the department grows), does the shadow graduate automatically, or does Marc approve it? The brief says promotions are Mayor + owner executed, never automatic. | Not built yet. Proposal: the dashboard shows "shadow ready", Marc approves with one click, the Mayor executes. |
 
-Resolved: Mayor names (A4), Innovations/Security family (A1), their cross-city reach (A2). See `BRIEF-AMENDMENTS.md`.
+Resolved: Mayor names (A4), Innovations/Security family (A1), cross-city reach (A2), jail and task strikes (A3, A6). See `BRIEF-AMENDMENTS.md`.

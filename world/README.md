@@ -46,7 +46,7 @@ No agent executes its own exit, move or promotion.
 | Name generator: a New Agent intent with no name gets one generated and recorded in the intent | `src/domain/names.ts` |
 | Strict payloads: unknown fields rejected; bot tokens can never enter the ledger (only a `botTokenRef`) | `src/ledger/validate.ts` |
 | Mayors read only their own city; Marc, DM, Bob and **Essentials** Mayors (Innovations, Security) read everything. Nobody edits another city | `src/domain/view.ts` |
-| Security jail: 3rd strike → jailed awaiting deletion; not-doing-tasks → Security flags, Marc jails, home Mayor executes; jailed agents can't climb, move or take strikes | guard rules, `docs/BRIEF-AMENDMENTS.md` |
+| Security: agents deployed per city record **task strikes** (separate from KPI strikes). Every 3 = jail for 6h → 24h → 3 days, released on its own; the 4th time, or a 3rd KPI strike = held awaiting deletion. Deletion only from there, and only on Marc's routed intent | guard rules, `docs/BRIEF-AMENDMENTS.md` |
 
 ## Run it
 
@@ -55,7 +55,7 @@ between the VPS and a local PC as-is: copy the folder plus `data/world.db` and `
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 46 tests
+npm test                    # 47 tests
 npm run profile -- add --id marc --role owner
 npm run profile -- add --id dm --role dm
 npm run profile -- add --id bob --role architect

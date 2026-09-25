@@ -9,9 +9,16 @@ export type Family = (typeof FAMILIES)[number];
 /** Mayors of these families READ every city (never edit). Amendment A2. */
 export const CROSS_CITY_READ_FAMILIES: readonly Family[] = ['essentials'];
 
-/** The city that runs the jail and files security flags. Amendment A3. */
+/** The city that runs the jail and records task strikes. Amendments A3, A6. */
 export const SECURITY_CITY_ID = 'security-city';
-export const JAIL_REASONS = ['not_doing_tasks'] as const;
+
+/**
+ * Task strikes (caught not doing a task) are a SEPARATE counter from KPI strikes.
+ * Every 3 task strikes = a jail term; the counter then resets. Terms escalate and never reset:
+ * 6h, 24h, 3 days; the 4th time the agent is jailed awaiting deletion (Marc decides via DM).
+ */
+export const TASK_STRIKES_PER_JAIL = 3;
+export const JAIL_TERMS_HOURS: readonly number[] = [6, 24, 72];
 
 /**
  * Agent states shown in live agent-counts.

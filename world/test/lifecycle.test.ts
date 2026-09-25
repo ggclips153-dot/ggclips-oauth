@@ -122,7 +122,7 @@ describe('lifecycle: 3 chances total', () => {
     const del = w.intent('delete_agent', city, { agentId: a });
     assert.throws(
       () => w.fact(mayorOf(city), { type: 'agent.deleted', city, subject: a, payload: { ledgerArchiveRef: 'x', lessonRecordRef: 'y' }, authorizedBy: del.seq }),
-      /follows the 3rd strike/,
+      /jailed awaiting deletion/,
     );
   });
 

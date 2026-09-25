@@ -8,7 +8,6 @@
 import {
   AGENT_STATUSES,
   FAMILIES,
-  JAIL_REASONS,
   KPI_PERIODS,
   type Role,
 } from '../domain/model.ts';
@@ -117,22 +116,12 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { agentId: { t: 'str', max: 20 } },
   },
-  // Jail: tagged with the agent's HOME city; the home Mayor executes it.
-  'intent.jail_agent': {
+  // Deploy a Security City agent to watch a city. Tagged security-city; Security's Mayor executes.
+  'intent.deploy_agent': {
     kind: 'intent',
     writers: OWNER,
     scope: 'city',
-    schema: {
-      agentId: { t: 'str', max: 20 },
-      reason: { t: 'str', oneOf: JAIL_REASONS },
-      flagSeq: { t: 'int', min: 1, opt: true },
-    },
-  },
-  'intent.release_agent': {
-    kind: 'intent',
-    writers: OWNER,
-    scope: 'city',
-    schema: { agentId: { t: 'str', max: 20 } },
+    schema: { agentId: { t: 'str', max: 20 }, toCity: { t: 'str', max: 60 } },
   },
   'intent.amend_constitution': {
     kind: 'intent',
@@ -272,31 +261,24 @@ export const CATALOG: Record<string, EventSpec> = {
     authorizedBy: ['intent.delete_agent'],
     subject: 'agent',
   },
-  'agent.jailed': {
+  'agent.deployed': {
     kind: 'fact',
     writers: MAYOR,
     scope: 'city',
-    schema: { reason: { t: 'str', oneOf: JAIL_REASONS }, flagSeq: { t: 'int', min: 1, opt: true } },
-    authorizedBy: ['intent.jail_agent'],
+    schema: { toCity: { t: 'str', max: 60 } },
+    authorizedBy: ['intent.deploy_agent'],
     subject: 'agent',
   },
-  'agent.released': {
-    kind: 'fact',
-    writers: MAYOR,
-    scope: 'city',
-    schema: {},
-    authorizedBy: ['intent.release_agent'],
-    subject: 'agent',
-  },
-  // Security City's Mayor reports an agent (any city) caught not doing its tasks. It is written under
-  // Security's OWN city tag: a report, not an edit. Marc decides whether to jail.
-  'security.flagged': {
+  // A deployed Security agent caught an agent (any city) not doing a task. Security's Mayor records
+  // it under Security's OWN city tag. Every 3rd task strike jails the agent automatically.
+  'security.task_strike': {
     kind: 'fact',
     writers: MAYOR,
     scope: 'city',
     schema: {
       agentId: { t: 'str', max: 20 },
-      reason: { t: 'str', oneOf: JAIL_REASONS },
+      observedBy: { t: 'str', max: 20 },
+      task: { t: 'str', max: 500 },
       evidence: { t: 'str', max: 4000 },
       evidenceRef: { t: 'str', max: 300, opt: true },
     },

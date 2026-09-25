@@ -57,7 +57,7 @@ export function createApp(ledger: Ledger, profiles: Profiles): Server {
         return send(res, 200, profile);
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
-        return send(res, 200, worldView(ledger.state, profile));
+        return send(res, 200, worldView(ledger.state, profile, ledger.clock()));
       }
       if (req.method === 'GET' && url.pathname === '/api/events') {
         const after = intParam(url, 'after', 0);

@@ -3,7 +3,7 @@
 // also read every city but still write only their own. Any other Mayor reads only its own city.
 import { CROSS_CITY_READ_FAMILIES } from './model.ts';
 import type { Profile } from '../ledger/guard.ts';
-import type { Agent, LedgerEvent, WorldState } from './state.ts';
+import { isJailed, type Agent, type LedgerEvent, type WorldState } from './state.ts';
 
 export function readScope(profile: Profile, state: WorldState): '*' | string {
   if (profile.role !== 'mayor') return '*';
@@ -14,7 +14,11 @@ export function readScope(profile: Profile, state: WorldState): '*' | string {
 
 export function canRead(profile: Profile, e: LedgerEvent, state: WorldState): boolean {
   const scope = readScope(profile, state);
-  return scope === '*' || e.city === scope || (e.type === 'city.created' && e.subject === scope);
+  if (scope === '*' || e.city === scope) return true;
+  if (e.type === 'city.created') return e.subject === scope;
+  // A Mayor sees task strikes against its own agents, though Security records them.
+  if (e.type === 'security.task_strike') return state.agents.get(String(e.payload.agentId))?.cityId === scope;
+  return false;
 }
 
 const agentView = (a: Agent) => ({
@@ -31,10 +35,13 @@ const agentView = (a: Agent) => ({
   memoryScope: a.memoryScope,
   status: a.status,
   lifecycle: a.lifecycle,
+  taskStrikes: a.taskStrikes,
+  jailTerms: a.jailTerms,
   jail: a.jail,
+  deployedTo: a.deployedTo,
 });
 
-export function worldView(state: WorldState, profile: Profile) {
+export function worldView(state: WorldState, profile: Profile, now: Date) {
   const scope = readScope(profile, state);
   const agents = [...state.agents.values()];
   const cities = [...state.cities.values()]
@@ -44,7 +51,7 @@ export function worldView(state: WorldState, profile: Profile) {
       return {
         ...c,
         agentCounts: state.cityAgentCounts(c.id),
-        jailedCount: living.filter((a) => a.jail).length,
+        jailedCount: living.filter((a) => isJailed(a, now)).length,
         districts: [...state.districts.values()]
           .filter((d) => d.cityId === c.id)
           .map((d) => ({
@@ -65,15 +72,17 @@ export function worldView(state: WorldState, profile: Profile) {
     .map((i) => ({ seq: i.seq, ts: i.ts, type: i.type, city: i.city, payload: i.payload }));
 
   // Security's jail: every jailed agent the reader can see, from any city.
+  // Timed terms drop off on their own once `until` passes.
   const jail = agents
-    .filter((a) => a.jail && !a.deleted && (scope === '*' || a.cityId === scope))
-    .map((a) => ({ id: a.id, name: a.name, cityId: a.cityId, state: a.state, strikes: a.strikes, jail: a.jail }));
-  const securityFlags = state.securityFlags.filter((f) => scope === '*' || f.agentCity === scope);
+    .filter((a) => isJailed(a, now) && (scope === '*' || a.cityId === scope))
+    .map((a) => ({ id: a.id, name: a.name, cityId: a.cityId, state: a.state, strikes: a.strikes, jailTerms: a.jailTerms, jail: a.jail }));
+  const taskStrikes = state.taskStrikes.filter((t) => scope === '*' || t.agentCity === scope);
 
   return {
     lastSeq: state.lastSeq,
+    now: now.toISOString(),
     jail,
-    securityFlags,
+    taskStrikes,
     constitution: state.constitution,
     worldRollup: scope === '*' ? state.worldRollup : null,
     cities,

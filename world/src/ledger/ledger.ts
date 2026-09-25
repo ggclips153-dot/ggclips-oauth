@@ -93,17 +93,23 @@ export class Ledger {
     for (const e of this.readAll()) this.state.apply(e);
   }
 
+  /** The ledger's clock (injectable for tests); decides whether a timed jail term has ended. */
+  clock(): Date {
+    return this.now();
+  }
+
   close() {
     this.db.close();
   }
 
   /** Append one event. Throws LedgerError if the write-guard rejects it. */
   append(profile: Profile, input: AppendInput): LedgerEvent {
-    const draft = checkWrite(this.state, profile, this.withGeneratedName(input));
+    const now = this.now();
+    const draft = checkWrite(this.state, profile, this.withGeneratedName(input), now);
     this.db.exec('BEGIN IMMEDIATE');
     let event: LedgerEvent;
     try {
-      event = this.insert(profile, draft);
+      event = this.insert(profile, draft, now);
       this.db.exec('COMMIT');
     } catch (err) {
       this.db.exec('ROLLBACK');
@@ -126,12 +132,12 @@ export class Ledger {
     return suggestNames(this.state, count, this.names);
   }
 
-  private insert(profile: Profile, d: Draft): LedgerEvent {
+  private insert(profile: Profile, d: Draft, now: Date): LedgerEvent {
     const seq = this.state.lastSeq + 1;
     const subject = d.allocates ? this.allocateId(d, seq) : d.subject;
     const base = {
       seq,
-      ts: this.now().toISOString(),
+      ts: now.toISOString(),
       kind: d.kind,
       type: d.type,
       city: d.city,

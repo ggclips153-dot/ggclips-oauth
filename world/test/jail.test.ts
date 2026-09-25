@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { worldView, canRead } from '../src/domain/view.ts';
-import { TestWorld, dm, mayorOf, owner } from './helpers.ts';
+import { canRead, worldView } from '../src/domain/view.ts';
+import { isJailed } from '../src/domain/state.ts';
+import { TestWorld, mayorOf, owner } from './helpers.ts';
 
-/** Revenue city with a placed agent, plus the two Essentials cities. */
+/** A revenue city with a working agent, the two Essentials cities, and a Security agent deployed to watch. */
 const setup = () => {
   const w = new TestWorld();
   const city = w.city('AI Receptionist City');
@@ -13,25 +14,36 @@ const setup = () => {
   const dept = w.department(city, w.district(city), 5);
   const agent = w.agent(city, dept, 'Iris');
   w.promote(city, agent, 'probationer');
-  return { w, city, security, innovations, other, dept, agent };
+
+  const patrol = w.department(security, w.district(security, 'Patrol'), 5);
+  const guard = w.agent(security, patrol, 'Sentinel');
+  w.promote(security, guard, 'probationer');
+  const d = w.intent('deploy_agent', security, { agentId: guard, toCity: city });
+  w.fact(mayorOf(security), { type: 'agent.deployed', city: security, subject: guard, payload: { toCity: city }, authorizedBy: d.seq });
+  return { w, city, security, innovations, other, dept, agent, guard };
 };
 
-const flag = (w: TestWorld, security: string, agentId: string) =>
+const taskStrike = (w: TestWorld, security: string, agentId: string, observedBy: string) =>
   w.fact(mayorOf(security), {
-    type: 'security.flagged',
+    type: 'security.task_strike',
     city: security,
-    payload: { agentId, reason: 'not_doing_tasks', evidence: 'no ledger entries for 3 days' },
+    payload: { agentId, observedBy, task: 'daily ledger entry', evidence: 'no entry for 2026-09-24' },
   });
+
+const strikes = (w: TestWorld, s: ReturnType<typeof setup>, n: number) => {
+  for (let i = 0; i < n; i++) taskStrike(w, s.security, s.agent, s.guard);
+};
 
 describe('Essentials family: cross-city READ, never edit', () => {
   it('Essentials Mayors read every city; revenue Mayors read only their own', () => {
     const { w, city, security, innovations, other } = setup();
     for (const essentials of [security, innovations]) {
-      assert.equal(worldView(w.state, mayorOf(essentials)).cities.length, 4);
+      assert.equal(worldView(w.state, mayorOf(essentials), w.time).cities.length, 4);
     }
-    assert.deepEqual(worldView(w.state, mayorOf(city)).cities.map((c) => c.id), [city]);
-    const otherEvent = w.ledger.readAll().find((e) => e.city === other)!;
-    assert.ok(otherEvent ? canRead(mayorOf(security), otherEvent, w.state) : true);
+    assert.deepEqual(worldView(w.state, mayorOf(city), w.time).cities.map((c) => c.id), [city]);
+    const otherEvent = w.ledger.readAll().find((e) => e.type === 'city.created' && e.subject === other)!;
+    assert.ok(canRead(mayorOf(security), otherEvent, w.state));
+    assert.ok(!canRead(mayorOf(city), otherEvent, w.state));
   });
 
   it('Essentials Mayors still cannot write another city\'s tag', () => {
@@ -43,73 +55,122 @@ describe('Essentials family: cross-city READ, never edit', () => {
   });
 });
 
-describe('Security jail', () => {
-  it('3rd strike puts the agent in jail, awaiting deletion; it cannot be released', () => {
-    const { w, city, agent } = setup();
-    w.miss(city, agent);
-    w.promote(city, agent, 'probationer');
-    w.miss(city, agent);
-    w.promote(city, agent, 'probationer');
-    w.miss(city, agent, true);
-    assert.equal(w.state.agents.get(agent)!.jail!.reason, 'awaiting_deletion');
-    assert.throws(() => w.intent('release_agent', city, { agentId: agent }), /awaiting deletion cannot be released/);
-
-    const del = w.intent('delete_agent', city, { agentId: agent });
-    w.fact(mayorOf(city), { type: 'agent.deleted', city, subject: agent, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
-    assert.equal(w.state.agents.get(agent)!.jail, null);
-    assert.equal(worldView(w.state, owner).jail.length, 0);
+describe('Security: deployment and task strikes', () => {
+  it('task strikes are recorded under Security\'s own tag and are a separate counter from KPI strikes', () => {
+    const s = setup();
+    const e = taskStrike(s.w, s.security, s.agent, s.guard);
+    assert.equal(e.city, s.security);
+    const a = s.w.state.agents.get(s.agent)!;
+    assert.equal(a.taskStrikes, 1);
+    assert.equal(a.strikes, 0, 'KPI strikes untouched');
+    // The home Mayor sees the strike against its own agent; another revenue Mayor does not.
+    assert.ok(canRead(mayorOf(s.city), e, s.w.state));
+    assert.ok(!canRead(mayorOf(s.other), e, s.w.state));
   });
 
-  it('Security flags an agent in another city under its OWN tag; Marc jails; home Mayor executes', () => {
-    const { w, city, security, agent } = setup();
-    const f = flag(w, security, agent);
-    assert.equal(f.city, security);
-    assert.equal(w.state.agents.get(agent)!.jail, null, 'a flag alone changes nothing');
-
-    // The home Mayor cannot jail without Marc's routed intent.
-    assert.throws(() => w.fact(mayorOf(city), { type: 'agent.jailed', city, subject: agent, payload: { reason: 'not_doing_tasks' } }), /must cite an owner intent/);
-    const i = w.intent('jail_agent', city, { agentId: agent, reason: 'not_doing_tasks', flagSeq: f.seq });
-    // Security cannot execute it: the agent's city tag is outside its write scope.
+  it('only a Security agent deployed to the agent\'s city can observe a strike', () => {
+    const s = setup();
+    const otherDept = s.w.department(s.other, s.w.district(s.other), 3);
+    const elsewhere = s.w.agent(s.other, otherDept, 'Kai');
+    assert.throws(() => taskStrike(s.w, s.security, elsewhere, s.guard), /not deployed to personal-finance-city/);
+    assert.throws(() => taskStrike(s.w, s.security, s.guard, s.guard), /cannot strike itself|not deployed/);
+    // A revenue agent is not a Security observer.
+    const peer = s.w.agent(s.city, s.dept, 'Juno');
+    assert.throws(() => taskStrike(s.w, s.security, s.agent, peer), /not a Security City agent/);
+    // Innovations cannot record strikes.
     assert.throws(
-      () => w.fact(mayorOf(security), { type: 'agent.jailed', city, subject: agent, payload: { reason: 'not_doing_tasks', flagSeq: f.seq }, authorizedBy: i.seq }),
-      /outside .* write scope/,
-    );
-    w.fact(mayorOf(city), { type: 'agent.jailed', city, subject: agent, payload: { reason: 'not_doing_tasks', flagSeq: f.seq }, authorizedBy: i.seq });
-
-    const jail = worldView(w.state, mayorOf(security)).jail;
-    assert.deepEqual(jail.map((j) => [j.id, j.cityId, j.jail!.reason]), [[agent, city, 'not_doing_tasks']]);
-  });
-
-  it('a jailed agent cannot climb, move or take strikes until released', () => {
-    const { w, city, security, agent } = setup();
-    const i = w.intent('jail_agent', city, { agentId: agent, reason: 'not_doing_tasks' });
-    w.fact(mayorOf(city), { type: 'agent.jailed', city, subject: agent, payload: { reason: 'not_doing_tasks' }, authorizedBy: i.seq });
-    assert.throws(() => w.promote(city, agent, 'active'), /in jail/);
-    assert.throws(() => w.miss(city, agent), /in jail/);
-
-    const r = w.intent('release_agent', city, { agentId: agent });
-    w.fact(mayorOf(city), { type: 'agent.released', city, subject: agent, payload: {}, authorizedBy: r.seq });
-    w.promote(city, agent, 'active');
-    assert.equal(w.state.agents.get(agent)!.state, 'active');
-    void security;
-  });
-
-  it('only Security City files flags, and a flag must match the jailed agent', () => {
-    const { w, city, innovations, security, agent, dept } = setup();
-    assert.throws(
-      () => w.fact(mayorOf(innovations), { type: 'security.flagged', city: innovations, payload: { agentId: agent, reason: 'not_doing_tasks', evidence: 'x' } }),
+      () => s.w.fact(mayorOf(s.innovations), { type: 'security.task_strike', city: s.innovations, payload: { agentId: s.agent, observedBy: s.guard, task: 't', evidence: 'e' } }),
       /only security-city/,
     );
-    const other = w.agent(city, dept, 'Juno');
-    const f = flag(w, security, other);
-    assert.throws(() => w.intent('jail_agent', city, { agentId: agent, reason: 'not_doing_tasks', flagSeq: f.seq }), /is about/);
   });
 
-  it('a revenue Mayor sees only its own city\'s jailed agents and flags', () => {
-    const { w, city, security, other, agent } = setup();
-    flag(w, security, agent);
-    assert.equal(worldView(w.state, mayorOf(other)).securityFlags.length, 0);
-    assert.equal(worldView(w.state, mayorOf(city)).securityFlags.length, 1);
-    void dm;
+  it('deployment needs Marc\'s routed intent and a graduated Security agent', () => {
+    const s = setup();
+    const patrol = s.w.state.agents.get(s.guard)!.departmentId!;
+    const rookie = s.w.agent(s.security, patrol, 'Warden');
+    assert.throws(() => s.w.intent('deploy_agent', s.security, { agentId: rookie, toCity: s.city }), /must be graduated/);
+    assert.throws(() => s.w.intent('deploy_agent', s.city, { agentId: s.agent, toCity: s.other }), /only security-city/);
+    assert.throws(
+      () => s.w.fact(mayorOf(s.security), { type: 'agent.deployed', city: s.security, subject: s.guard, payload: { toCity: s.other } }),
+      /must cite an owner intent/,
+    );
+  });
+});
+
+describe('Security jail: 3 task strikes = a term; 6h, 24h, 3 days, then deletion', () => {
+  it('escalates terms, releases on its own, and resets task strikes after each term', () => {
+    const s = setup();
+    const a = () => s.w.state.agents.get(s.agent)!;
+    const expected: [number, string][] = [[6, '2026-09-25T18:00:00.000Z'], [24, ''], [72, '']];
+
+    for (const [i, [hours]] of expected.entries()) {
+      strikes(s.w, s, 2);
+      assert.ok(!isJailed(a(), s.w.time), 'two strikes: still free');
+      strikes(s.w, s, 1);
+      assert.ok(isJailed(a(), s.w.time), `term ${i + 1} starts on the 3rd strike`);
+      assert.equal(a().jail!.term, i + 1);
+      assert.equal(a().taskStrikes, 0, 'counter resets');
+      assert.equal(Date.parse(a().jail!.until!) - s.w.time.getTime(), hours * 3_600_000);
+      if (i === 0) assert.equal(a().jail!.until, expected[0]![1]);
+
+      // Jailed: no work, no climbing, no more strikes.
+      assert.throws(() => s.w.promote(s.city, s.agent, 'active'), /in jail \(term/);
+      assert.throws(() => taskStrike(s.w, s.security, s.agent, s.guard), /in jail/);
+      assert.equal(worldView(s.w.state, owner, s.w.time).jail.length, 1);
+
+      s.w.advanceHours(hours - 1);
+      assert.ok(isJailed(a(), s.w.time), 'still inside an hour before release');
+      s.w.advanceHours(1);
+      assert.ok(!isJailed(a(), s.w.time), 'released on its own');
+      assert.equal(worldView(s.w.state, owner, s.w.time).jail.length, 0);
+    }
+
+    // 4th time: jailed awaiting deletion, no automatic release.
+    strikes(s.w, s, 3);
+    assert.equal(a().jail!.status, 'awaiting_deletion');
+    assert.equal(a().jail!.term, 4);
+    s.w.advanceHours(24 * 365);
+    assert.ok(isJailed(a(), s.w.time), 'never released on its own');
+
+    // Marc decides; the home Mayor executes.
+    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent });
+    s.w.fact(mayorOf(s.city), {
+      type: 'agent.deleted',
+      city: s.city,
+      subject: s.agent,
+      payload: { ledgerArchiveRef: 'archive/a', lessonRecordRef: 'lessons/a' },
+      authorizedBy: del.seq,
+    });
+    assert.ok(a().deleted);
+    assert.equal(worldView(s.w.state, owner, s.w.time).jail.length, 0);
+  });
+
+  it('the jail level never resets, but after a term the agent works normally', () => {
+    const s = setup();
+    strikes(s.w, s, 3);
+    s.w.advanceHours(6);
+    s.w.promote(s.city, s.agent, 'active');
+    assert.equal(s.w.state.agents.get(s.agent)!.jailTerms, 1);
+  });
+
+  it('3rd KPI strike: jailed awaiting deletion; deletion impossible otherwise', () => {
+    const s = setup();
+    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent });
+    const deleteIt = () =>
+      s.w.fact(mayorOf(s.city), { type: 'agent.deleted', city: s.city, subject: s.agent, payload: { ledgerArchiveRef: 'x', lessonRecordRef: 'y' }, authorizedBy: del.seq });
+    assert.throws(deleteIt, /awaiting deletion/);
+    // Serving a timed term is not grounds for deletion either.
+    strikes(s.w, s, 3);
+    assert.throws(deleteIt, /awaiting deletion/);
+    s.w.advanceHours(6);
+
+    s.w.miss(s.city, s.agent);
+    s.w.promote(s.city, s.agent, 'probationer');
+    s.w.miss(s.city, s.agent);
+    s.w.promote(s.city, s.agent, 'probationer');
+    s.w.miss(s.city, s.agent, true);
+    const jail = s.w.state.agents.get(s.agent)!.jail!;
+    assert.deepEqual([jail.status, jail.cause], ['awaiting_deletion', 'kpi_strikes']);
+    deleteIt();
   });
 });

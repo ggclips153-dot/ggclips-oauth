@@ -12,9 +12,15 @@ export const persona = { voice: 'warm, concise', temperament: 'patient' };
 /** A world with helpers that follow the real path: Marc intent -> DM routes -> Mayor/DM fact. */
 export class TestWorld {
   readonly ledger: Ledger;
+  /** Controllable clock: advance with `w.advanceHours(n)`. */
+  time = new Date('2026-09-25T12:00:00Z');
 
   constructor(path = ':memory:') {
-    this.ledger = new Ledger({ path });
+    this.ledger = new Ledger({ path, now: () => this.time });
+  }
+
+  advanceHours(h: number) {
+    this.time = new Date(this.time.getTime() + h * 3_600_000);
   }
 
   get state() {

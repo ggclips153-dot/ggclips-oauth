@@ -4,6 +4,8 @@ import type { Payload } from '../ledger/validate.ts';
 import {
   AGENT_STATES,
   DEPT_LEAD_BADGE,
+  JAIL_TERMS_HOURS,
+  TASK_STRIKES_PER_JAIL,
   type AgentState,
   type Family,
   type LifecycleStage,
@@ -99,25 +101,42 @@ export interface Agent {
   status: { status: string; activity: string | null; ts: string; seq: number } | null;
   lifecycle: LifecycleEntry[];
   deleted: { seq: number; ts: string; ledgerArchiveRef: string; lessonRecordRef: string } | null;
-  /** In Security's jail: awaiting deletion (3rd strike) or caught not doing its tasks. */
+  /** Task strikes toward the next jail term (separate from KPI `strikes`). Resets after each term. */
+  taskStrikes: number;
+  /** Jail terms from task strikes so far. Never resets. */
+  jailTerms: number;
+  /** Latest jail record. A timed term ends on its own at `until`; see isJailed(). */
   jail: Jail | null;
+  /** Security City agents only: the city it is deployed to watch. */
+  deployedTo: string | null;
 }
 
 export interface Jail {
-  reason: 'awaiting_deletion' | 'not_doing_tasks';
+  status: 'serving' | 'awaiting_deletion';
+  cause: 'kpi_strikes' | 'task_strikes';
+  /** Task-strike term number (1 = 6h, 2 = 24h, 3 = 3 days, 4 = awaiting deletion). */
+  term: number | null;
   seq: number;
   ts: string;
-  flagSeq: number | null;
+  /** End of a timed term; null = held until Marc decides on deletion. */
+  until: string | null;
 }
 
-export interface SecurityFlag {
+export interface TaskStrike {
   seq: number;
   ts: string;
   agentId: string;
   agentCity: string;
-  reason: string;
+  observedBy: string;
+  task: string;
   evidence: string;
   evidenceRef: string | null;
+}
+
+/** In jail right now? Timed terms release on their own once `until` passes. */
+export function isJailed(a: Agent, now: Date): boolean {
+  if (!a.jail || a.deleted) return false;
+  return a.jail.until === null || Date.parse(a.jail.until) > now.getTime();
 }
 
 export interface Constitution {
@@ -149,8 +168,8 @@ export class WorldState {
   readonly consumed = new Set<string>();
   /** Names of deleted agents: retired forever. */
   readonly retiredNames = new Set<string>();
-  /** Security City's reports, newest last. */
-  readonly securityFlags: SecurityFlag[] = [];
+  /** Task strikes recorded by Security City, oldest first. */
+  readonly taskStrikes: TaskStrike[] = [];
   constitution: Constitution | null = null;
   worldRollup: { seq: number; period: string; periodStart: string; rollup: unknown } | null = null;
 
@@ -240,7 +259,10 @@ export class WorldState {
           status: null,
           lifecycle: [{ stage: 'enrollment', seq: e.seq, ts: e.ts }],
           deleted: null,
+          taskStrikes: 0,
+          jailTerms: 0,
           jail: null,
+          deployedTo: null,
         });
         break;
       }
@@ -283,27 +305,41 @@ export class WorldState {
         if (!agent) break;
         agent.strikes += 1;
         // Waiting for deletion: held in Security's jail.
-        agent.jail = { reason: 'awaiting_deletion', seq: e.seq, ts: e.ts, flagSeq: null };
+        agent.jail = { status: 'awaiting_deletion', cause: 'kpi_strikes', term: null, seq: e.seq, ts: e.ts, until: null };
         mark('3rd-strike');
         break;
-      case 'agent.jailed':
-        if (!agent) break;
-        agent.jail = { reason: p.reason, seq: e.seq, ts: e.ts, flagSeq: p.flagSeq ?? null };
+      case 'agent.deployed':
+        if (agent) agent.deployedTo = p.toCity;
         break;
-      case 'agent.released':
-        if (agent) agent.jail = null;
-        break;
-      case 'security.flagged': {
+      case 'security.task_strike': {
         const target = this.agents.get(p.agentId);
-        this.securityFlags.push({
+        this.taskStrikes.push({
           seq: e.seq,
           ts: e.ts,
           agentId: p.agentId,
           agentCity: target?.cityId ?? '',
-          reason: p.reason,
+          observedBy: p.observedBy,
+          task: p.task,
           evidence: p.evidence,
           evidenceRef: p.evidenceRef ?? null,
         });
+        if (!target) break;
+        target.taskStrikes += 1;
+        if (target.taskStrikes < TASK_STRIKES_PER_JAIL) break;
+        target.taskStrikes = 0;
+        target.jailTerms += 1;
+        const hours = JAIL_TERMS_HOURS[target.jailTerms - 1];
+        target.jail =
+          hours === undefined
+            ? { status: 'awaiting_deletion', cause: 'task_strikes', term: target.jailTerms, seq: e.seq, ts: e.ts, until: null }
+            : {
+                status: 'serving',
+                cause: 'task_strikes',
+                term: target.jailTerms,
+                seq: e.seq,
+                ts: e.ts,
+                until: new Date(Date.parse(e.ts) + hours * 3_600_000).toISOString(),
+              };
         break;
       }
       case 'agent.deleted':
