@@ -86,6 +86,17 @@ describe('dashboard sign-in', () => {
     assert.match(res.headers.get('content-type')!, /text\/html/);
     assert.match(res.headers.get('content-security-policy')!, /script-src 'self'/);
     assert.equal((await get('/../src/server/app.ts')).status, 404);
+  });
+
+  it('caches static files: ETag + 304, gzip, and a year for versioned vendor files', async () => {
+    const first = await get('/app.js');
+    const etag = first.headers.get('etag')!;
+    assert.ok(etag);
+    assert.equal(first.headers.get('cache-control'), 'no-cache');
+    assert.equal((await fetch(`${base}/app.js`, { headers: { 'if-none-match': etag } })).status, 304);
+    const vendor = await get('/vendor/three-r186/three.core.min.js');
+    assert.equal(vendor.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(vendor.headers.get('content-encoding'), 'gzip', 'fetch asks for gzip by default');
     assert.equal((await get('/%2e%2e/config/users.json')).status, 404);
   });
 });

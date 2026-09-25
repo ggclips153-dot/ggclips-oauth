@@ -122,6 +122,9 @@ async function boot() {
   connect();
   render();
   setInterval(render, 30_000); // countdowns
+  // Warm up the 3D globe in the background once the dashboard is idle, so switching to it is instant.
+  const idle = window.requestIdleCallback ?? ((fn) => setTimeout(fn, 1500));
+  idle(() => import('./world3d.js').then((m) => m.prewarm()).catch(() => {}));
   setInterval(refresh, 60_000); // timed jail releases, belt-and-braces
 }
 

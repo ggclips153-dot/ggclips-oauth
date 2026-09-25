@@ -117,7 +117,7 @@ but `data/demo.db`: the real world is never auto-executed.
   surface: its platform, a building per department (taller = more agents), the college dome and
   professors, the KPI beacon (green on target, red below), agents coloured by state (working agents walk),
   and Security's jail. Live like the map; loads only when chosen; runs offline (three.js is vendored in
-  `public/vendor/three`).
+  `public/vendor/three-r186`).
 - **Live**: every department agent's current status and activity across the cities you can see, filtered by
   city and status, working agents first.
 - **Economy**: dollars earned only from real-revenue deliverables by active or senior agents, vetted by

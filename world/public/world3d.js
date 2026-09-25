@@ -5,8 +5,8 @@
 //   (working agents walk), and Security's jail.
 //   Drag to spin, scroll or pinch to zoom toward the cursor, double-click to fly in, +/- and reset,
 //   search to fly to a city, click a pin for its card.
-import * as THREE from './vendor/three/three.module.min.js';
-import { OrbitControls } from './vendor/three/OrbitControls.min.js';
+import * as THREE from './vendor/three-r186/three.module.min.js';
+import { OrbitControls } from './vendor/three-r186/OrbitControls.min.js';
 import { h } from './dom.js';
 
 const R = 50; // globe radius
@@ -75,10 +75,16 @@ function citySpots(family, n) {
 const coastNoise = (la, lo) => 0.5 * Math.sin(3 * lo + 2.1 * Math.sin(2 * la)) + 0.3 * Math.sin(7 * la + 5 * lo) + 0.2 * Math.sin(13 * lo - 11 * la);
 
 let textureCache = null;
-/** Equirectangular Earth-style texture: oceans, one continent per family, a faint graticule. */
+let texturePending = null;
+
+/**
+ * Equirectangular Earth-style texture: oceans, one continent per family, a faint graticule.
+ * Painted in small time slices between frames so the page never freezes; resolves when done.
+ */
 function earthTexture(pal) {
   const key = JSON.stringify(pal.family);
-  if (textureCache?.key === key) return textureCache.texture;
+  if (textureCache?.key === key) return Promise.resolve(textureCache.texture);
+  if (texturePending?.key === key) return texturePending.promise;
   const W = 2048;
   const H = 1024;
   const canvas = document.createElement('canvas');
@@ -86,27 +92,40 @@ function earthTexture(pal) {
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(W, H);
-  const hex = (c) => {
+  const rgb = (c) => {
     const x = new THREE.Color(c);
     return [x.r * 255, x.g * 255, x.b * 255];
   };
-  const sand = hex('#e7e0c4');
+  const sand = rgb('#e7e0c4');
   const conts = FAMILY_ORDER.map((f) => {
     const c = CONTINENTS[f];
-    return { la: c.lat * DEG, lo: c.lon * DEG, rad: c.rad * DEG, col: hex(pal.family[f]) };
+    const la = c.lat * DEG;
+    const lo = c.lon * DEG;
+    return { sinLa: Math.sin(la), cosLa: Math.cos(la), cosLo: Math.cos(lo), sinLo: Math.sin(lo), rad: c.rad * DEG, col: rgb(pal.family[f]) };
   });
-  for (let y = 0; y < H; y++) {
+  // Per-column longitude terms, computed once.
+  const lons = new Float64Array(W);
+  const cosLons = new Float64Array(W);
+  const sinLons = new Float64Array(W);
+  for (let x = 0; x < W; x++) {
+    lons[x] = ((x / W) * 360 - 180) * DEG;
+    cosLons[x] = Math.cos(lons[x]);
+    sinLons[x] = Math.sin(lons[x]);
+  }
+
+  const paintRow = (y) => {
     const la = (90 - (y / H) * 180) * DEG;
     const sinLa = Math.sin(la);
     const cosLa = Math.cos(la);
+    const gridRow = Math.abs(((y / H) * 180) % 15) < 0.18;
     for (let x = 0; x < W; x++) {
-      const lo = ((x / W) * 360 - 180) * DEG;
-      const n = coastNoise(la, lo);
-      let best = null;
-      let edge = 1e9;
+      // The continent whose (noisy) coastline this pixel is nearest to or inside.
+      const n = coastNoise(la, lons[x]);
+      let best = conts[0];
+      let edge = Infinity;
       for (const c of conts) {
-        const d = Math.acos(clamp(sinLa * Math.sin(c.la) + cosLa * Math.cos(c.la) * Math.cos(lo - c.lo), -1, 1));
-        const e = d - c.rad * (1 + 0.16 * n);
+        const cosD = sinLa * c.sinLa + cosLa * c.cosLa * (cosLons[x] * c.cosLo + sinLons[x] * c.sinLo);
+        const e = Math.acos(clamp(cosD, -1, 1)) - c.rad * (1 + 0.16 * n);
         if (e < edge) {
           edge = e;
           best = c;
@@ -117,39 +136,52 @@ function earthTexture(pal) {
       let g;
       let b;
       if (edge < 0) {
-        // Land: the family's colour washed toward sand, shaded by terrain noise; a light shore band.
-        const shade = 0.86 + 0.14 * coastNoise(la * 3.1, lo * 2.7);
-        const shore = edge > -0.018 ? 0.25 : 0;
-        const t = 0.58 + shore * 0.6;
+        const shade = 0.86 + 0.14 * coastNoise(la * 3.1, lons[x] * 2.7);
+        const t = 0.58 + (edge > -0.018 ? 0.15 : 0);
         r = (best.col[0] * (1 - t) + sand[0] * t) * shade;
         g = (best.col[1] * (1 - t) + sand[1] * t) * shade;
         b = (best.col[2] * (1 - t) + sand[2] * t) * shade;
       } else {
-        // Ocean: deep blue, lighter in the shallows near a coast.
         const shallow = clamp(1 - edge / 0.09, 0, 1) ** 2;
         r = 8 + 26 * shallow;
         g = 22 + 58 * shallow;
         b = 48 + 78 * shallow;
       }
-      // Graticule every 15 degrees.
-      const onGrid = Math.abs(((x / W) * 360) % 15) < 0.18 || Math.abs(((y / H) * 180) % 15) < 0.18;
-      if (onGrid) {
-        r = r * 0.85 + 255 * 0.15;
-        g = g * 0.85 + 255 * 0.15;
-        b = b * 0.85 + 255 * 0.15;
+      if (gridRow || Math.abs(((x / W) * 360) % 15) < 0.18) {
+        r = r * 0.85 + 38;
+        g = g * 0.85 + 38;
+        b = b * 0.85 + 38;
       }
       img.data[i] = r;
       img.data[i + 1] = g;
       img.data[i + 2] = b;
       img.data[i + 3] = 255;
     }
-  }
-  ctx.putImageData(img, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  textureCache = { key, texture };
-  return texture;
+  };
+
+  const promise = new Promise((resolve) => {
+    let y = 0;
+    const slice = () => {
+      const until = performance.now() + 12;
+      while (y < H && performance.now() < until) paintRow(y++);
+      if (y < H) return setTimeout(slice, 0);
+      ctx.putImageData(img, 0, 0);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 4;
+      textureCache = { key, texture };
+      texturePending = null;
+      resolve(texture);
+    };
+    slice();
+  });
+  texturePending = { key, promise };
+  return promise;
+}
+
+/** Warm up while the dashboard is idle: paint the globe texture in the background. */
+export function prewarm() {
+  return earthTexture(palette());
 }
 
 export function mount3D(container, { onOpenCity }) {
@@ -380,8 +412,14 @@ export function mount3D(container, { onOpenCity }) {
     dataRef = data;
     disposeWorld();
     const pal = palette();
-    globe.material.map = earthTexture(pal);
-    globe.material.needsUpdate = true;
+    // Plain ocean at once; the continents fill in when the (sliced) painting finishes.
+    if (!globe.material.map) globe.material.color.set('#0e2a48');
+    earthTexture(pal).then((texture) => {
+      if (globe.material.map === texture) return;
+      globe.material.map = texture;
+      globe.material.color.set('#ffffff');
+      globe.material.needsUpdate = true;
+    });
 
     const now = Date.parse(data.now);
     const jailed = [];

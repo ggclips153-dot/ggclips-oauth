@@ -1,6 +1,8 @@
 // HTTP API over the ledger. Every request is authenticated to a profile; writes go through the
 // write-guard, reads are filtered to the profile's read scope.
-import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import type { Profiles } from '../auth/profiles.ts';
@@ -51,15 +53,34 @@ function send(res: ServerResponse, status: number, body: unknown, headers: Recor
   res.end(JSON.stringify(body));
 }
 
-async function serveStatic(res: ServerResponse, pathname: string): Promise<boolean> {
+/** Static files, cached in memory with an ETag and a gzip copy; reloaded when the file changes on disk. */
+const staticCache = new Map<string, { mtimeMs: number; body: Buffer; gzip: Buffer; etag: string }>();
+
+async function serveStatic(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
   const file = pathname === '/' ? 'index.html' : pathname.slice(1);
   const type = STATIC_TYPES[extname(file)];
   const full = normalize(join(PUBLIC_DIR, file));
   if (!type || !full.startsWith(PUBLIC_DIR)) return false;
   try {
-    const body = await readFile(full);
-    res.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', ...SECURITY_HEADERS });
-    res.end(body);
+    const { mtimeMs } = await stat(full);
+    let entry = staticCache.get(full);
+    if (!entry || entry.mtimeMs !== mtimeMs) {
+      const body = await readFile(full);
+      entry = { mtimeMs, body, gzip: gzipSync(body), etag: `"${createHash('sha1').update(body).digest('base64url')}"` };
+      staticCache.set(full, entry);
+    }
+    // Vendored libraries live in versioned folders (vendor/three-r186), so they never change: cache for a year.
+    // The dashboard's own files revalidate each load and come back as 304 when unchanged.
+    const cacheControl = file.startsWith('vendor/') ? 'public, max-age=31536000, immutable' : 'no-cache';
+    const base = { 'content-type': type, 'cache-control': cacheControl, etag: entry.etag, vary: 'accept-encoding', ...SECURITY_HEADERS };
+    if (req.headers['if-none-match'] === entry.etag) {
+      res.writeHead(304, base);
+      res.end();
+      return true;
+    }
+    const gzip = /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''));
+    res.writeHead(200, { ...base, ...(gzip ? { 'content-encoding': 'gzip' } : {}) });
+    res.end(gzip ? entry.gzip : entry.body);
     return true;
   } catch {
     return false;
@@ -116,7 +137,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
     const url = new URL(req.url ?? '/', 'http://localhost');
     try {
       if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
-        if (await serveStatic(res, url.pathname)) return;
+        if (await serveStatic(req, res, url.pathname)) return;
         return send(res, 404, { error: 'NOT_FOUND', message: 'no such page' });
       }
       if (req.method === 'GET' && url.pathname === '/api/health') {
