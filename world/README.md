@@ -110,11 +110,13 @@ but `data/demo.db`: the real world is never auto-executed.
 - **City view**: KPI history (with a table view), the college (dean scorecard, professors' teaching
   records, new agents waiting for a department), every district and department (caps, shadows, unfilled
   roles, delegated tasks), and each agent's live status, strikes and lifecycle strip.
-- **3D world** (switch on the World page): an island with one region per family, a platform per city,
-  a building per department (taller = more agents), the college dome, a KPI beacon (green on target, red
-  below), agents as figures coloured by state (working agents move), and Security's jail holding every
-  jailed agent. Drag to orbit, scroll or pinch to zoom, hover or tap for details, click a city to open it.
-  It is live like the map, loads only when chosen, and runs offline (three.js is vendored in
+- **3D world** (switch on the World page): a globe you use like Google Maps. One continent per family
+  (Revenue the largest; Essentials; Claude and Gemini one-city islands), cities as map pins. Drag to spin,
+  scroll or pinch to zoom toward the cursor, double-click to fly in, +/- and reset buttons, a search box
+  that flies to a city, and a card per city with "Open city". Zoom in close and the city appears on the
+  surface: its platform, a building per department (taller = more agents), the college dome and
+  professors, the KPI beacon (green on target, red below), agents coloured by state (working agents walk),
+  and Security's jail. Live like the map; loads only when chosen; runs offline (three.js is vendored in
   `public/vendor/three`).
 - **Live**: every department agent's current status and activity across the cities you can see, filtered by
   city and status, working agents first.

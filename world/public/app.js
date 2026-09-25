@@ -423,9 +423,9 @@ function mapView(ix) {
       ? h('section', { class: 'section' },
           w3dContainer,
           h('div', { class: 'legend' },
-            h('span', {}, 'Drag to orbit, scroll or pinch to zoom, click a city to open it.'),
+            h('span', {}, 'Drag to spin the globe, scroll or pinch to zoom, double-click to fly in, click a pin for its card. Zoom in close to see a city.'),
             STATES.map((st, i) => h('span', {}, h('span', { class: `swatch st-${i}`, 'aria-hidden': 'true' }), cap(st))),
-            h('span', {}, 'Beacon: KPI vs target (green on target, red below) · buildings: departments, taller = more agents · dome: the college')))
+            h('span', {}, 'Up close: beacon = KPI vs target (green on target, red below) · buildings = departments, taller = more agents · dome = the college')))
       : h('div', { class: 'map' }, homes),
   ];
 }
