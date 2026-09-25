@@ -46,6 +46,7 @@ const key = (name: string) => name.trim().toLowerCase();
 export function takenNames(state: WorldState): Set<string> {
   const taken = new Set<string>(state.retiredNames);
   for (const a of state.agents.values()) taken.add(key(a.name));
+  for (const p of state.professors.values()) taken.add(key(p.name));
   for (const c of state.cities.values()) taken.add(key(c.mayorName));
   for (const n of RESERVED_NAMES) taken.add(key(n));
   return taken;

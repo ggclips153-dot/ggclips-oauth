@@ -63,13 +63,27 @@ export class TestWorld {
     return id;
   }
 
-  /** 'probationer' = graduation, appointed by the Mayor alone: student -> intern (shadow) -> graduated. */
+  /** A professor for the department (created once, name generated). */
+  professor(city: string, departmentId: string): string {
+    const existing = [...this.state.professors.values()].find((p) => p.departmentId === departmentId);
+    if (existing) return existing.id;
+    const i = this.intent('create_professor', city, { persona, domainFocus: 'teaching', departmentId });
+    return this.fact(mayorOf(city), { type: 'professor.enrolled', city, payload: i.payload, authorizedBy: i.seq }).subject!;
+  }
+
+  exam(city: string, agentId: string, result: 'pass' | 'fail' = 'pass') {
+    const professorId = this.professor(city, this.state.agents.get(agentId)!.departmentId!);
+    return this.fact(mayorOf(city), { type: 'exam.graded', city, subject: agentId, payload: { professorId, result } });
+  }
+
+  /** 'probationer' = graduation, appointed by the Mayor alone: intern (shadow) + passed exam -> graduated. */
   promote(city: string, agentId: string, to: 'probationer' | 'active' | 'senior' | 'dept-lead') {
     if (to === 'probationer') {
       const mayor = mayorOf(city);
       if (!this.state.agents.get(agentId)!.badges.includes('intern')) {
         this.fact(mayor, { type: 'agent.interned', city, subject: agentId, payload: {} });
       }
+      this.exam(city, agentId);
       return this.fact(mayor, { type: 'agent.graduated', city, subject: agentId, payload: {} });
     }
     const i = this.intent('promote_agent', city, { agentId, to });

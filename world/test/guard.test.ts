@@ -149,6 +149,11 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     // Neither Marc nor the DM can appoint it; nor can another city's Mayor.
     assert.throws(() => w.ledger.append(owner, { type: 'agent.graduated', city, subject: id, payload: {} }), /may not write/);
     assert.throws(() => w.ledger.append(mayorOf('elsewhere'), { type: 'agent.graduated', city, subject: id, payload: {} }), /outside .* write scope/);
+    // A professor must judge it fit first.
+    assert.throws(() => w.fact(mayor, { type: 'agent.graduated', city, subject: id, payload: {} }), /passed exam/);
+    w.exam(city, id, 'fail');
+    assert.throws(() => w.fact(mayor, { type: 'agent.graduated', city, subject: id, payload: {} }), /passed exam/);
+    w.exam(city, id, 'pass');
     w.fact(mayor, { type: 'agent.graduated', city, subject: id, payload: {} });
     assert.deepEqual([rec.state, rec.badges, rec.graduated], ['probationer', [], true]);
   });

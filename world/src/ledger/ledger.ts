@@ -120,10 +120,11 @@ export class Ledger {
     return event;
   }
 
-  /** A New Agent intent without a name gets a generated one, recorded in the intent itself. */
+  /** A New Agent / New Professor intent without a name gets a generated one, recorded in the intent itself. */
   private withGeneratedName(input: AppendInput): AppendInput {
     const payload = input.payload as Record<string, unknown> | undefined;
-    if (input.type !== 'intent.create_agent' || !payload || typeof payload !== 'object' || payload.name != null) return input;
+    const named = input.type === 'intent.create_agent' || input.type === 'intent.create_professor';
+    if (!named || !payload || typeof payload !== 'object' || payload.name != null) return input;
     return { ...input, payload: { ...payload, name: this.suggestNames(1)[0] } };
   }
 

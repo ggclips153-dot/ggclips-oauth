@@ -68,6 +68,38 @@ export interface Department {
   name: string;
   scope: string;
   botTokenRef: string | null;
+  /** Caps set by Marc (A9). null = no cap. */
+  maxGraduated: number | null;
+  maxShadows: number | null;
+  /** Approved basic tasks graduated agents may delegate to shadows. */
+  basicTasks: string[];
+}
+
+/** Custom-created department specialist (A10). Shares the never-reused AGT- ID space. */
+export interface Professor {
+  id: string;
+  name: string;
+  cityId: string;
+  departmentId: string;
+  persona: { voice: string; temperament: string };
+  domainFocus: string;
+  enrolledAt: string;
+  ledgerPointer: string;
+  memoryScope: string;
+  /** Temporarily filling a role; ends on its own at `until`. */
+  steppedIn: { role: string; seq: number; ts: string; until: string } | null;
+}
+
+export interface Delegation {
+  seq: number;
+  ts: string;
+  cityId: string;
+  departmentId: string;
+  fromAgentId: string;
+  toAgentId: string;
+  task: string;
+  details: string | null;
+  returned: { seq: number; ts: string; outcome: string; resultRef: string | null } | null;
 }
 
 export interface LifecycleEntry {
@@ -109,6 +141,8 @@ export interface Agent {
   jail: Jail | null;
   /** Security City agents only: the city it is deployed to watch. */
   deployedTo: string | null;
+  /** Latest exam from a professor. A pass is required to graduate; reset on each return to school. */
+  lastExam: { seq: number; ts: string; professorId: string; result: 'pass' | 'fail' } | null;
 }
 
 export interface Jail {
@@ -149,6 +183,8 @@ export interface Constitution {
 
 const KPI_HISTORY = 52;
 
+const GRADUATED_STATES = new Set<AgentState>(['probationer', 'active', 'senior']);
+
 export const agentLedgerPointer = (id: string) => `agents/${id}/ledger/`;
 export const agentMemoryScope = (id: string) => `agents/${id}/memory/`;
 
@@ -161,6 +197,8 @@ export class WorldState {
   readonly districts = new Map<string, District>();
   readonly departments = new Map<string, Department>();
   readonly agents = new Map<string, Agent>();
+  readonly professors = new Map<string, Professor>();
+  readonly delegations = new Map<number, Delegation>();
   readonly intents = new Map<number, LedgerEvent>();
   /** intent seq -> dm.routed seq */
   readonly routed = new Map<number, number>();
@@ -180,6 +218,16 @@ export class WorldState {
   /** Living agents placed in the department (students, interns and graduated; not deleted). */
   departmentAgents(departmentId: string): Agent[] {
     return [...this.agents.values()].filter((a) => !a.deleted && a.departmentId === departmentId);
+  }
+
+  /** Graduated ("fully working") agents in the department. The only ones that count toward dept-lead. */
+  graduatedIn(departmentId: string): Agent[] {
+    return this.departmentAgents(departmentId).filter((a) => GRADUATED_STATES.has(a.state));
+  }
+
+  /** Shadows (interns) in the department. */
+  shadowsIn(departmentId: string): Agent[] {
+    return this.departmentAgents(departmentId).filter((a) => a.badges.includes(INTERN_BADGE));
   }
 
   cityAgentCounts(cityId: string): Record<AgentState, number> {
@@ -236,8 +284,68 @@ export class WorldState {
           name: p.name,
           scope: p.scope,
           botTokenRef: p.botTokenRef ?? null,
+          maxGraduated: p.maxGraduated ?? null,
+          maxShadows: p.maxShadows ?? null,
+          basicTasks: p.basicTasks ?? [],
         });
         break;
+      case 'department.configured': {
+        const dept = this.departments.get(p.departmentId);
+        if (!dept) break;
+        dept.maxGraduated = p.maxGraduated ?? null;
+        dept.maxShadows = p.maxShadows ?? null;
+        dept.basicTasks = p.basicTasks ?? [];
+        break;
+      }
+      case 'professor.enrolled': {
+        const id = e.subject!;
+        this.professors.set(id, {
+          id,
+          name: p.name,
+          cityId: e.city,
+          departmentId: p.departmentId,
+          persona: p.persona,
+          domainFocus: p.domainFocus,
+          enrolledAt: e.ts,
+          ledgerPointer: agentLedgerPointer(id),
+          memoryScope: agentMemoryScope(id),
+          steppedIn: null,
+        });
+        break;
+      }
+      case 'professor.stepped_in': {
+        const prof = this.professors.get(p.professorId);
+        if (prof) {
+          const until = new Date(Date.parse(e.ts) + p.hours * 3_600_000).toISOString();
+          prof.steppedIn = { role: p.role, seq: e.seq, ts: e.ts, until };
+        }
+        break;
+      }
+      case 'exam.graded':
+        if (!agent) break;
+        agent.lastExam = { seq: e.seq, ts: e.ts, professorId: p.professorId, result: p.result };
+        mark('school', `exam ${p.result}`);
+        break;
+      case 'task.delegated': {
+        const to = agent!;
+        this.delegations.set(e.seq, {
+          seq: e.seq,
+          ts: e.ts,
+          cityId: e.city,
+          departmentId: to.departmentId!,
+          fromAgentId: p.fromAgentId,
+          toAgentId: to.id,
+          task: p.task,
+          details: p.details ?? null,
+          returned: null,
+        });
+        break;
+      }
+      case 'task.returned': {
+        const del = this.delegations.get(p.delegationSeq);
+        if (del) del.returned = { seq: e.seq, ts: e.ts, outcome: p.outcome, resultRef: p.resultRef ?? null };
+        break;
+      }
       case 'agent.enrolled': {
         const id = e.subject!;
         this.agents.set(id, {
@@ -262,6 +370,7 @@ export class WorldState {
           jailTerms: 0,
           jail: null,
           deployedTo: null,
+          lastExam: null,
         });
         break;
       }
@@ -279,6 +388,7 @@ export class WorldState {
       case 'agent.graduated':
         if (!agent) break;
         agent.badges = agent.badges.filter((b) => b !== INTERN_BADGE);
+        agent.lastExam = null;
         agent.state = 'probationer';
         agent.graduated = true;
         mark('graduation');
@@ -304,6 +414,7 @@ export class WorldState {
         agent.strikes += 1;
         agent.state = 'student';
         agent.badges = agent.badges.filter((b) => b !== DEPT_LEAD_BADGE);
+        agent.lastExam = null;
         mark('school-return', `strike ${agent.strikes}`);
         break;
       case 'agent.third_strike':

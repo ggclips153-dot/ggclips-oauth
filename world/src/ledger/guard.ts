@@ -107,6 +107,8 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
 /** A jailed agent does no work: it cannot climb, move, or be measured while inside. */
 const BLOCKED_IN_JAIL = new Set([
   'security.task_strike',
+  'task.delegated',
+  'exam.graded',
   'agent.interned',
   'agent.graduated',
   'agent.promoted',
@@ -139,6 +141,26 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (a.deleted) conflict(`agent ${a.id} is deleted; its ID is retired`);
     return a;
   };
+  const checkSettings = () => {
+    const tasks = p.basicTasks;
+    if (tasks === undefined) return;
+    if (!Array.isArray(tasks) || tasks.length > 50) invalid('basicTasks must be a list (max 50)');
+    for (const t of tasks) {
+      if (typeof t !== 'string' || !t.trim() || t.length > 200) invalid('each basic task must be text (max 200 characters)');
+    }
+    if (new Set(tasks).size !== tasks.length) invalid('basicTasks has duplicates');
+  };
+  const underCap = (deptId: string, kind: 'graduated' | 'shadows') => {
+    const dept = state.departments.get(deptId)!;
+    const cap = kind === 'graduated' ? dept.maxGraduated : dept.maxShadows;
+    const count = (kind === 'graduated' ? state.graduatedIn(deptId) : state.shadowsIn(deptId)).length;
+    if (cap !== null && count >= cap) conflict(`department ${deptId} is at its ${kind} cap (${cap})`);
+  };
+  const professorIn = (id: unknown, city: string) => {
+    const prof = state.professors.get(String(id)) ?? notFound(`unknown professor: ${id}`);
+    if (prof.cityId !== city) forbid(`professor ${prof.id} is not in ${city}`);
+    return prof;
+  };
   const missed = () => {
     if (!(p.value < p.target)) invalid('a strike requires a KPI miss (value < target)');
   };
@@ -162,7 +184,16 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       }
       break;
     }
+    case 'intent.configure_department':
+      departmentIn(p.departmentId, d.city);
+      checkSettings();
+      break;
+    case 'intent.create_professor':
+      departmentIn(p.departmentId, d.city);
+      if (state.isNameRetired(p.name)) conflict(`name "${p.name}" belonged to a deleted agent and is retired forever`);
+      break;
     case 'intent.create_department': {
+      checkSettings();
       const dist = state.districts.get(String(p.districtId)) ?? notFound(`unknown district: ${p.districtId}`);
       if (dist.cityId !== d.city) forbid(`district ${dist.id} is not in ${d.city}`);
       break;
@@ -220,9 +251,48 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       }
       break;
     case 'department.created': {
-      match(['districtId', 'name', 'scope', 'botTokenRef']);
+      match(['districtId', 'name', 'scope', 'botTokenRef', 'maxGraduated', 'maxShadows', 'basicTasks']);
       const dist = state.districts.get(String(p.districtId)) ?? notFound(`unknown district: ${p.districtId}`);
       if (dist.cityId !== d.city) forbid(`district ${dist.id} is not in ${d.city}`);
+      break;
+    }
+
+    case 'department.configured':
+      match(['departmentId', 'maxGraduated', 'maxShadows', 'basicTasks']);
+      departmentIn(p.departmentId, d.city);
+      break;
+
+    // ---- Mayor: professors, exams, delegation ----
+    case 'professor.enrolled':
+      match(['name', 'persona', 'domainFocus', 'departmentId']);
+      departmentIn(p.departmentId, d.city);
+      if (state.isNameRetired(p.name)) conflict(`name "${p.name}" belonged to a deleted agent and is retired forever`);
+      break;
+    case 'professor.stepped_in':
+      professorIn(p.professorId, d.city);
+      break;
+    case 'exam.graded': {
+      if (agent!.state !== 'student') conflict(`only a student sits an exam (agent is ${agent!.state})`);
+      const prof = professorIn(p.professorId, d.city);
+      if (prof.departmentId !== agent!.departmentId) forbid(`professor ${prof.id} does not teach ${agent!.departmentId}`);
+      break;
+    }
+    case 'task.delegated': {
+      if (!agent!.badges.includes(INTERN_BADGE)) conflict(`agent ${agent!.id} is not a shadow; only shadows take delegated tasks`);
+      const from = state.agents.get(String(p.fromAgentId)) ?? notFound(`unknown agent: ${p.fromAgentId}`);
+      if (from.deleted || from.cityId !== d.city || from.departmentId !== agent!.departmentId) {
+        forbid(`only a graduated agent in ${agent!.departmentId} may delegate to its shadows`);
+      }
+      if (!['probationer', 'active', 'senior'].includes(from.state)) forbid(`agent ${from.id} is not graduated (${from.state})`);
+      if (isJailed(from, now)) conflict(`agent ${from.id} is in jail`);
+      const dept = state.departments.get(agent!.departmentId!)!;
+      if (!dept.basicTasks.includes(String(p.task))) forbid(`"${p.task}" is not on ${dept.id}'s approved basic-task list`);
+      break;
+    }
+    case 'task.returned': {
+      const del = state.delegations.get(p.delegationSeq) ?? notFound(`delegation #${p.delegationSeq} not found`);
+      if (del.toAgentId !== agent!.id) forbid(`delegation #${del.seq} was not given to ${agent!.id}`);
+      if (del.returned) conflict(`delegation #${del.seq} was already returned`);
       break;
     }
 
@@ -246,11 +316,14 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'agent.interned':
       if (agent!.state !== 'student') conflict(`only a student becomes an intern (agent is ${agent!.state})`);
       if (agent!.badges.includes(INTERN_BADGE)) conflict(`agent ${agent!.id} is already an intern`);
+      underCap(agent!.departmentId!, 'shadows');
       break;
     case 'agent.graduated':
       if (agent!.state !== 'student' || !agent!.badges.includes(INTERN_BADGE)) {
         conflict(`only an intern (shadow) graduates (agent is ${agent!.state}${agent!.badges.includes(INTERN_BADGE) ? ', intern' : ''})`);
       }
+      if (agent!.lastExam?.result !== 'pass') conflict(`agent ${agent!.id} needs a passed exam from a professor to graduate`);
+      underCap(agent!.departmentId!, 'graduated');
       break;
     case 'agent.promoted': {
       intentAgent();
@@ -263,8 +336,8 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       intentAgent();
       if (ip.to !== DEPT_LEAD_BADGE) forbid(`intent #${intent!.seq} promotes to ${ip.to}, not ${DEPT_LEAD_BADGE}`);
       if (agent!.state !== 'senior') conflict(`${DEPT_LEAD_BADGE} requires senior (agent is ${agent!.state})`);
-      const members = state.departmentAgents(agent!.departmentId!);
-      if (members.length < DEPT_LEAD_MIN_AGENTS) conflict(`${DEPT_LEAD_BADGE} only when a department has ${DEPT_LEAD_MIN_AGENTS}+ agents`);
+      const members = state.graduatedIn(agent!.departmentId!);
+      if (members.length < DEPT_LEAD_MIN_AGENTS) conflict(`${DEPT_LEAD_BADGE} only when a department has ${DEPT_LEAD_MIN_AGENTS}+ graduated agents`);
       if (members.some((a) => a.badges.includes(DEPT_LEAD_BADGE))) conflict(`department already has a ${DEPT_LEAD_BADGE}`);
       break;
     }
@@ -274,6 +347,8 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       if (!agent!.departmentId) conflict(`agent ${agent!.id} is not placed yet`);
       if (agent!.departmentId === p.toDepartmentId) conflict(`agent ${agent!.id} is already in ${p.toDepartmentId}`);
       departmentIn(p.toDepartmentId, d.city);
+      if (['probationer', 'active', 'senior'].includes(agent!.state)) underCap(p.toDepartmentId, 'graduated');
+      if (agent!.badges.includes(INTERN_BADGE)) underCap(p.toDepartmentId, 'shadows');
       break;
     case 'agent.deployed':
       intentAgent();

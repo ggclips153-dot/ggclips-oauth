@@ -42,12 +42,28 @@ const agentFields: Schema = {
   departmentId: { t: 'str', max: 20 },
 };
 
+/** Optional department settings (A9). Absent cap = no cap. */
+const departmentSettings: Schema = {
+  maxGraduated: { t: 'int', min: 0, max: 10000, opt: true },
+  maxShadows: { t: 'int', min: 0, max: 10000, opt: true },
+  // Approved "basic tasks" graduated agents may hand to the department's shadows.
+  basicTasks: { t: 'json', maxBytes: 12000, opt: true },
+};
+
 const departmentFields: Schema = {
   districtId: { t: 'str', max: 20 },
   name: { t: 'str', max: 120 },
   scope: { t: 'str', max: 2000 },
   // Name of the stored secret, never the token itself.
   botTokenRef: { t: 'str', max: 120, opt: true },
+  ...departmentSettings,
+};
+
+const professorFields: Schema = {
+  name: { t: 'str', max: 80 },
+  persona: { t: 'obj', fields: persona },
+  domainFocus: { t: 'str', max: 500 },
+  departmentId: { t: 'str', max: 20 },
 };
 
 const strikeFields: Schema = {
@@ -81,6 +97,20 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { name: { t: 'str', max: 120 }, supervisor: { t: 'str', max: 120 } },
   },
   'intent.create_department': { kind: 'intent', writers: OWNER, scope: 'city', schema: departmentFields },
+  // Replaces the department's caps and basic-task list as a whole.
+  'intent.configure_department': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { departmentId: { t: 'str', max: 20 }, ...departmentSettings },
+  },
+  // Leave `name` out and the ledger generates one.
+  'intent.create_professor': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { ...professorFields, name: { t: 'str', max: 80, opt: true } },
+  },
   // Leave `name` out and the ledger generates one (see src/domain/names.ts).
   'intent.create_agent': {
     kind: 'intent',
@@ -199,6 +229,72 @@ export const CATALOG: Record<string, EventSpec> = {
     authorizedBy: ['intent.create_department'],
     allocates: 'DPT',
   },
+  'department.configured': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { departmentId: { t: 'str', max: 20 }, ...departmentSettings },
+    authorizedBy: ['intent.configure_department'],
+  },
+
+  // ---- Professors (A10): teach, examine, judge fitness to graduate; may step in for a while ----
+  'professor.enrolled': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: professorFields,
+    authorizedBy: ['intent.create_professor'],
+    allocates: 'AGT',
+  },
+  'exam.graded': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      professorId: { t: 'str', max: 20 },
+      result: { t: 'str', oneOf: ['pass', 'fail'] },
+      notes: { t: 'str', max: 4000, opt: true },
+      examRef: { t: 'str', max: 300, opt: true },
+    },
+    subject: 'agent',
+  },
+  'professor.stepped_in': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      professorId: { t: 'str', max: 20 },
+      role: { t: 'str', max: 300 },
+      hours: { t: 'int', min: 1, max: 720 },
+    },
+  },
+
+  // ---- Delegation (A9, option B): a logged, narrow exception to "no agent instructs another".
+  // A graduated agent hands an approved basic task to a shadow in its own department. The Mayor
+  // only RECORDS it; the shadow's output comes back as data for the graduated agent to check.
+  'task.delegated': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      fromAgentId: { t: 'str', max: 20 },
+      task: { t: 'str', max: 200 },
+      details: { t: 'str', max: 2000, opt: true },
+    },
+    subject: 'agent',
+  },
+  'task.returned': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      delegationSeq: { t: 'int', min: 1 },
+      outcome: { t: 'str', oneOf: ['done', 'not_done'] },
+      resultRef: { t: 'str', max: 300, opt: true },
+    },
+    subject: 'agent',
+  },
+
   'agent.enrolled': {
     kind: 'fact',
     writers: MAYOR,

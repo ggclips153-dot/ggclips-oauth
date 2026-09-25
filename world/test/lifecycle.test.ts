@@ -32,7 +32,8 @@ describe('identity: globally-unique, never-reused IDs', () => {
     assert.throws(() => w.agent(city, dept, 'Iris'), /retired forever/);
     assert.throws(() => w.agent(city, dept, 'iris'), /retired forever/);
     const replacement = w.agent(city, dept, 'Nova');
-    assert.equal(replacement, 'AGT-000002');
+    assert.notEqual(replacement, a);
+    assert.ok(Number(replacement.slice(4)) > Number(a.slice(4)), 'IDs only move forward');
   });
 
   it('cannot act on a deleted agent', () => {
@@ -57,8 +58,8 @@ describe('lifecycle: enrollment -> school -> graduation -> active -> promotion',
     w.promote(city, a, 'senior');
     const rec = w.state.agents.get(a)!;
     assert.equal(rec.state, 'senior');
-    assert.deepEqual(rec.lifecycle.map((l) => l.stage), ['enrollment', 'school', 'school', 'graduation', 'active', 'promotion']);
-    assert.equal(rec.lifecycle[2]!.detail, 'intern');
+    assert.deepEqual(rec.lifecycle.map((l) => l.stage), ['enrollment', 'school', 'school', 'school', 'graduation', 'active', 'promotion']);
+    assert.deepEqual(rec.lifecycle.slice(1, 4).map((l) => l.detail), [undefined, 'intern', 'exam pass']);
   });
 
   it('cannot skip rungs', () => {
@@ -68,13 +69,15 @@ describe('lifecycle: enrollment -> school -> graduation -> active -> promotion',
     assert.throws(() => w.promote(city, a, 'senior'), /requires active/);
   });
 
-  it('dept-lead only for a senior when the department has 3+ agents', () => {
+  it('dept-lead only for a senior when the department has 3+ GRADUATED agents', () => {
     const { w, city, dept } = setup();
     const a = w.agent(city, dept, 'Iris');
-    w.agent(city, dept, 'Juno');
+    const juno = w.agent(city, dept, 'Juno');
     for (const to of ['probationer', 'active', 'senior'] as const) w.promote(city, a, to);
-    assert.throws(() => w.promote(city, a, 'dept-lead'), /3\+ agents/);
-    w.agent(city, dept, 'Kai');
+    w.promote(city, juno, 'probationer');
+    w.agent(city, dept, 'Kai'); // a student: does not count
+    assert.throws(() => w.promote(city, a, 'dept-lead'), /3\+ graduated agents/);
+    w.promote(city, w.agent(city, dept, 'Lark'), 'probationer');
     w.promote(city, a, 'dept-lead');
     const rec = w.state.agents.get(a)!;
     assert.equal(rec.state, 'senior');
@@ -112,9 +115,9 @@ describe('lifecycle: 3 chances total', () => {
     assert.deepEqual(
       rec.lifecycle.map((l) => l.stage),
       [
-        'enrollment', 'school', 'school', 'graduation',
-        'school-return', 'school', 'graduation',
-        'school-return', 'school', 'graduation',
+        'enrollment', 'school', 'school', 'school', 'graduation',
+        'school-return', 'school', 'school', 'graduation',
+        'school-return', 'school', 'school', 'graduation',
         '3rd-strike', 'deletion',
       ],
     );

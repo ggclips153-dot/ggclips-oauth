@@ -39,6 +39,7 @@ const agentView = (a: Agent) => ({
   jailTerms: a.jailTerms,
   jail: a.jail,
   deployedTo: a.deployedTo,
+  lastExam: a.lastExam,
 });
 
 export function worldView(state: WorldState, profile: Profile, now: Date) {
@@ -58,7 +59,16 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
             ...d,
             departments: [...state.departments.values()]
               .filter((dp) => dp.districtId === d.id)
-              .map((dp) => ({ ...dp, agents: living.filter((a) => a.departmentId === dp.id).map(agentView) })),
+              .map((dp) => ({
+                ...dp,
+                graduatedCount: state.graduatedIn(dp.id).length,
+                shadowCount: state.shadowsIn(dp.id).length,
+                agents: living.filter((a) => a.departmentId === dp.id).map(agentView),
+                professors: [...state.professors.values()]
+                  .filter((pr) => pr.departmentId === dp.id)
+                  .map((pr) => ({ ...pr, steppedIn: pr.steppedIn && Date.parse(pr.steppedIn.until) > now.getTime() ? pr.steppedIn : null })),
+                openDelegations: [...state.delegations.values()].filter((dl) => dl.departmentId === dp.id && !dl.returned),
+              })),
           })),
         enrolled: living.filter((a) => a.state === 'enrolled').map(agentView),
         retired: agents

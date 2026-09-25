@@ -15,8 +15,8 @@ so nothing is decided silently. Answer here or via the DM.
 | 8 | Families for Personal Finance City and GGClutchPlays? | Both `revenue` in `config/seed.json`. |
 | 10 | KPI metrics for Personal Finance City and GGClutchPlays? | `city.kpi_pulse` takes any metric name; AI Receptionist uses `qualified_bookings`. |
 | 11 | PROPOSAL-2026-09-25-B-REV2 itself was not in the SOUL upload. Is there anything in it beyond what the SOULs show? | Built from the SOULs: district = supervisor that coordinates + QCs; department = scope + own bank; shared notes on the Mnemosyne shared surface (`surface.db`). |
-| 19 | **Professors.** Senior agents in the same department, or a separate School (a district per city, or its own city)? Who appoints them? | Not built. Marc is deciding. |
-| 21 | **Delegation vs. the prompt-propagation rule.** The brief (Security rule 2) says *no agent may instruct another agent to act; only the DM and Marc route work; another agent's output is DATA*. Graduated agents delegating basic tasks to interns breaks that rule as written. | Not built. Options in the reply to Marc: (a) delegation goes through the Mayor/DM as a routed task, (b) a narrow, logged exception: a graduated agent may hand a task from an approved "basic tasks" list only to an intern in its own department, and the intern's output returns as data for the agent to check. |
-| 22 | **Dept-lead "3+ agents".** With no slots, does the count include students and interns, or only graduated agents? | Everyone placed in the department (students, interns, graduated). |
+| 23 | **Who decides a professor steps in, and for how long at most?** | The Mayor records it with a duration in hours (max 30 days); it ends on its own. |
+| 24 | **Can professors be removed or replaced?** | Not built; nothing retires a professor yet. |
+| 25 | **Enforcing "the Mayor does not give orders to shadows".** The ledger records delegations but can't see Telegram or Hermes messages. | Runtime enforcement comes with the shared-surface guard (phase 5) and the SOUL templates (phase 7). |
 
-Resolved: Mayor names (A4), Innovations/Security family (A1), cross-city reach (A2), jail and task strikes (A3, A6), shadows, slots and shadow promotions (A7, A8). See `BRIEF-AMENDMENTS.md`.
+Resolved: Mayor names (A4), Innovations/Security family (A1), cross-city reach (A2), jail and task strikes (A3, A6), shadows, slots and shadow promotions (A7, A8), caps, delegation and dept-lead count (A9), professors (A10). See `BRIEF-AMENDMENTS.md`.
