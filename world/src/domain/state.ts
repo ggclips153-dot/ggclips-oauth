@@ -377,6 +377,23 @@ export class WorldState {
           dean: { since: e.ts, graduates: [], reviews: [] },
         });
         break;
+      case 'dean.replaced': {
+        // The outgoing dean returns to teaching at the college; the professor takes office with a fresh scorecard.
+        const outgoing = this.deanOf(e.city);
+        if (outgoing) {
+          outgoing.role = 'professor';
+          outgoing.dean = null;
+          outgoing.teaching ??= { examsGiven: 0, examsPassed: 0, graduates: 0 };
+          outgoing.professorSince ??= e.ts;
+        }
+        const incoming = this.agents.get(p.professorId);
+        if (incoming) {
+          incoming.role = 'dean';
+          incoming.steppedIn = null;
+          incoming.dean = { since: e.ts, graduates: [], reviews: [] };
+        }
+        break;
+      }
       case 'dean.reviewed':
         this.agents.get(p.deanId)?.dean?.reviews.push({ seq: e.seq, ts: e.ts, rating: p.rating, notes: p.notes });
         break;

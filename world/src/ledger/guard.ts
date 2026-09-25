@@ -364,6 +364,12 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'dean.reviewed':
       deanIn(p.deanId, d.city);
       break;
+    case 'intent.replace_dean':
+    case 'dean.replaced':
+      if (d.type === 'dean.replaced') match(['professorId']);
+      // Only a professor of this college in good standing (not jailed; professorIn checks) can become dean.
+      professorIn(p.professorId, d.city);
+      break;
     case 'dean.reported': {
       const dean = deanIn(p.deanId, d.city);
       if (isJailed(dean, now)) conflict(`dean ${dean.id} is in jail`);

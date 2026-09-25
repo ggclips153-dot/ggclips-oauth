@@ -19,7 +19,7 @@ so nothing is decided silently. Answer here or via the DM.
 | 25 | **Enforcing "the Mayor does not give orders to shadows".** The ledger records delegations but can't see Telegram or Hermes messages. | Left to Hermes at runtime. |
 | 28 | **Maximum time a professor may step in.** | Up to 30 days per assignment, set by the Mayor. |
 | 31 | **Teaching-strike rules** (Marc's school system). | `professor.strike` takes the rule as text for now; the rule list plugs in when the spec arrives. |
-| 33 | **Can the Mayor's review of a dean have consequences** (strikes, replacement)? | Reviews are recorded (exceeds / meets / below) with no automatic consequence. |
-| 34 | **Replacing a dean.** Only one dean per college, and nothing removes one yet. | Not built. |
+| 33 | **Consequences of a dean's review.** Marc will decide after testing. | Reviews are recorded (exceeds / meets / below); no automatic consequence. |
+| 35 | **The outgoing dean** when replaced. | Returns to teaching as a professor at the same college. |
 
-Resolved: A1-A15, see `BRIEF-AMENDMENTS.md`.
+Resolved: A1-A16, see `BRIEF-AMENDMENTS.md`.

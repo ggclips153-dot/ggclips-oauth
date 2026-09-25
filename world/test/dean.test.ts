@@ -88,3 +88,40 @@ describe('dean reports -> Security -> Marc (A15)', () => {
     assert.throws(() => w.fact(mayor, { type: 'security.escalated', city, payload: { reportSeq: r.seq, summary: 's' } }), /only security-city escalates/);
   });
 });
+
+describe('replacing a dean (A16)', () => {
+  it('an outstanding professor becomes dean; the outgoing dean returns to teaching', () => {
+    const { w, city, dept, mayor } = setup();
+    const oldDean = appointDean(w, city);
+    const prof = w.professor(city, dept);
+    w.promote(city, w.agent(city, dept, 'Iris'), 'probationer'); // counted for the old dean
+
+    assert.throws(() => w.fact(mayor, { type: 'dean.replaced', city, payload: { professorId: prof } }), /must cite an owner intent/);
+    const i = w.intent('replace_dean', city, { professorId: prof });
+    w.fact(mayor, { type: 'dean.replaced', city, payload: { professorId: prof }, authorizedBy: i.seq });
+
+    const college = view(w, city).college;
+    assert.equal(college.dean!.id, prof);
+    assert.equal(college.dean!.scorecard.graduates, 0, 'fresh scorecard');
+    assert.equal(w.state.agents.get(prof)!.teaching!.graduates, 1, 'its teaching record is kept');
+    assert.ok(college.professors.some((p) => p.id === oldDean), 'old dean is a professor again');
+  });
+
+  it('only a professor of this college, not in jail, can be made dean', () => {
+    const { w, city, dept } = setup();
+    appointDean(w, city);
+    const student = w.agent(city, dept, 'Iris');
+    assert.throws(() => w.intent('replace_dean', city, { professorId: student }), /unknown professor/);
+    const other = w.city('Personal Finance City');
+    const foreign = w.professor(other, w.department(other, w.district(other)));
+    assert.throws(() => w.intent('replace_dean', city, { professorId: foreign }), /not in ai-receptionist-city/);
+  });
+
+  it('a college with no dean can take its first one from its professors', () => {
+    const { w, city, dept, mayor } = setup();
+    const prof = w.professor(city, dept);
+    const i = w.intent('replace_dean', city, { professorId: prof });
+    w.fact(mayor, { type: 'dean.replaced', city, payload: { professorId: prof }, authorizedBy: i.seq });
+    assert.equal(w.state.deanOf(city)!.id, prof);
+  });
+});

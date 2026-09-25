@@ -124,6 +124,13 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { ...agentFields, name: { t: 'str', max: 80, opt: true } },
   },
+  // Replace (or first appoint) the college's dean with an outstanding professor of that college.
+  'intent.replace_dean': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { professorId: { t: 'str', max: 20 } },
+  },
   'intent.create_professor': {
     kind: 'intent',
     writers: OWNER,
@@ -289,6 +296,13 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: agentFields,
     authorizedBy: ['intent.create_dean'],
     allocates: 'AGT',
+  },
+  'dean.replaced': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { professorId: { t: 'str', max: 20 } },
+    authorizedBy: ['intent.replace_dean'],
   },
   'dean.reviewed': {
     kind: 'fact',
