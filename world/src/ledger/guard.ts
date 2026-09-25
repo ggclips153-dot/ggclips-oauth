@@ -201,9 +201,23 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     const j = target.jail!;
     conflict(`agent ${target.id} is in jail (${j.status === 'serving' ? `term ${j.term} until ${j.until}` : 'awaiting deletion'})`);
   }
-  if (target?.role === 'professor' && AGENT_ONLY.has(d.type)) {
-    conflict(`${target.id} is a professor at the college; ${d.type} applies to department agents only`);
+  if (target && target.role !== 'agent' && AGENT_ONLY.has(d.type)) {
+    conflict(`${target.id} is a ${target.role} at the college; ${d.type} applies to department agents only`);
   }
+  /** A Security agent deployed to `city` (task strikes, teaching strikes). */
+  const deployedObserver = (id: unknown, city: string, subjectId: string) => {
+    const obs = state.agents.get(String(id)) ?? notFound(`unknown observer: ${id}`);
+    if (obs.cityId !== SECURITY_CITY_ID || obs.deleted || obs.role !== 'agent') forbid(`observer ${obs.id} is not a Security City agent`);
+    if (obs.id === subjectId) forbid('an agent cannot strike itself');
+    if (obs.deployedTo !== city) forbid(`observer ${obs.id} is not deployed to ${city}`);
+    if (isJailed(obs, now)) conflict(`observer ${obs.id} is in jail`);
+    return obs;
+  };
+  const deanIn = (id: unknown, city: string) => {
+    const dean = state.deanOf(city);
+    if (!dean || dean.id !== String(id)) notFound(`${id} is not the dean of ${city}`);
+    return dean!;
+  };
 
   switch (d.type) {
     // ---- intents: early checks so Marc sees mistakes before the DM routes them ----
@@ -334,10 +348,33 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     }
     case 'professor.strike': {
+      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} applies teaching strikes`);
       const prof = state.agents.get(String(p.professorId));
-      if (!prof || prof.role !== 'professor' || prof.deleted) notFound(`unknown professor: ${p.professorId}`);
-      if (prof!.cityId !== d.city) forbid(`professor ${prof!.id} is not in ${d.city}`);
-      if (prof!.strikes >= MAX_STRIKES) conflict(`professor ${prof!.id} already has ${MAX_STRIKES} teaching strikes and awaits deletion`);
+      if (!prof || prof.role !== 'professor' || prof.deleted) return notFound(`unknown professor: ${p.professorId}`);
+      deployedObserver(p.observedBy, prof.cityId, prof.id);
+      if (prof.strikes >= MAX_STRIKES) conflict(`professor ${prof.id} already has ${MAX_STRIKES} teaching strikes and awaits deletion`);
+      break;
+    }
+    case 'intent.create_dean':
+    case 'dean.appointed':
+      if (d.type === 'dean.appointed') match(['name', 'persona', 'domainFocus']);
+      if (state.deanOf(d.city)) conflict(`${d.city}'s college already has a dean`);
+      if (state.isNameRetired(p.name)) conflict(`name "${p.name}" belonged to a deleted agent and is retired forever`);
+      break;
+    case 'dean.reviewed':
+      deanIn(p.deanId, d.city);
+      break;
+    case 'dean.reported': {
+      const dean = deanIn(p.deanId, d.city);
+      if (isJailed(dean, now)) conflict(`dean ${dean.id} is in jail`);
+      const a = agentIn(p.agentId, d.city);
+      if (a.id === dean.id) forbid('a dean cannot report itself');
+      break;
+    }
+    case 'security.escalated': {
+      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} escalates reports to Marc`);
+      const report = state.deanReports.get(p.reportSeq) ?? notFound(`dean report #${p.reportSeq} not found`);
+      if (report.escalated) conflict(`dean report #${report.seq} was already escalated`);
       break;
     }
     case 'exam.graded': {
@@ -423,12 +460,10 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} records task strikes`);
       const a = state.agents.get(String(p.agentId)) ?? notFound(`unknown agent: ${p.agentId}`);
       if (a.deleted) conflict(`agent ${a.id} is deleted`);
-      if (a.role === 'agent' && a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet; it has no tasks`);
-      const obs = state.agents.get(String(p.observedBy)) ?? notFound(`unknown observer: ${p.observedBy}`);
-      if (obs.cityId !== SECURITY_CITY_ID || obs.deleted || obs.role !== 'agent') forbid(`observer ${obs.id} is not a Security City agent`);
-      if (obs.id === a.id) forbid('an agent cannot strike itself');
-      if (obs.deployedTo !== a.cityId) forbid(`observer ${obs.id} is not deployed to ${a.cityId}`);
-      if (isJailed(obs, now)) conflict(`observer ${obs.id} is in jail`);
+      // Professors take only teaching strikes (A15); the Mayor judges deans.
+      if (a.role !== 'agent') forbid(`${a.id} is a ${a.role}; Security applies task strikes to department agents only`);
+      if (a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet; it has no tasks`);
+      deployedObserver(p.observedBy, a.cityId, a.id);
       break;
     }
     case 'agent.school_returned':

@@ -7,7 +7,7 @@ dashboard UI (world map, city view, forms) builds on this in the next phases.
 ```
 WORLD (Marc) ── only DM, Bob and Essentials cities read across cities; nobody edits another
  └ CITY (Mayor + bot, FAMILY = revenue | claude | gemini | essentials)
-    ├ COLLEGE (creates beginner agents + professors, A11)
+    ├ COLLEGE (dean + professors; creates beginner agents, A11-A14)
     └ DISTRICT (supervisor)
        └ DEPARTMENT (the agents who specialise in it; optional caps, professors, A8-A10)
           └ AGENT (unique, never-reused ID)
@@ -45,7 +45,7 @@ No agent executes its own exit, move or promotion.
 | 3 chances: miss #1 → school, #2 → school, #3 → 3rd strike → deletion (with archive + lesson record refs) | guard rules |
 | Shadows: the Mayor appoints student → intern (shadow) → graduated, after a professor's passed exam; higher promotions need Marc's routed intent | guard rules |
 | Department caps on graduated agents and shadows; dept-lead needs 3+ graduated agents | guard rules |
-| College: agents and professors are created only at the college; a department takes an EXISTING agent of its city; seniors can retire into professors; professors step in only for their specialty, take teaching strikes (not KPI strikes) and keep a teaching record | guard rules, `docs/BRIEF-AMENDMENTS.md` |
+| College: agents and professors are created only at the college; a department takes an EXISTING agent of its city; seniors can retire into professors; professors step in only for their specialty, take only teaching strikes (from Security) and keep a teaching record; one dean per college, scored on its graduates and reviewed by the Mayor; dean reports go to Security, which escalates them to Marc | guard rules, `docs/BRIEF-AMENDMENTS.md` |
 | Delegation (option B): graduated agent → shadow in its own department, approved basic tasks only, every hand-off logged | `task.delegated`, `task.returned` |
 | Name generator: a New Agent intent with no name gets one generated and recorded in the intent | `src/domain/names.ts` |
 | Strict payloads: unknown fields rejected; bot tokens can never enter the ledger (only a `botTokenRef`) | `src/ledger/validate.ts` |
@@ -59,7 +59,7 @@ between the VPS and a local PC as-is: copy the folder plus `data/world.db` and `
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 69 tests
+npm test                    # 75 tests
 npm run profile -- add --id marc --role owner
 npm run profile -- add --id dm --role dm
 npm run profile -- add --id bob --role architect

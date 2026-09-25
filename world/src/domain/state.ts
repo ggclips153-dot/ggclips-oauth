@@ -112,9 +112,10 @@ export interface Agent {
   cityId: string;
   /**
    * `agent` = works in departments. `professor` = belongs to the city's college (A10, A11): teaches,
-   * examines, may step in. Professors follow the same strike and jail rules as everybody else.
+   * examines, and steps in only at its specialty department when needed. `dean` = runs the college's
+   * professors (A14); the Mayor judges it.
    */
-  role: 'agent' | 'professor';
+  role: 'agent' | 'professor' | 'dean';
   /** Placement card: current department (null at the college: enrolled, or a professor). */
   departmentId: string | null;
   /** Tier. */
@@ -151,6 +152,21 @@ export interface Agent {
   professorSince: string | null;
   /** Professors only: the teaching record the school system judges them on. */
   teaching: { examsGiven: number; examsPassed: number; graduates: number } | null;
+  /** Deans only: graduates of its college while in office (judged on how they perform), and the Mayor's reviews. */
+  dean: { since: string; graduates: string[]; reviews: { seq: number; ts: string; rating: string; notes: string }[] } | null;
+}
+
+/** A dean's report of work not being done, and Security's escalation of it to Marc. */
+export interface DeanReport {
+  seq: number;
+  ts: string;
+  cityId: string;
+  deanId: string;
+  agentId: string;
+  reason: string;
+  evidence: string;
+  evidenceRef: string | null;
+  escalated: { seq: number; ts: string; summary: string } | null;
 }
 
 export interface Jail {
@@ -207,6 +223,7 @@ export class WorldState {
   readonly agents = new Map<string, Agent>();
   readonly delegations = new Map<number, Delegation>();
   readonly roleRequests = new Map<number, RoleRequest>();
+  readonly deanReports = new Map<number, DeanReport>();
   readonly intents = new Map<number, LedgerEvent>();
   /** intent seq -> dm.routed seq */
   readonly routed = new Map<number, number>();
@@ -226,6 +243,11 @@ export class WorldState {
   /** Living professors (the college). */
   professors(cityId?: string): Agent[] {
     return [...this.agents.values()].filter((a) => a.role === 'professor' && !a.deleted && (!cityId || a.cityId === cityId));
+  }
+
+  /** The college's living dean, if any. */
+  deanOf(cityId: string): Agent | undefined {
+    return [...this.agents.values()].find((a) => a.role === 'dean' && !a.deleted && a.cityId === cityId);
   }
 
   /** Living agents placed in the department (students, interns and graduated; not deleted). */
@@ -347,6 +369,35 @@ export class WorldState {
         if (req) req.filledBy = { professorId: p.professorId, seq: e.seq };
         break;
       }
+      case 'dean.appointed':
+        this.agents.set(e.subject!, {
+          ...newAgent(e, p),
+          role: 'dean',
+          state: 'senior',
+          dean: { since: e.ts, graduates: [], reviews: [] },
+        });
+        break;
+      case 'dean.reviewed':
+        this.agents.get(p.deanId)?.dean?.reviews.push({ seq: e.seq, ts: e.ts, rating: p.rating, notes: p.notes });
+        break;
+      case 'dean.reported':
+        this.deanReports.set(e.seq, {
+          seq: e.seq,
+          ts: e.ts,
+          cityId: e.city,
+          deanId: p.deanId,
+          agentId: p.agentId,
+          reason: p.reason,
+          evidence: p.evidence,
+          evidenceRef: p.evidenceRef ?? null,
+          escalated: null,
+        });
+        break;
+      case 'security.escalated': {
+        const report = this.deanReports.get(p.reportSeq);
+        if (report) report.escalated = { seq: e.seq, ts: e.ts, summary: p.summary };
+        break;
+      }
       case 'professor.strike': {
         const prof = this.agents.get(p.professorId);
         if (!prof) break;
@@ -409,6 +460,7 @@ export class WorldState {
         // Credit the professor whose exam cleared this graduation.
         const examiner = agent.lastExam ? this.agents.get(agent.lastExam.professorId) : undefined;
         if (examiner?.teaching) examiner.teaching.graduates += 1;
+        this.deanOf(agent.cityId)?.dean?.graduates.push(agent.id);
         agent.lastExam = null;
         agent.state = 'probationer';
         agent.graduated = true;
@@ -559,6 +611,7 @@ function newAgent(e: LedgerEvent, p: Record<string, any>): Agent {
     steppedIn: null,
     professorSince: null,
     teaching: null,
+    dean: null,
   };
 }
 

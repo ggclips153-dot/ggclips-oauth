@@ -117,6 +117,13 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { professorId: { t: 'str', max: 20 }, departmentId: { t: 'str', max: 20 } },
   },
+  // Marc creates the college's dean. Leave `name` out and the ledger generates one.
+  'intent.create_dean': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { ...agentFields, name: { t: 'str', max: 80, opt: true } },
+  },
   'intent.create_professor': {
     kind: 'intent',
     writers: OWNER,
@@ -258,18 +265,60 @@ export const CATALOG: Record<string, EventSpec> = {
     authorizedBy: ['intent.create_professor'],
     allocates: 'AGT',
   },
-  // A professor breaks one of the college's teaching rules (A13). Professors don't take KPI strikes;
-  // this is their strike. 3 of them = held awaiting deletion, like everybody else.
+  // Security applies TEACHING strikes to professors (A13, A15): a deployed Security agent observed a
+  // professor (any city) breaking a college teaching rule. Recorded under Security's own tag.
+  // Professors take no KPI or task strikes. 3 teaching strikes = held awaiting deletion.
   'professor.strike': {
     kind: 'fact',
     writers: MAYOR,
     scope: 'city',
     schema: {
       professorId: { t: 'str', max: 20 },
+      observedBy: { t: 'str', max: 20 },
       rule: { t: 'str', max: 300 },
       evidence: { t: 'str', max: 4000 },
       evidenceRef: { t: 'str', max: 300, opt: true },
     },
+  },
+
+  // ---- The Dean (A14): one per college, manages the professors; the Mayor judges it ----
+  'dean.appointed': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: agentFields,
+    authorizedBy: ['intent.create_dean'],
+    allocates: 'AGT',
+  },
+  'dean.reviewed': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      deanId: { t: 'str', max: 20 },
+      rating: { t: 'str', oneOf: ['exceeds', 'meets', 'below'] },
+      notes: { t: 'str', max: 4000 },
+    },
+  },
+  // The dean saw work not being done and reports the agent to Security (recorded by its Mayor).
+  'dean.reported': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      deanId: { t: 'str', max: 20 },
+      agentId: { t: 'str', max: 20 },
+      reason: { t: 'str', max: 500 },
+      evidence: { t: 'str', max: 4000 },
+      evidenceRef: { t: 'str', max: 300, opt: true },
+    },
+  },
+  // Security brings a dean's report up to Marc. Marc decides what happens next.
+  'security.escalated': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { reportSeq: { t: 'int', min: 1 }, summary: { t: 'str', max: 4000 } },
   },
   'exam.graded': {
     kind: 'fact',

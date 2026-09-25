@@ -15,12 +15,11 @@ so nothing is decided silently. Answer here or via the DM.
 | 8 | Families for Personal Finance City and GGClutchPlays? | Both `revenue` in `config/seed.json`. |
 | 10 | KPI metrics for Personal Finance City and GGClutchPlays? | `city.kpi_pulse` takes any metric name; AI Receptionist uses `qualified_bookings`. |
 | 11 | PROPOSAL-2026-09-25-B-REV2 itself was not in the SOUL upload. Is there anything in it beyond what the SOULs show? | Built from the SOULs: district = supervisor that coordinates + QCs; department = scope + own bank; shared notes on the Mnemosyne shared surface (`surface.db`). |
-| 24 | **Can professors be removed or replaced** other than through strikes? | Only through strikes and deletion today. |
-| 25 | **Enforcing "the Mayor does not give orders to shadows".** The ledger records delegations but can't see Telegram or Hermes messages. | Runtime enforcement comes with the shared-surface guard (phase 5) and the SOUL templates (phase 7). |
+| 24 | **Can professors be removed or replaced** other than through teaching strikes? | Only through teaching strikes and deletion today. |
+| 25 | **Enforcing "the Mayor does not give orders to shadows".** The ledger records delegations but can't see Telegram or Hermes messages. | Left to Hermes at runtime. |
 | 28 | **Maximum time a professor may step in.** | Up to 30 days per assignment, set by the Mayor. |
-| 29 | **The Dean** (one per college, manages the professors): is the dean a professor promoted into it, or created new at the college? Who appoints the dean: Marc via the DM, or the Mayor? | Not built. |
-| 30 | **What the Dean decides** that the Mayor decides today: sending a professor to fill a role? recording teaching strikes? specialising or transferring professors? And who judges the dean? | Not built. The Mayor records these today. |
-| 31 | **Teaching-strike rules.** Marc is writing the full school system. | `professor.strike` takes the rule as text for now; the rule list plugs in when the spec arrives. |
-| 32 | **Do Security's task strikes still apply to professors**, or only teaching strikes? | Both apply today. |
+| 31 | **Teaching-strike rules** (Marc's school system). | `professor.strike` takes the rule as text for now; the rule list plugs in when the spec arrives. |
+| 33 | **Can the Mayor's review of a dean have consequences** (strikes, replacement)? | Reviews are recorded (exceeds / meets / below) with no automatic consequence. |
+| 34 | **Replacing a dean.** Only one dean per college, and nothing removes one yet. | Not built. |
 
-Resolved: Mayor names (A4), Innovations/Security family (A1), cross-city reach (A2), jail and task strikes (A3, A6), shadows, slots and shadow promotions (A7, A8), caps, delegation and dept-lead count (A9), professors, the college and professor transfers (A10-A13). See `BRIEF-AMENDMENTS.md`.
+Resolved: A1-A15, see `BRIEF-AMENDMENTS.md`.

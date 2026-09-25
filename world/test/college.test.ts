@@ -105,54 +105,65 @@ describe('professors at the college (A10, A11)', () => {
   });
 });
 
-describe('professors follow the same strike rules as everybody else', () => {
-  it('task strikes jail a professor on the same ladder; a jailed professor cannot teach or step in', () => {
-    const w = new TestWorld();
-    const city = w.city();
-    const dept = w.department(city, w.district(city));
-    const prof = w.professor(city, dept);
-    const security = w.city('Security City', 'essentials');
-    const guard = w.agent(security, w.department(security, w.district(security)), 'Sentinel');
-    w.promote(security, guard, 'probationer');
-    const d = w.intent('deploy_agent', security, { agentId: guard, toCity: city });
-    w.fact(mayorOf(security), { type: 'agent.deployed', city: security, subject: guard, payload: { toCity: city }, authorizedBy: d.seq });
+/** A Security agent deployed to watch `city`. */
+const deployGuard = (w: TestWorld, city: string) => {
+  const security = w.state.cities.has('security-city') ? 'security-city' : w.city('Security City', 'essentials');
+  const guard = w.agent(security, w.department(security, w.district(security)), `Sentinel ${w.state.lastSeq}`);
+  w.promote(security, guard, 'probationer');
+  const d = w.intent('deploy_agent', security, { agentId: guard, toCity: city });
+  w.fact(mayorOf(security), { type: 'agent.deployed', city: security, subject: guard, payload: { toCity: city }, authorizedBy: d.seq });
+  return { security, guard };
+};
 
-    for (let i = 0; i < 3; i++) {
-      w.fact(mayorOf(security), { type: 'security.task_strike', city: security, payload: { agentId: prof, observedBy: guard, task: 'grade exams', evidence: 'none graded' } });
-    }
+describe('professor strikes (A13, A15): Security applies TEACHING strikes only', () => {
+  it('Security cannot give a professor a task strike, and a Mayor cannot miss-KPI one', () => {
+    const { w, city, dept } = setup();
+    const prof = w.professor(city, dept);
+    const { security, guard } = deployGuard(w, city);
+    assert.throws(
+      () => w.fact(mayorOf(security), { type: 'security.task_strike', city: security, payload: { agentId: prof, observedBy: guard, task: 't', evidence: 'e' } }),
+      /department agents only/,
+    );
+    assert.throws(() => w.miss(city, prof), /professors take teaching strikes/);
+  });
+
+  it('3 teaching strikes from a deployed Security agent = held awaiting deletion; a jailed professor cannot teach or step in', () => {
+    const { w, city, dept } = setup();
+    const prof = w.professor(city, dept);
+    const { security, guard } = deployGuard(w, city);
+    const strike = (by: string = security) => () =>
+      w.fact(mayorOf(by), { type: 'professor.strike', city: by, payload: { professorId: prof, observedBy: guard, rule: 'exam not graded within 48h', evidence: 'exam #12 open 3 days' } });
+
+    assert.throws(strike(city), /only security-city applies teaching strikes/);
+    strike()();
+    strike()();
     const p = w.state.agents.get(prof)!;
+    assert.deepEqual([p.role, p.strikes, p.jail], ['professor', 2, null], 'keeps its post until the 3rd');
+    strike()();
+    assert.deepEqual([p.jail!.status, p.jail!.cause], ['awaiting_deletion', 'teaching_strikes']);
     assert.ok(isJailed(p, w.time));
-    assert.equal(p.jail!.term, 1);
+    assert.throws(strike(), /awaits deletion/);
+
     const student = w.agent(city, dept, 'Iris');
     assert.throws(() => w.fact(mayorOf(city), { type: 'exam.graded', city, subject: student, payload: { professorId: prof, result: 'pass' } }), /in jail/);
     assert.throws(
       () => w.fact(mayorOf(city), { type: 'professor.stepped_in', city, payload: { professorId: prof, departmentId: dept, role: 'r', hours: 1 } }),
       /in jail/,
     );
-    w.advanceHours(6);
-    assert.ok(!isJailed(p, w.time));
+    const del = w.intent('delete_agent', city, { agentId: prof });
+    w.fact(mayorOf(city), { type: 'agent.deleted', city, subject: prof, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
+    assert.equal(college(w, city).professors.length, 0);
   });
 
-  it('professors take TEACHING strikes, not KPI strikes: 3 = held awaiting deletion (A13)', () => {
-    const { w, city, dept, mayor } = setup();
+  it('the observer must be deployed to the professor\'s city', () => {
+    const { w, city, dept } = setup();
     const prof = w.professor(city, dept);
-    assert.throws(() => w.miss(city, prof), /professors take teaching strikes/);
-    const strike = () =>
-      w.fact(mayor, { type: 'professor.strike', city, payload: { professorId: prof, rule: 'exam not graded within 48h', evidence: 'exam #12 open 3 days' } });
-    strike();
-    strike();
-    const p = w.state.agents.get(prof)!;
-    assert.deepEqual([p.role, p.strikes, p.jail], ['professor', 2, null], 'keeps its post until the 3rd');
-    strike();
-    assert.deepEqual([p.jail!.status, p.jail!.cause], ['awaiting_deletion', 'teaching_strikes']);
-    assert.throws(strike, /awaits deletion/);
-    // Only a professor can take a teaching strike, and only in its own city.
-    const student = w.agent(city, dept, 'Iris');
-    assert.throws(() => w.fact(mayor, { type: 'professor.strike', city, payload: { professorId: student, rule: 'r', evidence: 'e' } }), /unknown professor/);
-
-    const del = w.intent('delete_agent', city, { agentId: prof });
-    w.fact(mayor, { type: 'agent.deleted', city, subject: prof, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
-    assert.equal(college(w, city).professors.length, 0);
+    const other = w.city('Personal Finance City');
+    const { security, guard } = deployGuard(w, other);
+    assert.throws(
+      () => w.fact(mayorOf(security), { type: 'professor.strike', city: security, payload: { professorId: prof, observedBy: guard, rule: 'r', evidence: 'e' } }),
+      /not deployed to ai-receptionist-city/,
+    );
   });
 
   it('keeps each professor\'s teaching record: exams given, passed, and students graduated under it', () => {
