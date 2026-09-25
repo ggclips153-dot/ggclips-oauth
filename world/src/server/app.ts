@@ -4,12 +4,13 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, resolve } from 'node:path';
 import type { Profiles } from '../auth/profiles.ts';
 import { LoginThrottle, SESSION_COOKIE, SESSION_TTL_MS, Sessions, readCookie } from '../auth/sessions.ts';
 import { Secrets } from '../auth/secrets.ts';
 import { Users } from '../auth/users.ts';
 import { SurfaceGuard, type SurfaceNote } from '../security/surfaceGuard.ts';
+import { buildId } from './build.ts';
 import { CONSTITUTION_DOC_REF, pointerLine, readConstitution } from '../domain/constitution.ts';
 import { readScope } from '../domain/view.ts';
 import { canRead, worldView } from '../domain/view.ts';
@@ -21,6 +22,7 @@ import type { Ledger } from '../ledger/ledger.ts';
 const MAX_BODY = 64 * 1024;
 const HEARTBEAT_MS = 25_000;
 const PUBLIC_DIR = new URL('../../public/', import.meta.url).pathname;
+const WORLD_DIR = resolve(import.meta.dirname, '../..');
 const STATIC_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -144,7 +146,8 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         return send(res, 404, { error: 'NOT_FOUND', message: 'no such page' });
       }
       if (req.method === 'GET' && url.pathname === '/api/health') {
-        return send(res, 200, { ok: true, lastSeq: ledger.state.lastSeq });
+        // Re-read each time, so a `git pull` shows up without restarting the server.
+        return send(res, 200, { ok: true, lastSeq: ledger.state.lastSeq, build: buildId(WORLD_DIR) });
       }
       if (req.method === 'POST' && url.pathname === '/api/login') {
         const ip = clientIp(req);

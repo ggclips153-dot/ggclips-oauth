@@ -38,6 +38,7 @@ let live = 'connecting';
 let stream = null;
 const feed = [];
 let refreshTimer = null;
+let build = null;
 
 const serverNow = () => Date.now() + clockSkew;
 const isOwner = () => me?.role === 'owner';
@@ -146,6 +147,10 @@ async function api(path, { method = 'GET', body } = {}) {
 
 // ---------- boot ----------
 async function boot() {
+  api('/api/health').then((hl) => {
+    build = hl.build;
+    render();
+  }).catch(() => {});
   me = (await api('/api/session')).profile;
   if (!me) return showLogin();
   await refresh();
@@ -412,7 +417,8 @@ function topbar() {
     h('span', { class: 'spacer' }),
     h('span', { class: `live ${live}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), live === 'on' ? 'Live' : 'Reconnecting…'),
     h('span', { class: 'user' }, `${me.label ?? me.id} · ${me.role === 'owner' ? 'Owner' : cap(me.role)}`),
-    h('button', { onclick: logout }, 'Sign out'));
+    h('button', { onclick: logout }, 'Sign out'),
+    build && h('span', { class: 'build muted small', title: 'Version of the world this server is running' }, `build ${build}`));
 }
 
 function render() {

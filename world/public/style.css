@@ -399,3 +399,4 @@ pre.pointer, pre.proposal-text { white-space: pre-wrap; word-break: break-word; 
 .stat .value { overflow-wrap: anywhere; }
 .constitution, .constitution .md { min-width: 0; overflow-wrap: anywhere; }
 .constitution .md pre { max-width: 100%; overflow-wrap: normal; }
+.topbar .build { white-space: nowrap; }

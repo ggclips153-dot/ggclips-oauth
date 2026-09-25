@@ -5,6 +5,7 @@ import { Secrets } from '../auth/secrets.ts';
 import { Users } from '../auth/users.ts';
 import { Ledger } from '../ledger/ledger.ts';
 import { createApp } from './app.ts';
+import { buildId } from './build.ts';
 import { attachDemoAutopilot } from './demoAutopilot.ts';
 import { attachDmWebhook } from './dmWebhook.ts';
 
@@ -45,4 +46,5 @@ createApp(ledger, profiles, {
   trustProxy: process.env.WORLD_TRUST_PROXY === '1',
 }).listen(port, host, () => {
   console.log(`World ledger: ${integrity.count} events verified. Listening on http://${host}:${port}`);
+  console.log(`Build ${buildId(root)} · serving ${root}`);
 });
