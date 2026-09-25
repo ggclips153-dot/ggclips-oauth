@@ -156,7 +156,13 @@ main.refreshing { opacity: 0.85; }
 .stat .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
 
 /* ---------- World map: family homes ---------- */
-.map { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 16px; align-items: start; }
+.map { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.home-revenue { grid-column: 1 / -1; }
+.home-essentials { grid-column: span 2; }
+@media (max-width: 900px) {
+  .map { grid-template-columns: 1fr; }
+  .home-essentials { grid-column: auto; }
+}
 .family { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; display: grid; gap: 12px; align-content: start; }
 .family-head { display: flex; align-items: center; gap: 10px; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }

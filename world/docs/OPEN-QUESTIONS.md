@@ -22,4 +22,4 @@ so nothing is decided silently. Answer here or via the DM.
 | 33 | **Consequences of a dean's review.** Marc will decide after testing. | Reviews are recorded (exceeds / meets / below); no automatic consequence. |
 | 35 | **The outgoing dean** when replaced. | Returns to teaching as a professor at the same college. |
 
-Resolved: A1-A16, see `BRIEF-AMENDMENTS.md`.
+Resolved: A1-A17, see `BRIEF-AMENDMENTS.md`.

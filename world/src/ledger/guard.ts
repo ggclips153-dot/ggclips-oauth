@@ -9,6 +9,7 @@ import {
   DEPT_LEAD_BADGE,
   DEPT_LEAD_MIN_AGENTS,
   INTERN_BADGE,
+  MAX_CITIES_PER_FAMILY,
   MAX_STRIKES,
   SECURITY_CITY_ID,
   WORLD_TAG,
@@ -189,6 +190,11 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
   };
   // KPI strikes apply to graduated department agents. Professors get teaching strikes instead (A13).
   const canMissKpi = (a: Agent) => a.role === 'agent' && GRADUATED.includes(a.state);
+  const familyHasRoom = () => {
+    const max = MAX_CITIES_PER_FAMILY[p.family as keyof typeof MAX_CITIES_PER_FAMILY];
+    const count = [...state.cities.values()].filter((c) => c.family === p.family).length;
+    if (max !== undefined && count >= max) conflict(`the ${p.family} family holds ${max} ${max === 1 ? 'city' : 'cities'}; it already has ${count}`);
+  };
   const missed = () => {
     if (!(p.value < p.target)) invalid('a strike requires a KPI miss (value < target)');
   };
@@ -222,6 +228,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
   switch (d.type) {
     // ---- intents: early checks so Marc sees mistakes before the DM routes them ----
     case 'intent.create_city': {
+      familyHasRoom();
       const list = p.initialDistricts;
       if (list !== undefined) {
         if (!Array.isArray(list) || list.length > 50) invalid('initialDistricts must be a list (max 50)');
@@ -285,6 +292,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     }
     case 'city.created':
       match(['name', 'family', 'mayorName']);
+      familyHasRoom();
       break;
     case 'constitution.amended':
       match(['version', 'docRef', 'summary']);

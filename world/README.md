@@ -60,7 +60,7 @@ and `config/users.json`.
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 88 tests
+npm test                    # 89 tests
 
 # API profiles (bots use the bearer token printed once)
 npm run profile -- add --id marc --role owner --label Marc

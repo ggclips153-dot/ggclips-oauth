@@ -80,6 +80,8 @@ const finance = city('Personal Finance City', 'revenue', 'Greg');
 const gaming = city('GGClutchPlays', 'revenue', 'Kevin');
 city('Innovations City', 'essentials', 'Soren');
 const security = city('Security City', 'essentials', 'Odette');
+const claudeCity = city('Claude Research City', 'claude', 'Imani');
+const geminiCity = city('Gemini Studio', 'gemini', 'Pax');
 
 // ---- AI Receptionist City ----
 const frontDesk = district(reception, 'Front Desk', 'Rowe');
@@ -135,6 +137,17 @@ place(gaming, clipper, editor);
 graduate(gaming, clipper, prof3);
 pulses(gaming, 'clips_passing_qc', [14, 11, 16, 19, 22], 20);
 status(gaming, clipper, 'working', 'Rendering a clutch highlight');
+
+// ---- Claude and Gemini: one city each ----
+for (const [c, dName, focus] of [[claudeCity, 'Analysis', 'literature review'], [geminiCity, 'Design', 'visual concepts']] as const) {
+  const dd = district(c, 'Labs', 'Rowe');
+  const dep = department(c, dd, dName, `${dName} work`);
+  const pr = professor(c, dep);
+  const a1 = collegeAgent(c, focus);
+  place(c, a1, dep);
+  graduate(c, a1, pr);
+  status(c, a1, 'working', `${dName} in progress`);
+}
 
 // ---- Security: deploy a guard, 3 task strikes -> 6h jail, a dean report escalated to Marc ----
 const patrolD = district(security, 'Patrol', 'Vance');

@@ -394,9 +394,11 @@ function mapView(ix) {
     stat('Awaiting the DM', whole.format(data.pendingIntents.length), 'your requests not yet routed'),
     stat('Inbox', whole.format(data.escalations.length), 'escalated by Security'));
 
-  const homes = FAMILIES.map(([fam, label]) => {
+  // Revenue gets a full-width home; Essentials, Claude and Gemini (one city each) share the row below.
+  const homeOrder = ['revenue', 'essentials', 'claude', 'gemini'].map((k) => FAMILIES.find(([f]) => f === k));
+  const homes = homeOrder.map(([fam, label]) => {
     const cities = data.cities.filter((c) => c.family === fam);
-    return h('section', { class: 'family', 'aria-labelledby': `fam-${fam}` },
+    return h('section', { class: `family home-${fam}`, 'aria-labelledby': `fam-${fam}` },
       h('div', { class: 'family-head' },
         h('span', { class: `swatch fam-${fam}`, 'aria-hidden': 'true' }),
         h('h2', { id: `fam-${fam}` }, label),

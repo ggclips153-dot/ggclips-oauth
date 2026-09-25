@@ -168,3 +168,16 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     assert.equal(w.state.agents.get(e.subject!)!.state, 'enrolled');
   });
 });
+
+describe('family city limits (A17)', () => {
+  it('Claude and Gemini hold one city each; Revenue and Essentials are open', () => {
+    const w = new TestWorld();
+    w.city('Claude Lab', 'claude');
+    w.city('Gemini Lab', 'gemini');
+    assert.throws(() => w.city('Claude Two', 'claude'), /claude family holds 1 city/);
+    assert.throws(() => w.city('Gemini Two', 'gemini'), /gemini family holds 1 city/);
+    w.city('Rev One');
+    w.city('Rev Two');
+    assert.equal([...w.state.cities.values()].filter((c) => c.family === 'revenue').length, 2);
+  });
+});

@@ -6,6 +6,9 @@ export const WORLD_TAG = 'WORLD';
 export const FAMILIES = ['revenue', 'claude', 'gemini', 'essentials'] as const;
 export type Family = (typeof FAMILIES)[number];
 
+/** Families with a fixed number of cities (A17): Claude and Gemini hold one city each. */
+export const MAX_CITIES_PER_FAMILY: Partial<Record<Family, number>> = { claude: 1, gemini: 1 };
+
 /** Mayors of these families READ every city (never edit). Amendment A2. */
 export const CROSS_CITY_READ_FAMILIES: readonly Family[] = ['essentials'];
 

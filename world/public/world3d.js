@@ -7,6 +7,13 @@ import { OrbitControls } from './vendor/three/OrbitControls.min.js';
 import { h } from './dom.js';
 
 const FAMILY_ORDER = ['revenue', 'claude', 'gemini', 'essentials'];
+/** Share of the island per family (radians): Revenue gets the room; Claude and Gemini hold one city each. */
+const REGIONS = {
+  revenue: { start: 0, span: Math.PI },
+  essentials: { start: Math.PI, span: Math.PI / 2 },
+  claude: { start: Math.PI * 1.5, span: Math.PI / 4 },
+  gemini: { start: Math.PI * 1.75, span: Math.PI / 4 },
+};
 const FAMILY_LABEL = { revenue: 'Revenue', claude: 'Claude', gemini: 'Gemini', essentials: 'Essentials' };
 const STATES = ['enrolled', 'student', 'probationer', 'active', 'senior'];
 const ISLAND = 64;
@@ -32,16 +39,16 @@ function palette() {
 }
 
 /** Positions for n cities inside a family's quarter of the island, on arcs moving outward. */
-function cityPositions(familyIndex, n) {
-  const start = familyIndex * (Math.PI / 2) + Math.PI / 4 - Math.PI / 4;
+function cityPositions(family, n) {
+  const { start, span } = REGIONS[family];
   const out = [];
   let placed = 0;
   for (let ring = 0; placed < n; ring++) {
-    const radius = 34 + ring * 21;
-    const perRing = Math.max(1, Math.floor(((Math.PI / 2) * radius) / 23));
+    const radius = 40 + ring * 21;
+    const perRing = Math.max(1, Math.floor((span * radius) / 23));
     const count = Math.min(perRing, n - placed);
     for (let k = 0; k < count; k++) {
-      const a = start + ((k + 1) / (count + 1)) * (Math.PI / 2);
+      const a = start + ((k + 1) / (count + 1)) * span;
       out.push(new THREE.Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius));
     }
     placed += count;
@@ -119,10 +126,10 @@ export function mount3D(container, { onOpenCity }) {
     pickables.push(mesh);
     return mesh;
   };
-  const label = (text, sub, pos, cls = '') => {
+  const label = (text, sub, pos, cls = '', below = false) => {
     const el = h('div', { class: `w3d-label${cls ? ` w3d-${cls}` : ''}` }, h('b', {}, text), sub && h('span', {}, sub));
     labels.append(el);
-    anchors.push({ el, pos });
+    anchors.push({ el, pos, below });
   };
 
   function build(data) {
@@ -136,9 +143,10 @@ export function mount3D(container, { onOpenCity }) {
     island.position.y = -1.6;
     island.receiveShadow = true;
     world.add(island);
-    FAMILY_ORDER.forEach((fam, i) => {
+    FAMILY_ORDER.forEach((fam) => {
+      const { start, span } = REGIONS[fam];
       const wedge = new THREE.Mesh(
-        new THREE.CircleGeometry(ISLAND + 28, 48, i * (Math.PI / 2), Math.PI / 2 - 0.03),
+        new THREE.CircleGeometry(ISLAND + 28, 64, start, span - 0.03),
         new THREE.MeshStandardMaterial({ color: pal.family[fam], transparent: true, opacity: 0.16, roughness: 1, side: THREE.DoubleSide }),
       );
       wedge.rotation.x = -Math.PI / 2;
@@ -146,7 +154,7 @@ export function mount3D(container, { onOpenCity }) {
       wedge.position.y = 0.02;
       wedge.receiveShadow = true;
       world.add(wedge);
-      const a = i * (Math.PI / 2) + Math.PI / 4;
+      const a = start + span / 2;
       const count = data.cities.filter((c) => c.family === fam).length;
       label(FAMILY_LABEL[fam], `${count} ${count === 1 ? 'city' : 'cities'}`, new THREE.Vector3(Math.cos(a) * (ISLAND + 22), 1, Math.sin(a) * (ISLAND + 22)), 'family');
     });
@@ -156,9 +164,9 @@ export function mount3D(container, { onOpenCity }) {
     const inJail = (a) => a.jail && (a.jail.status === 'awaiting_deletion' || Date.parse(a.jail.until) > now);
     let securityCenter = null;
 
-    FAMILY_ORDER.forEach((fam, fi) => {
+    FAMILY_ORDER.forEach((fam) => {
       const cities = data.cities.filter((c) => c.family === fam);
-      const spots = cityPositions(fi, cities.length);
+      const spots = cityPositions(fam, cities.length);
       cities.forEach((c, ci) => {
         const center = spots[ci];
         if (c.id === 'security-city') securityCenter = center;
@@ -267,25 +275,23 @@ export function mount3D(container, { onOpenCity }) {
       });
     });
 
-    // Security's jail: a cage holding every jailed agent, from any city.
-    // Next to Security City, on the side facing the sea; at the island's centre if there is no Security City.
-    const cagePos = securityCenter ? securityCenter.clone().add(securityCenter.clone().normalize().multiplyScalar(PLATFORM + 5)) : new THREE.Vector3();
-    const cage = pick(new THREE.Mesh(new THREE.BoxGeometry(4.5, 3, 4.5), new THREE.MeshBasicMaterial({ color: pal.critical, wireframe: true })), {
+    // Security's jail: a cage on Security City's platform (opposite its KPI beacon) holding every
+    // jailed agent, from any city. At the island's centre if there is no Security City.
+    const base = securityCenter ? 1.2 : 0;
+    const cagePos = securityCenter ? securityCenter.clone().add(new THREE.Vector3(-(PLATFORM - 2.4), 0, 0)) : new THREE.Vector3();
+    const cage = pick(new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 3.2), new THREE.MeshBasicMaterial({ color: pal.critical, wireframe: true })), {
       tip: `Security jail · ${jailed.length} inside`,
       cityId: securityCenter ? 'security-city' : undefined,
     });
-    cage.position.set(cagePos.x, 1.5, cagePos.z);
+    cage.position.set(cagePos.x, base + 1.1, cagePos.z);
     world.add(cage);
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.2, 4.5), mat(pal.surface2));
-    floor.position.set(cagePos.x, 0.1, cagePos.z);
-    world.add(floor);
     jailed.forEach(({ ag, city }, k) => {
       const until = ag.jail.status === 'awaiting_deletion' ? 'awaiting deletion' : `until ${new Date(ag.jail.until).toLocaleString()}`;
       const fig = figure(pal.critical, `${ag.name} (${ag.id}) of ${city.name} · in jail, ${until}`, 'security-city');
-      fig.position.set(cagePos.x - 1.3 + (k % 3) * 1.3, 0.2, cagePos.z - 1.3 + Math.floor(k / 3) * 1.3);
+      fig.position.set(cagePos.x - 0.9 + (k % 3) * 0.9, base, cagePos.z - 0.9 + Math.floor(k / 3) * 0.9);
       world.add(fig);
     });
-    label('Jail', `${jailed.length} inside`, new THREE.Vector3(cagePos.x, 3.6, cagePos.z), 'jail');
+    label('Jail', `${jailed.length} inside`, new THREE.Vector3(cagePos.x, base, cagePos.z + 2), 'jail', true);
   }
 
   function figure(color, tipText, cityId) {
@@ -373,11 +379,11 @@ export function mount3D(container, { onOpenCity }) {
     renderer.render(scene, camera);
     const w = container.clientWidth;
     const hgt = container.clientHeight;
-    for (const { el, pos } of anchors) {
+    for (const { el, pos, below } of anchors) {
       v.copy(pos).project(camera);
       const visible = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
       el.style.display = visible ? '' : 'none';
-      if (visible) el.style.transform = `translate(-50%, -100%) translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * hgt}px)`;
+      if (visible) el.style.transform = `translate(-50%, ${below ? '12px' : '-100%'}) translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * hgt}px)`;
     }
   }
 
