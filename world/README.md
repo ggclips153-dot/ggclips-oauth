@@ -55,33 +55,70 @@ No agent executes its own exit, move or promotion.
 ## Run it
 
 Needs **Node 22.18+** only (built-in SQLite and TypeScript). No native modules, so the folder moves
-between the VPS and a local PC as-is: copy the folder plus `data/world.db` and `config/profiles.json`.
+between the VPS and a local PC as-is: copy the folder plus `data/world.db`, `config/profiles.json`
+and `config/users.json`.
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 78 tests
-npm run profile -- add --id marc --role owner
+npm test                    # 85 tests
+
+# API profiles (bots use the bearer token printed once)
+npm run profile -- add --id marc --role owner --label Marc
 npm run profile -- add --id dm --role dm
 npm run profile -- add --id bob --role architect
 npm run seed                # the 5 cities in config/seed.json (safe to re-run)
 npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
+
+# Dashboard sign-in (asks for a password, min 12 characters, stored only as a hash)
+npm run user -- add --username marc --profile marc
+npm run user -- add --username ana --profile mayor-ai-receptionist-city   # read-only, own city
+
 npm start                   # http://127.0.0.1:8787
 ```
+
+### Try the dashboard on demo data
+
+`npm run demo` writes a sample world to `data/demo.db` (never the real ledger), then:
+
+```bash
+WORLD_DB=data/demo.db npm start
+```
+
+### Settings
 
 | Env var | Default | |
 |---|---|---|
 | `WORLD_DB` | `data/world.db` | the ledger |
-| `WORLD_PROFILES` | `config/profiles.json` | token hashes + write scopes (gitignored, mode 600) |
-| `WORLD_PORT` / `WORLD_HOST` | `8787` / `127.0.0.1` | put nginx + TLS in front on the Hostinger VPS |
+| `WORLD_PROFILES` | `config/profiles.json` | API token hashes + write scopes (gitignored, mode 600) |
+| `WORLD_USERS` | `config/users.json` | dashboard logins, scrypt-hashed (gitignored, mode 600) |
+| `WORLD_PORT` / `WORLD_HOST` | `8787` / `127.0.0.1` | keep it on localhost; reach it through Tailscale or the Hermes route |
+| `WORLD_COOKIE_SECURE` | on | set `0` only when testing over plain `http://` on a machine other than localhost |
+| `WORLD_TRUST_PROXY` | off | set `1` only behind a reverse proxy, so sign-in throttling sees the real client IP |
 | `DM_WEBHOOK_URL` / `DM_WEBHOOK_SECRET` | unset | POSTs each new intent, signed `x-world-signature: sha256=<hmac>` |
+
+## The dashboard
+
+- **Sign in** with a password. Sessions last 7 days while in use, and a restart signs everyone out.
+  Five wrong passwords lock that device out for 15 minutes.
+- **World map**: one home per family (Revenue, Claude, Gemini, Essentials). Each city tile shows its
+  Mayor, the latest KPI pulse against target with a trend line, agents by state, and anyone in jail.
+- **City view**: KPI history (with a table view), the college (dean scorecard, professors' teaching
+  records, new agents waiting for a department), every district and department (caps, shadows, unfilled
+  roles, delegated tasks), and each agent's live status, strikes and lifecycle strip.
+- **Jail**, **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
+- Everything updates live from the ledger. Mayors see only their own city; Marc, the DM, Bob and the
+  Essentials Mayors see every city.
+- Security: strict Content-Security-Policy (no inline code), HttpOnly SameSite=Strict cookies, a
+  required header on browser writes (CSRF), and ledger text is always rendered as text, never HTML.
 
 ## API (for the DM and Mayor bots)
 
-All routes except `/api/health` need `Authorization: Bearer <token>`.
+Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie, and browser writes must also send `x-world-request: 1`.
 
 | Method | Path | |
 |---|---|---|
 | GET | `/api/health` | liveness |
+| POST | `/api/login`, `/api/logout` · GET `/api/session` | dashboard sign-in (session cookie) |
 | GET | `/api/me` | the caller's profile |
 | GET | `/api/state` | world projection, filtered to the caller |
 | GET | `/api/events?after=<seq>&limit=` | raw events, filtered; page with `next` |
@@ -113,7 +150,7 @@ The full list of event types, their writers and payloads is in `src/ledger/catal
 ## Phases
 
 1. ✅ Event ledger, writer roles, write-guard, ID rules, state projection, API, live stream
-2. World map: city tiles, family homes, live KPI pulse + agent counts by state
+2. ✅ Password sign-in; world map with family homes, city tiles, live KPI pulse + agent counts; city view; jail, inbox, activity
 3. Entity creation forms (New City / District / Department / Agent)
 4. City layer: Mayor, per-agent lifecycle strip, live agent-status panel
 5. Shared-surface write-guard + no-agent-instructs-agent enforcement + injection red-team tests

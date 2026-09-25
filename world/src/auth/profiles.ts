@@ -57,6 +57,13 @@ export class Profiles {
     return this.list.length;
   }
 
+  byId(id: string): Profile | undefined {
+    const p = this.list.find((x) => x.id === id);
+    if (!p) return undefined;
+    const { tokenSha256: _omit, ...profile } = p;
+    return profile;
+  }
+
   byToken(token: string | undefined): Profile | undefined {
     if (!token) return undefined;
     const digest = Buffer.from(hashToken(token), 'hex');

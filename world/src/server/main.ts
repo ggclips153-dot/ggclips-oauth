@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { Profiles } from '../auth/profiles.ts';
+import { Users } from '../auth/users.ts';
 import { Ledger } from '../ledger/ledger.ts';
 import { createApp } from './app.ts';
 import { attachDmWebhook } from './dmWebhook.ts';
@@ -28,6 +29,13 @@ if (process.env.DM_WEBHOOK_URL) {
   attachDmWebhook(ledger, { url: process.env.DM_WEBHOOK_URL, secret: process.env.DM_WEBHOOK_SECRET });
 }
 
-createApp(ledger, profiles).listen(port, host, () => {
+const users = Users.load(resolve(root, process.env.WORLD_USERS ?? 'config/users.json'));
+if (users.size === 0) console.warn('No dashboard logins yet. Create one with: npm run user -- add --username marc --profile marc');
+
+createApp(ledger, profiles, {
+  users,
+  cookieSecure: process.env.WORLD_COOKIE_SECURE !== '0',
+  trustProxy: process.env.WORLD_TRUST_PROXY === '1',
+}).listen(port, host, () => {
   console.log(`World ledger: ${integrity.count} events verified. Listening on http://${host}:${port}`);
 });

@@ -11,6 +11,8 @@
     "start": "node --disable-warning=ExperimentalWarning src/server/main.ts",
     "seed": "node --disable-warning=ExperimentalWarning scripts/seed.ts",
     "profile": "node --disable-warning=ExperimentalWarning scripts/profile.ts",
+    "user": "node --disable-warning=ExperimentalWarning scripts/user.ts",
+    "demo": "node --disable-warning=ExperimentalWarning scripts/demo.ts",
     "verify": "node --disable-warning=ExperimentalWarning scripts/verify.ts",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"

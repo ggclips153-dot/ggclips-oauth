@@ -2,5 +2,6 @@ node_modules/
 data/
 config/profiles.json
 config/secrets.json
+config/users.json
 *.db
 *.db-*
