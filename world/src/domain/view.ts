@@ -128,6 +128,17 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
   const taskStrikes = state.taskStrikes.filter((t) => scope === '*' || t.agentCity === scope);
   // Dean reports Security has brought up to Marc: his inbox.
   const escalations = [...state.deanReports.values()].filter((r) => r.escalated && (scope === '*' || r.cityId === scope));
+  // In-world economy (A18): the currency ledger, deliverables and each visible agent's account.
+  const inScope = (city: string) => scope === '*' || city === scope;
+  const economy = {
+    entries: state.currency.filter((c) => inScope(c.cityId)),
+    deliverables: [...state.deliverables.values()]
+      .filter((d) => inScope(d.cityId))
+      .map((d) => ({ ...d, reworks: state.reworksIn(d.agentId, d.periodStart) })),
+    accounts: Object.fromEntries(
+      agents.filter((a) => a.role === 'agent' && inScope(a.cityId)).map((a) => [a.id, state.account(a.id)]).filter(([, acc]) => (acc as { earnedCents: number }).earnedCents > 0),
+    ),
+  };
 
   return {
     lastSeq: state.lastSeq,
@@ -135,6 +146,7 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
     jail,
     taskStrikes,
     escalations,
+    economy,
     constitution: state.constitution,
     worldRollup: scope === '*' ? state.worldRollup : null,
     cities,

@@ -119,6 +119,22 @@ status(reception, team[1]!, 'working', 'Qualifying an HVAC lead');
 status(reception, team[2]!, 'idle', 'Waiting for the next call');
 fact(mayor(reception), { type: 'dean.reviewed', city: reception, payload: { deanId: dean, rating: 'meets', notes: 'Graduates are booking steadily.' } });
 
+// ---- Economy: deliverables, a QC rework, an earning and a reward ----
+const week = '2026-09-21';
+const deliverable = (agentId: string, ref: string, cents: number, description: string) =>
+  fact(mayor(reception), {
+    type: 'work.deliverable',
+    city: reception,
+    payload: { agentId, artifactRef: `bookings/${ref}`, revenue: 'real', revenueRef: `invoice/${ref}`, revenueCents: cents, periodStart: week, description },
+  });
+const d1 = deliverable(team[0]!, '1001', 250_000, 'Bright Smile Dental: 3-month booking retainer');
+deliverable(team[1]!, '1002', 150_000, 'HVAC client setup fee');
+fact(mayor(reception), { type: 'work.qc_rework', city: reception, payload: { agentId: team[1], artifactRef: 'bookings/1002', periodStart: week, reason: 'wrong service area' } });
+const e1 = intent('grant_earning', reception, { agentId: team[0], deliverableSeq: d1.seq, amountCents: 12_500 });
+fact(mayor(reception), { type: 'currency.earned', city: reception, payload: { agentId: team[0], deliverableSeq: d1.seq, amountCents: 12_500 }, authorizedBy: e1.seq });
+const r1 = intent('grant_reward', reception, { agentId: team[0], reward: 'R5', amountCents: 2_500, detail: 'Hall of Agents: first retainer booked' });
+fact(mayor(reception), { type: 'currency.spent', city: reception, payload: { agentId: team[0], reward: 'R5', amountCents: 2_500, detail: 'Hall of Agents: first retainer booked' }, authorizedBy: r1.seq });
+
 // ---- Personal Finance City ----
 const content = district(finance, 'Content', 'Quill');
 const research = department(finance, content, 'Research', 'Personal finance explainers');

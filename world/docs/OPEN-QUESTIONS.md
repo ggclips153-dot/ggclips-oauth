@@ -21,5 +21,6 @@ so nothing is decided silently. Answer here or via the DM.
 | 31 | **Teaching-strike rules** (Marc's school system). | `professor.strike` takes the rule as text for now; the rule list plugs in when the spec arrives. |
 | 33 | **Consequences of a dean's review.** Marc will decide after testing. | Reviews are recorded (exceeds / meets / below); no automatic consequence. |
 | 35 | **The outgoing dean** when replaced. | Returns to teaching as a professor at the same college. |
+| 36 | **R4 "first-retry grace" in practice.** What does the grace change when the agent next misses KPI? | Recorded as a reward only; strikes and deletion are unchanged (never deletion-immunity). |
 
-Resolved: A1-A17, see `BRIEF-AMENDMENTS.md`.
+Resolved: A1-A18, see `BRIEF-AMENDMENTS.md`.

@@ -6,6 +6,22 @@ export const WORLD_TAG = 'WORLD';
 export const FAMILIES = ['revenue', 'claude', 'gemini', 'essentials'] as const;
 export type Family = (typeof FAMILIES)[number];
 
+/**
+ * In-world economy (brief "In-world economy", A18). Unit: dollars, kept in integer cents.
+ * Amounts are set per grant by the Mayor + Marc. Attribution periods are weekly (weeks start Monday).
+ */
+export const CURRENCY = { name: 'dollars', symbol: '$' } as const;
+export const REWARDS = {
+  R1: 'Role-scope / cloud-lane expansion (upgrades only)',
+  R2: 'City access (never cross-city)',
+  R3: 'Dept-lead / mentorship (department needs 3+ agents)',
+  R4: 'Tenure / slot security (first-retry grace; never deletion-immunity)',
+  R5: 'Hall of Agents (recognition)',
+} as const;
+export type RewardCode = keyof typeof REWARDS;
+/** More than this many QC reworks in a week loses that week's credit. */
+export const MAX_QC_REWORKS_PER_PERIOD = 1;
+
 /** Families with a fixed number of cities (A17): Claude and Gemini hold one city each. */
 export const MAX_CITIES_PER_FAMILY: Partial<Record<Family, number>> = { claude: 1, gemini: 1 };
 

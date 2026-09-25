@@ -60,7 +60,7 @@ and `config/users.json`.
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 98 tests
+npm test                    # 110 tests
 
 # API profiles (bots use the bearer token printed once)
 npm run profile -- add --id marc --role owner --label Marc
@@ -118,6 +118,10 @@ but `data/demo.db`: the real world is never auto-executed.
   `public/vendor/three`).
 - **Live**: every department agent's current status and activity across the cities you can see, filtered by
   city and status, working agents first.
+- **Economy**: dollars earned only from real-revenue deliverables by active or senior agents, vetted by
+  Marc and the Mayor (more than one QC rework in a week loses that week's credit); spent only on rewards
+  R1-R5; the express non-rewards (authority, cross-city reach, skipping school, memory or knowledge, ledger
+  exemptions, deletion-immunity, essentials) are rejected. No agent holds or spends its own money.
 - **Security**: the jail, recent task strikes, and notes the shared-surface guard rejected or quarantined.
 - **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
 - **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
@@ -176,7 +180,7 @@ The full list of event types, their writers and payloads is in `src/ledger/catal
 3. ✅ Entity forms: city, district, department, college agents, professors, dean; assign, promote, retire, delete, deploy, message Mayor
 4. ✅ City layer: Mayor, per-agent lifecycle strip, live agent-status panel; 3D world view
 5. ✅ Shared-surface write-guard (cross-city), no-agent-instructs-agent (logged hand-offs only), injection quarantine, red-team corpus — see `docs/SURFACE-GUARD.md`
-6. Currency ledger + graduation-vetting gate + clean attribution
+6. ✅ Currency ledger (dollars), graduation-vetting gate, clean attribution (weekly), rewards R1-R5 with non-rewards rejected
 7. World Constitution doc + templates
 
 Marc's changes to the brief are recorded in [`docs/BRIEF-AMENDMENTS.md`](docs/BRIEF-AMENDMENTS.md).

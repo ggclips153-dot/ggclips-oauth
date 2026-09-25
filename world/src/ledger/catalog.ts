@@ -173,6 +173,24 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { agentId: { t: 'str', max: 20 } },
   },
   // Deploy a Security City agent to watch a city. Tagged security-city; Security's Mayor executes.
+  // ---- In-world economy (A18): grants are Mayor + Marc executed, never self-run ----
+  'intent.grant_earning': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, deliverableSeq: { t: 'int', min: 1 }, amountCents: { t: 'int', min: 1, max: 100_000_000 } },
+  },
+  'intent.grant_reward': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: {
+      agentId: { t: 'str', max: 20 },
+      reward: { t: 'str', oneOf: ['R1', 'R2', 'R3', 'R4', 'R5'] },
+      amountCents: { t: 'int', min: 0, max: 100_000_000 },
+      detail: { t: 'str', max: 1000 },
+    },
+  },
   'intent.deploy_agent': {
     kind: 'intent',
     writers: OWNER,
@@ -405,6 +423,53 @@ export const CATALOG: Record<string, EventSpec> = {
       resultRef: { t: 'str', max: 300, opt: true },
     },
     subject: 'agent',
+  },
+
+  // A deliverable, credited to the agent that owns its deciding artifact. Attribution stays in the city.
+  'work.deliverable': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      agentId: { t: 'str', max: 20 },
+      artifactRef: { t: 'str', max: 300 },
+      // Only real-revenue work can ever earn; synthetic work (e.g. paper trading) earns nothing.
+      revenue: { t: 'str', oneOf: ['real', 'synthetic'] },
+      revenueRef: { t: 'str', max: 300, opt: true },
+      revenueCents: { t: 'int', min: 0, max: 1_000_000_000, opt: true },
+      periodStart: { t: 'date' },
+      description: { t: 'str', max: 2000 },
+    },
+  },
+  'work.qc_rework': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      agentId: { t: 'str', max: 20 },
+      artifactRef: { t: 'str', max: 300 },
+      periodStart: { t: 'date' },
+      reason: { t: 'str', max: 2000 },
+    },
+  },
+  'currency.earned': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, deliverableSeq: { t: 'int', min: 1 }, amountCents: { t: 'int', min: 1, max: 100_000_000 } },
+    authorizedBy: ['intent.grant_earning'],
+  },
+  'currency.spent': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      agentId: { t: 'str', max: 20 },
+      reward: { t: 'str', oneOf: ['R1', 'R2', 'R3', 'R4', 'R5'] },
+      amountCents: { t: 'int', min: 0, max: 100_000_000 },
+      detail: { t: 'str', max: 1000 },
+    },
+    authorizedBy: ['intent.grant_reward'],
   },
 
   'agent.enrolled': {

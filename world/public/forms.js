@@ -26,6 +26,8 @@ const PLAIN = {
   'intent.retire_to_professor': 'Retire into professor',
   'intent.deploy_agent': 'Deploy Security agent',
   'intent.message_mayor': 'Message to Mayor',
+  'intent.grant_earning': 'Earning credit',
+  'intent.grant_reward': 'Reward',
   'intent.amend_constitution': 'Constitution amendment',
 };
 export const plainIntent = (type) => PLAIN[type] ?? type;
@@ -55,6 +57,7 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
         id,
         name: f.name,
         type: f.type === 'number' ? 'number' : f.type === 'secret' ? 'password' : 'text',
+        inputmode: f.type === 'money' ? 'decimal' : null,
         min: f.type === 'number' ? 0 : null,
         required: f.required,
         placeholder: f.placeholder,
@@ -87,6 +90,7 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
       if (!v) continue;
       if (f.type === 'number') out[name] = Number(v);
       else if (f.type === 'lines') out[name] = v.split('\n').map((x) => x.trim()).filter(Boolean);
+      else if (f.type === 'money') out[name] = Math.round(Number(v.replace(/[$,\s]/g, '')) * 100);
       else out[name] = v;
     }
     return out;
@@ -356,6 +360,39 @@ export function formsFor(ctx) {
         onSubmit: async (v) => {
           await intent('intent.deploy_agent', city.id, v);
           return 'Deployment sent to the DM.';
+        },
+      });
+    },
+
+    grantEarning(city, deliverable, agent) {
+      const revenue = deliverable.revenueCents != null ? ` from $${(deliverable.revenueCents / 100).toLocaleString()} of revenue` : '';
+      openForm(ctx, {
+        title: `Credit ${agent.name}`,
+        intro: `For "${deliverable.description}"${revenue}, week of ${deliverable.periodStart}. Earnings are yours and the Mayor's to grant; the agent never holds or spends them.`,
+        fields: [{ name: 'amountCents', label: 'Amount (dollars)', type: 'money', required: true, placeholder: 'e.g. 125.00' }],
+        submitLabel: 'Credit',
+        onSubmit: async (v) => {
+          if (!Number.isFinite(v.amountCents) || v.amountCents <= 0) throw new Error('Enter an amount above $0.');
+          await intent('intent.grant_earning', city.id, { agentId: agent.id, deliverableSeq: deliverable.seq, amountCents: v.amountCents });
+          return `Credit for ${agent.name} sent to the DM.`;
+        },
+      });
+    },
+
+    grantReward(city, agent, account, rewards) {
+      openForm(ctx, {
+        title: `Reward for ${agent.name}`,
+        intro: `Balance $${(account.balanceCents / 100).toFixed(2)}. Rewards are upgrades only: never authority, cross-city reach, skipping school, memory or knowledge, a ledger exemption, or deletion-immunity.`,
+        fields: [
+          { name: 'reward', label: 'Reward', type: 'select', required: true, options: Object.entries(rewards) },
+          { name: 'amountCents', label: 'Cost (dollars)', type: 'money', required: true, placeholder: 'e.g. 25.00' },
+          { name: 'detail', label: 'What exactly is granted', type: 'textarea', required: true },
+        ],
+        submitLabel: 'Grant reward',
+        onSubmit: async (v) => {
+          if (!Number.isFinite(v.amountCents) || v.amountCents < 0) throw new Error('Enter a cost of $0 or more.');
+          await intent('intent.grant_reward', city.id, { agentId: agent.id, ...v });
+          return `Reward for ${agent.name} sent to the DM.`;
         },
       });
     },

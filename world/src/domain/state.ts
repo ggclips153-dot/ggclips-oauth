@@ -156,6 +156,35 @@ export interface Agent {
   dean: { since: string; graduates: string[]; reviews: { seq: number; ts: string; rating: string; notes: string }[] } | null;
 }
 
+/** A deliverable credited to the agent that owns its deciding artifact (clean attribution). */
+export interface Deliverable {
+  seq: number;
+  ts: string;
+  cityId: string;
+  agentId: string;
+  artifactRef: string;
+  revenue: 'real' | 'synthetic';
+  revenueRef: string | null;
+  revenueCents: number | null;
+  periodStart: string;
+  description: string;
+  /** The currency.earned event that credited it, if any. */
+  creditedSeq: number | null;
+}
+
+/** One line of the currency ledger. No agent holds or spends currency: the Mayor + Marc keep these accounts. */
+export interface CurrencyEntry {
+  seq: number;
+  ts: string;
+  cityId: string;
+  agentId: string;
+  kind: 'earned' | 'spent';
+  amountCents: number;
+  deliverableSeq: number | null;
+  reward: string | null;
+  detail: string | null;
+}
+
 /** A dean's report of work not being done, and Security's escalation of it to Marc. */
 export interface DeanReport {
   seq: number;
@@ -224,6 +253,10 @@ export class WorldState {
   readonly delegations = new Map<number, Delegation>();
   readonly roleRequests = new Map<number, RoleRequest>();
   readonly deanReports = new Map<number, DeanReport>();
+  readonly deliverables = new Map<number, Deliverable>();
+  /** `${agentId}|${periodStart}` -> QC reworks that week. */
+  readonly reworks = new Map<string, number>();
+  readonly currency: CurrencyEntry[] = [];
   readonly intents = new Map<number, LedgerEvent>();
   /** intent seq -> dm.routed seq */
   readonly routed = new Map<number, number>();
@@ -243,6 +276,26 @@ export class WorldState {
   /** Living professors (the college). */
   professors(cityId?: string): Agent[] {
     return [...this.agents.values()].filter((a) => a.role === 'professor' && !a.deleted && (!cityId || a.cityId === cityId));
+  }
+
+  /** An agent's account, kept by the Mayor + Marc (the agent never holds it). */
+  account(agentId: string) {
+    let earnedCents = 0;
+    let spentCents = 0;
+    const rewards: string[] = [];
+    for (const c of this.currency) {
+      if (c.agentId !== agentId) continue;
+      if (c.kind === 'earned') earnedCents += c.amountCents;
+      else {
+        spentCents += c.amountCents;
+        rewards.push(c.reward!);
+      }
+    }
+    return { earnedCents, spentCents, balanceCents: earnedCents - spentCents, rewards };
+  }
+
+  reworksIn(agentId: string, periodStart: string) {
+    return this.reworks.get(`${agentId}|${periodStart}`) ?? 0;
   }
 
   /** The college's living dean, if any. */
@@ -409,6 +462,35 @@ export class WorldState {
           evidenceRef: p.evidenceRef ?? null,
           escalated: null,
         });
+        break;
+      case 'work.deliverable':
+        this.deliverables.set(e.seq, {
+          seq: e.seq,
+          ts: e.ts,
+          cityId: e.city,
+          agentId: p.agentId,
+          artifactRef: p.artifactRef,
+          revenue: p.revenue,
+          revenueRef: p.revenueRef ?? null,
+          revenueCents: p.revenueCents ?? null,
+          periodStart: p.periodStart,
+          description: p.description,
+          creditedSeq: null,
+        });
+        break;
+      case 'work.qc_rework': {
+        const key = `${p.agentId}|${p.periodStart}`;
+        this.reworks.set(key, (this.reworks.get(key) ?? 0) + 1);
+        break;
+      }
+      case 'currency.earned': {
+        const d = this.deliverables.get(p.deliverableSeq);
+        if (d) d.creditedSeq = e.seq;
+        this.currency.push({ seq: e.seq, ts: e.ts, cityId: e.city, agentId: p.agentId, kind: 'earned', amountCents: p.amountCents, deliverableSeq: p.deliverableSeq, reward: null, detail: null });
+        break;
+      }
+      case 'currency.spent':
+        this.currency.push({ seq: e.seq, ts: e.ts, cityId: e.city, agentId: p.agentId, kind: 'spent', amountCents: p.amountCents, deliverableSeq: null, reward: p.reward, detail: p.detail });
         break;
       case 'security.escalated': {
         const report = this.deanReports.get(p.reportSeq);

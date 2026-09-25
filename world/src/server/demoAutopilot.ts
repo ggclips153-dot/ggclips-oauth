@@ -50,6 +50,10 @@ function facts(ledger: Ledger, i: LedgerEvent): [Profile, AppendInput][] {
       return [by('dean.replaced', p)];
     case 'intent.retire_to_professor':
       return [by('agent.retired_to_professor', p.departmentId ? { departmentId: p.departmentId } : {}, p.agentId)];
+    case 'intent.grant_earning':
+      return [by('currency.earned', p)];
+    case 'intent.grant_reward':
+      return [by('currency.spent', p)];
     case 'intent.deploy_agent':
       return [by('agent.deployed', { toCity: p.toCity }, p.agentId)];
     case 'intent.amend_constitution':

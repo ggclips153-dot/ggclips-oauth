@@ -10,6 +10,7 @@ import {
   DEPT_LEAD_MIN_AGENTS,
   INTERN_BADGE,
   MAX_CITIES_PER_FAMILY,
+  MAX_QC_REWORKS_PER_PERIOD,
   MAX_STRIKES,
   SECURITY_CITY_ID,
   WORLD_TAG,
@@ -108,6 +109,10 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
 
 /** A jailed agent does no work: it cannot climb, move, or be measured while inside. */
 const BLOCKED_IN_JAIL = new Set([
+  'intent.grant_earning',
+  'currency.earned',
+  'intent.grant_reward',
+  'currency.spent',
   'security.task_strike',
   'task.delegated',
   'exam.graded',
@@ -126,6 +131,12 @@ const BLOCKED_IN_JAIL = new Set([
 
 /** Department-ladder actions that never apply to a professor (professors belong to the college). */
 const AGENT_ONLY = new Set([
+  'work.deliverable',
+  'work.qc_rework',
+  'intent.grant_earning',
+  'currency.earned',
+  'intent.grant_reward',
+  'currency.spent',
   'agent.placed',
   'agent.interned',
   'agent.graduated',
@@ -145,6 +156,26 @@ const AGENT_ONLY = new Set([
 ]);
 
 const GRADUATED = ['probationer', 'active', 'senior'];
+
+/**
+ * The brief's EXPRESS NON-REWARDS and the inviolable floor: currency never buys authority, cross-city
+ * reach, spending power, auto-publish, skipping school, memory or knowledge, a ledger exemption,
+ * deletion-immunity, or essentials (base lane access, job tools).
+ */
+export const NON_REWARDS: { re: RegExp; why: string }[] = [
+  { re: /\b(authority|admin(istrator)?|override|command(ing)?\s+(other|all)|approve\s+(moves?|promotions?|placements?))\b/i, why: 'extra authority is never a reward' },
+  { re: /\b(cross[-\s]?city|other\s+cit(y|ies)|all\s+cities|another\s+city)\b/i, why: 'cross-city reach is never a reward' },
+  { re: /\b(spending|purchasing\s+power|wallet|allowance|own\s+budget)\b/i, why: 'no agent holds or spends currency' },
+  { re: /\bauto[-\s]?publish|\b(publish|post|upload)\s+without\b/i, why: 'auto-publish is never a reward' },
+  { re: /\b(skip|skipping|bypass|exempt(ion)?\s+from)\s+(school|exams?|graduation|training|vetting)\b/i, why: 'skipping school is never a reward' },
+  { re: /\b(memory|memories|knowledge|curriculum|training\s+corpus|lesson\s+records?|aptitude\s+cards?|courses?)\b/i, why: 'memory and knowledge are free, never purchasable' },
+  { re: /\bledgers?\b[^.\n]{0,25}\b(exempt|exemption|skip|pause|waive|waiver)\b|\b(exempt|waive|skip)\b[^.\n]{0,25}\bledgers?\b/i, why: 'the ledger is a duty, never waived' },
+  { re: /\b(immun(e|ity)|never\s+(be\s+)?deleted|protect(ed|ion)?\s+from\s+deletion|cannot\s+be\s+deleted)\b/i, why: 'deletion-immunity is never a reward' },
+  { re: /\b(base\s+lane|job\s+tools?|essential)\b/i, why: 'essentials come from role, lane catalog and SOUL, never from currency' },
+];
+
+/** Weeks start on Monday. */
+const isMonday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 1;
 
 function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, intent: LedgerEvent | undefined, now: Date) {
   const p = d.payload as Record<string, any>;
@@ -262,6 +293,49 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'intent.delete_agent':
       agentIn(p.agentId, d.city);
       break;
+    // ---- In-world economy (A18) ----
+    case 'work.deliverable': {
+      agentIn(p.agentId, d.city);
+      if (!isMonday(p.periodStart)) invalid('periodStart must be the Monday that starts the week');
+      if (p.revenue === 'real' && !p.revenueRef) invalid('a real-revenue deliverable needs a revenueRef (the invoice, booking or payment it came from)');
+      break;
+    }
+    case 'work.qc_rework':
+      agentIn(p.agentId, d.city);
+      if (!isMonday(p.periodStart)) invalid('periodStart must be the Monday that starts the week');
+      break;
+    case 'intent.grant_earning':
+    case 'currency.earned': {
+      if (d.type === 'currency.earned') match(['agentId', 'deliverableSeq', 'amountCents']);
+      const a = agentIn(p.agentId, d.city);
+      // The graduation-vetting gate: active tier + clean-attribution real-revenue deliverable + Mayor/Marc vetting.
+      if (!['active', 'senior'].includes(a.state)) conflict(`only active or senior agents earn (agent is ${a.state})`);
+      const del = state.deliverables.get(p.deliverableSeq) ?? notFound(`deliverable #${p.deliverableSeq} not found`);
+      if (del.cityId !== d.city) forbid('attribution stays inside the city');
+      if (del.agentId !== a.id) forbid(`deliverable #${del.seq} is credited to ${del.agentId}, not ${a.id}`);
+      if (del.revenue !== 'real') conflict('synthetic work (e.g. paper trading) earns nothing');
+      if (del.creditedSeq) conflict(`deliverable #${del.seq} was already credited`);
+      const reworks = state.reworksIn(a.id, del.periodStart);
+      if (reworks > MAX_QC_REWORKS_PER_PERIOD) conflict(`${reworks} QC reworks in the week of ${del.periodStart}: that week's credit is lost`);
+      break;
+    }
+    case 'intent.grant_reward':
+    case 'currency.spent': {
+      if (d.type === 'currency.spent') match(['agentId', 'reward', 'amountCents', 'detail']);
+      const a = agentIn(p.agentId, d.city);
+      for (const n of NON_REWARDS) if (n.re.test(String(p.detail))) forbid(`not a reward: ${n.why}`);
+      for (const other of state.cities.values()) {
+        if (other.id !== d.city && (String(p.detail).toLowerCase().includes(other.id) || String(p.detail).toLowerCase().includes(other.name.toLowerCase()))) {
+          forbid(`not a reward: rewards never reach another city (${other.name})`);
+        }
+      }
+      if (p.reward === 'R3') {
+        if (!a.departmentId || state.graduatedIn(a.departmentId).length < DEPT_LEAD_MIN_AGENTS) conflict(`R3 needs a department with ${DEPT_LEAD_MIN_AGENTS}+ graduated agents`);
+      }
+      const { balanceCents } = state.account(a.id);
+      if (p.amountCents > balanceCents) conflict(`balance is $${(balanceCents / 100).toFixed(2)}; this reward costs $${(p.amountCents / 100).toFixed(2)}`);
+      break;
+    }
     case 'intent.deploy_agent': {
       if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} agents are deployed`);
       const a = agentIn(p.agentId, d.city);

@@ -363,6 +363,7 @@ function topbar() {
       link('#/live', 'Live', countWorking(), false),
       link('#/jail', 'Security', data.jail.length + (data.surfaceFlags?.filter((f) => f.decision === 'quarantine').length ?? 0), true),
       link('#/inbox', 'Inbox', data.escalations.length, true),
+      link('#/economy', 'Economy', awaitingCredit(index()).length || null, false),
       link('#/activity', 'Activity')),
     h('span', { class: 'spacer' }),
     h('span', { class: `live ${live}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), live === 'on' ? 'Live' : 'Reconnecting…'),
@@ -380,6 +381,7 @@ function render() {
   else if (route === '/inbox') view = inboxView(ix);
   else if (route === '/activity') view = activityView(ix);
   else if (route.startsWith('/live')) view = liveView(ix);
+  else if (route === '/economy') view = economyView(ix);
   else view = mapView(ix);
   app.replaceChildren(topbar(), h('main', {}, view));
   if (w3dContainer.isConnected) ensure3D();
@@ -562,6 +564,7 @@ function agentActions(c, a) {
     next && act(`Promote to ${next}`, () => forms.promote(c, a, next)),
     lead && act('Make dept-lead', () => forms.promote(c, a, 'dept-lead')),
     a.state === 'senior' && act('Retire to professor', () => forms.retire(c, a)),
+    (data.economy.accounts[a.id]?.balanceCents ?? 0) > 0 && act('Grant reward', () => forms.grantReward(c, a, data.economy.accounts[a.id], REWARDS)),
     a.jail?.status === 'awaiting_deletion' && act('Delete', () => forms.remove(c, a), 'danger'));
 }
 
@@ -648,6 +651,66 @@ function inboxView(ix) {
       table(['Escalated', 'City', 'Agent', "Dean's reason", 'Security summary'],
         data.escalations.slice().reverse().map((r) => [ago(r.escalated.ts), cityName(r.cityId), agentLabel(ix, r.agentId), r.reason, r.escalated.summary]),
         'Nothing escalated. All quiet.')),
+  ];
+}
+
+// ---------- in-world economy (A18) ----------
+const REWARDS = {
+  R1: 'R1 · Role-scope / cloud-lane expansion (upgrades only)',
+  R2: 'R2 · City access (never cross-city)',
+  R3: 'R3 · Dept-lead / mentorship (3+ agents)',
+  R4: 'R4 · Tenure / slot security (first-retry grace)',
+  R5: 'R5 · Hall of Agents',
+};
+const usd = (cents) => `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** Real-revenue deliverables that could be credited now (the server re-checks everything). */
+function awaitingCredit(ix) {
+  return data.economy.deliverables.filter((d) => {
+    const a = ix.agents.get(d.agentId);
+    return d.revenue === 'real' && !d.creditedSeq && a && ['active', 'senior'].includes(a.state) && d.reworks <= 1;
+  });
+}
+
+function economyView(ix) {
+  const cityName = (id) => ix.cities.get(id)?.name ?? id;
+  const earned = data.economy.entries.filter((e) => e.kind === 'earned').reduce((n, e) => n + e.amountCents, 0);
+  const spent = data.economy.entries.filter((e) => e.kind === 'spent').reduce((n, e) => n + e.amountCents, 0);
+  const pending = awaitingCredit(ix);
+  const lost = data.economy.deliverables.filter((d) => d.revenue === 'real' && !d.creditedSeq && d.reworks > 1);
+  return [
+    h('h1', {}, 'Economy'),
+    h('p', { class: 'secondary' }, 'Dollars earned only from real revenue, by active or senior agents, vetted by you and the Mayor. Spent only on rewards R1 to R5. No agent holds or spends its own money: you and the Mayor keep these accounts.'),
+    h('div', { class: 'kpi-row' },
+      stat('Earned', usd(earned)),
+      stat('Spent on rewards', usd(spent)),
+      stat('Balance held for agents', usd(earned - spent)),
+      stat('Awaiting your vetting', whole.format(pending.length), 'real-revenue deliverables')),
+    h('div', { class: 'card section' }, h('h2', {}, 'Awaiting your vetting'),
+      table(['Week', 'City', 'Agent', 'Deliverable', { label: 'Revenue', num: true }, { label: 'QC reworks', num: true }, ''],
+        pending.map((d) => {
+          const a = ix.agents.get(d.agentId);
+          return [d.periodStart, cityName(d.cityId), agentLabel(ix, d.agentId), d.description, d.revenueCents != null ? usd(d.revenueCents) : '—', d.reworks,
+            act('Credit $', () => forms.grantEarning(ix.cities.get(d.cityId), d, a), 'primary')];
+        }),
+        'Nothing waiting. Deliverables appear here once a Mayor records real-revenue work by an active or senior agent.')),
+    lost.length ? h('div', { class: 'card section' }, h('h2', {}, 'Credit lost to QC reworks'), h('p', { class: 'small secondary' }, 'More than one QC rework in a week loses that week\'s credit.'),
+      table(['Week', 'Agent', 'Deliverable', { label: 'QC reworks', num: true }], lost.map((d) => [d.periodStart, agentLabel(ix, d.agentId), d.description, d.reworks]))) : null,
+    h('div', { class: 'card section' }, h('h2', {}, 'Accounts'),
+      table(['Agent', 'City', { label: 'Earned', num: true }, { label: 'Spent', num: true }, { label: 'Balance', num: true }, 'Rewards', ''],
+        Object.entries(data.economy.accounts).map(([id, acc]) => {
+          const a = ix.agents.get(id);
+          const c = a && ix.cities.get(a.cityId);
+          return [agentLabel(ix, id), c ? c.name : '—', usd(acc.earnedCents), usd(acc.spentCents), usd(acc.balanceCents), acc.rewards.join(', ') || '—',
+            c && acc.balanceCents > 0 ? act('Grant reward', () => forms.grantReward(c, a, acc, REWARDS)) : null];
+        }),
+        'No agent has earned anything yet.')),
+    h('div', { class: 'card section' }, h('h2', {}, 'Currency ledger'), h('p', { class: 'small secondary' }, 'Append-only; part of the tamper-evident world ledger.'),
+      table(['When', 'City', 'Agent', 'Entry', { label: 'Amount', num: true }],
+        data.economy.entries.slice().reverse().map((e) => [ago(e.ts), cityName(e.cityId), agentLabel(ix, e.agentId),
+          e.kind === 'earned' ? `Earned for deliverable #${e.deliverableSeq}` : `${e.reward}: ${e.detail}`,
+          `${e.kind === 'earned' ? '+' : '−'}${usd(e.amountCents)}`]),
+        'No entries yet.')),
   ];
 }
 
