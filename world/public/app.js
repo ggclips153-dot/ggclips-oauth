@@ -69,19 +69,27 @@ function setMapMode(mode) {
   }
   render();
 }
+// One globe, however many redraws race to create it (e.g. opening straight into the 3D view).
+let world3dStarting = null;
 async function ensure3D() {
-  if (!world3d) {
-    try {
-      const { mount3D } = await import('./world3d.js');
-      world3d = mount3D(w3dContainer, { onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}`) });
-    } catch (err) {
-      w3dContainer.replaceChildren(h('p', { class: 'empty' }, `The 3D view could not start on this device (${err.message}). The map view has everything.`));
-      return;
-    }
+  world3dStarting ??= import('./world3d.js').then(({ mount3D }) => {
+    world3d = mount3D(w3dContainer, { onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}`) });
+    return world3d;
+  });
+  let globe;
+  try {
+    globe = await world3dStarting;
+  } catch (err) {
+    w3dContainer.replaceChildren(h('p', { class: 'empty' }, `The 3D view could not start on this device (${err.message}). The map view has everything.`));
+    return;
   }
-  if (world3dBuiltFrom !== data) {
+  if (world3dBuiltFrom === data) return;
+  try {
+    globe.update(data);
     world3dBuiltFrom = data;
-    world3d.update(data);
+  } catch (err) {
+    console.error(err);
+    toast(`The 3D view hit an error: ${err.message}`);
   }
 }
 /** A small action button, owner only. */
