@@ -1,0 +1,22 @@
+{
+  "name": "world",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloud management dashboard for Marc's world of AI cities. Event ledger is the source of truth; the dashboard reads it.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server/main.ts",
+    "seed": "node --disable-warning=ExperimentalWarning scripts/seed.ts",
+    "profile": "node --disable-warning=ExperimentalWarning scripts/profile.ts",
+    "verify": "node --disable-warning=ExperimentalWarning scripts/verify.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.0"
+  }
+}

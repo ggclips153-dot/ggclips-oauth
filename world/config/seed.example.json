@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy to config/seed.json, fill in every TODO, then run: npm run seed. The seed writes the real ledger path: Marc intent -> DM routes -> DM city.created.",
+  "cities": [
+    { "name": "AI Receptionist City", "family": "revenue", "mayorName": "TODO" },
+    { "name": "Personal Finance City", "family": "revenue", "mayorName": "TODO" },
+    { "name": "GGClutchPlays", "family": "revenue", "mayorName": "TODO" }
+  ]
+}

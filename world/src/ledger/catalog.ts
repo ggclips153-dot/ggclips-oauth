@@ -1,0 +1,288 @@
+// Event catalog: every event type the world EVENT LEDGER accepts, who may write it, and its payload.
+//
+// Two kinds of event:
+//   intent - Marc's request, written by the dashboard. Changes nothing by itself. The DM routes it.
+//   fact   - something that happened, written by a Mayor (its own city) or the DM (world events).
+// Facts that place, promote, move or delete an agent, or create structure, must cite an owner
+// intent the DM has routed: "mayor + owner executed (via DM)", never self-initiated.
+import {
+  AGENT_STATUSES,
+  FAMILIES,
+  KPI_PERIODS,
+  type Role,
+} from '../domain/model.ts';
+import type { Schema } from './validate.ts';
+
+export type EventKind = 'fact' | 'intent';
+/** world: city tag must be WORLD. city: tag must be an existing city. routed: tag of the intent routed. */
+export type EventScope = 'world' | 'city' | 'routed';
+
+export interface EventSpec {
+  kind: EventKind;
+  writers: readonly Role[];
+  scope: EventScope;
+  schema: Schema;
+  /** Owner intents that may authorize this fact. Absent = no authorization required. */
+  authorizedBy?: readonly string[];
+  /** Id kind allocated as this event's subject. */
+  allocates?: 'CITY' | 'DST' | 'DPT' | 'AGT';
+  /** Event acts on an existing entity named by `subject`. */
+  subject?: 'agent';
+}
+
+const persona: Schema = {
+  voice: { t: 'str', max: 500 },
+  temperament: { t: 'str', max: 500 },
+};
+
+const agentFields: Schema = {
+  name: { t: 'str', max: 80 },
+  persona: { t: 'obj', fields: persona },
+  domainFocus: { t: 'str', max: 500 },
+  departmentId: { t: 'str', max: 20 },
+};
+
+const departmentFields: Schema = {
+  districtId: { t: 'str', max: 20 },
+  name: { t: 'str', max: 120 },
+  scope: { t: 'str', max: 2000 },
+  slots: { t: 'int', min: 1, max: 1000 },
+  // Name of the stored secret, never the token itself.
+  botTokenRef: { t: 'str', max: 120, opt: true },
+};
+
+const strikeFields: Schema = {
+  reason: { t: 'str', max: 2000 },
+  metric: { t: 'str', max: 80 },
+  value: { t: 'num' },
+  target: { t: 'num' },
+};
+
+const OWNER: readonly Role[] = ['owner'];
+const DM: readonly Role[] = ['dm'];
+const MAYOR: readonly Role[] = ['mayor'];
+
+export const CATALOG: Record<string, EventSpec> = {
+  // ---- Intents (Marc via dashboard) ----
+  'intent.create_city': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'world',
+    schema: {
+      name: { t: 'str', max: 120 },
+      family: { t: 'str', oneOf: FAMILIES },
+      mayorName: { t: 'str', max: 80 },
+      initialDistricts: { t: 'json', maxBytes: 8000, opt: true },
+    },
+  },
+  'intent.create_district': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { name: { t: 'str', max: 120 }, supervisor: { t: 'str', max: 120 } },
+  },
+  'intent.create_department': { kind: 'intent', writers: OWNER, scope: 'city', schema: departmentFields },
+  'intent.create_agent': { kind: 'intent', writers: OWNER, scope: 'city', schema: agentFields },
+  'intent.place_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, departmentId: { t: 'str', max: 20 } },
+  },
+  'intent.promote_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: {
+      agentId: { t: 'str', max: 20 },
+      to: { t: 'str', oneOf: ['probationer', 'active', 'senior', 'dept-lead'] },
+    },
+  },
+  'intent.move_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, toDepartmentId: { t: 'str', max: 20 } },
+  },
+  'intent.delete_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 } },
+  },
+  'intent.amend_constitution': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'world',
+    schema: {
+      version: { t: 'str', max: 40 },
+      docRef: { t: 'str', max: 300 },
+      summary: { t: 'str', max: 4000 },
+    },
+  },
+  // Marc -> (DM) -> Mayor. The DM relays it to the Mayor's bot.
+  'intent.message_mayor': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { text: { t: 'str', max: 4000 } },
+  },
+
+  // ---- DM (world events + routing) ----
+  'dm.routed': {
+    kind: 'fact',
+    writers: DM,
+    scope: 'routed',
+    schema: { intentSeq: { t: 'int', min: 1 }, to: { t: 'str', max: 120 } },
+  },
+  'city.created': {
+    kind: 'fact',
+    writers: DM,
+    scope: 'world',
+    schema: {
+      name: { t: 'str', max: 120 },
+      family: { t: 'str', oneOf: FAMILIES },
+      mayorName: { t: 'str', max: 80 },
+    },
+    authorizedBy: ['intent.create_city'],
+    allocates: 'CITY',
+  },
+  'constitution.amended': {
+    kind: 'fact',
+    writers: DM,
+    scope: 'world',
+    schema: {
+      version: { t: 'str', max: 40 },
+      docRef: { t: 'str', max: 300 },
+      summary: { t: 'str', max: 4000 },
+    },
+    authorizedBy: ['intent.amend_constitution'],
+  },
+  'world.kpi_rollup': {
+    kind: 'fact',
+    writers: DM,
+    scope: 'world',
+    schema: {
+      period: { t: 'str', oneOf: KPI_PERIODS },
+      periodStart: { t: 'date' },
+      rollup: { t: 'json', maxBytes: 32000 },
+    },
+  },
+
+  // ---- Mayor (own city only) ----
+  'district.created': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { name: { t: 'str', max: 120 }, supervisor: { t: 'str', max: 120 } },
+    authorizedBy: ['intent.create_district', 'intent.create_city'],
+    allocates: 'DST',
+  },
+  'department.created': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: departmentFields,
+    authorizedBy: ['intent.create_department'],
+    allocates: 'DPT',
+  },
+  'agent.enrolled': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: agentFields,
+    authorizedBy: ['intent.create_agent'],
+    allocates: 'AGT',
+  },
+  'agent.placed': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { departmentId: { t: 'str', max: 20 } },
+    authorizedBy: ['intent.create_agent', 'intent.place_agent'],
+    subject: 'agent',
+  },
+  'agent.graduated': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {},
+    authorizedBy: ['intent.promote_agent'],
+    subject: 'agent',
+  },
+  'agent.promoted': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { to: { t: 'str', oneOf: ['active', 'senior'] } },
+    authorizedBy: ['intent.promote_agent'],
+    subject: 'agent',
+  },
+  'agent.lead_assigned': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {},
+    authorizedBy: ['intent.promote_agent'],
+    subject: 'agent',
+  },
+  'agent.moved': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { toDepartmentId: { t: 'str', max: 20 } },
+    authorizedBy: ['intent.move_agent'],
+    subject: 'agent',
+  },
+  'agent.school_returned': { kind: 'fact', writers: MAYOR, scope: 'city', schema: strikeFields, subject: 'agent' },
+  'agent.third_strike': { kind: 'fact', writers: MAYOR, scope: 'city', schema: strikeFields, subject: 'agent' },
+  'agent.deleted': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      // Full ledger is FROZEN + ARCHIVED; only the distilled lesson record feeds the replacement.
+      ledgerArchiveRef: { t: 'str', max: 300 },
+      lessonRecordRef: { t: 'str', max: 300 },
+    },
+    authorizedBy: ['intent.delete_agent'],
+    subject: 'agent',
+  },
+  'agent.status': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      status: { t: 'str', oneOf: AGENT_STATUSES },
+      activity: { t: 'str', max: 280, opt: true },
+    },
+    subject: 'agent',
+  },
+  'city.kpi_pulse': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      metric: { t: 'str', max: 80 },
+      value: { t: 'num', min: 0 },
+      target: { t: 'num', min: 0, opt: true },
+      period: { t: 'str', oneOf: KPI_PERIODS },
+      periodStart: { t: 'date' },
+      secondaryMetric: { t: 'str', max: 80, opt: true },
+      secondaryValue: { t: 'num', opt: true },
+    },
+  },
+  'city.health_report': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      weekOf: { t: 'date' },
+      summary: { t: 'str', max: 8000 },
+      ref: { t: 'str', max: 300, opt: true },
+    },
+  },
+};
+
+export const specFor = (type: string): EventSpec | undefined =>
+  Object.hasOwn(CATALOG, type) ? CATALOG[type] : undefined;
