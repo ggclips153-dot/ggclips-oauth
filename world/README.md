@@ -43,6 +43,7 @@ No agent executes its own exit, move or promotion.
 | Ladder student → probationer → active → senior; dept-lead badge on a senior only with 3+ agents in the dept | guard rules |
 | 3 chances: miss #1 → school, #2 → school, #3 → 3rd strike → deletion (with archive + lesson record refs) | guard rules |
 | Department slot counts | guard rules |
+| Name generator: a New Agent intent with no name gets one generated and recorded in the intent | `src/domain/names.ts` |
 | Strict payloads: unknown fields rejected; bot tokens can never enter the ledger (only a `botTokenRef`) | `src/ledger/validate.ts` |
 | Mayors read only their own city; Marc, DM and Bob read everything | `src/domain/view.ts` |
 
@@ -53,12 +54,11 @@ between the VPS and a local PC as-is: copy the folder plus `data/world.db` and `
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 35 tests
+npm test                    # 39 tests
 npm run profile -- add --id marc --role owner
 npm run profile -- add --id dm --role dm
 npm run profile -- add --id bob --role architect
-cp config/seed.example.json config/seed.json   # fill in Mayor names
-npm run seed                # AI Receptionist City, Personal Finance City, GGClutchPlays
+npm run seed                # the 5 cities in config/seed.json (safe to re-run)
 npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
 npm start                   # http://127.0.0.1:8787
 ```
@@ -82,6 +82,7 @@ All routes except `/api/health` need `Authorization: Bearer <token>`.
 | GET | `/api/events?after=<seq>&limit=` | raw events, filtered; page with `next` |
 | GET | `/api/stream?after=<seq>` | live Server-Sent Events (`Last-Event-ID` supported) |
 | POST | `/api/events` | append `{type, city, subject?, payload, authorizedBy?}` |
+| GET | `/api/names?count=5` | owner only: suggested agent names (never retired, in use or reserved) |
 | GET | `/api/verify` | owner only: verify the hash chain |
 
 Example: the Mayor places an agent the DM routed to it:
@@ -91,6 +92,16 @@ POST /api/events
 { "type": "agent.placed", "city": "ai-receptionist-city", "subject": "AGT-000001",
   "payload": { "departmentId": "DPT-000001" }, "authorizedBy": 42 }
 ```
+
+## Seed cities
+
+| City | Family | Mayor |
+|---|---|---|
+| AI Receptionist City | revenue | Ana |
+| Personal Finance City | revenue | Greg |
+| GGClutchPlays | revenue | Kevin |
+| Innovations City | revenue (interim) | Soren (generated) |
+| Security City | revenue (interim) | Odette (generated) |
 
 The full list of event types, their writers and payloads is in `src/ledger/catalog.ts`.
 

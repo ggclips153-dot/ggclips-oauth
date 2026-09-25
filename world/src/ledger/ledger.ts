@@ -5,6 +5,7 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { WORLD_TAG, type Role } from '../domain/model.ts';
+import { suggestNames, type NameOptions } from '../domain/names.ts';
 import { WorldState, type LedgerEvent } from '../domain/state.ts';
 import { checkWrite, type AppendInput, type Draft, type Profile } from './guard.ts';
 
@@ -72,6 +73,7 @@ export interface LedgerOptions {
   /** File path, or ':memory:' for tests. */
   path: string;
   now?: () => Date;
+  names?: NameOptions;
 }
 
 export class Ledger {
@@ -80,11 +82,13 @@ export class Ledger {
   /** Emits 'event' (LedgerEvent) after each committed append. */
   readonly events = new EventEmitter();
   private readonly now: () => Date;
+  private readonly names: NameOptions;
 
   constructor(opts: LedgerOptions) {
     this.db = new DatabaseSync(opts.path);
     this.db.exec(SCHEMA);
     this.now = opts.now ?? (() => new Date());
+    this.names = opts.names ?? {};
     this.events.setMaxListeners(1000);
     for (const e of this.readAll()) this.state.apply(e);
   }
@@ -95,7 +99,7 @@ export class Ledger {
 
   /** Append one event. Throws LedgerError if the write-guard rejects it. */
   append(profile: Profile, input: AppendInput): LedgerEvent {
-    const draft = checkWrite(this.state, profile, input);
+    const draft = checkWrite(this.state, profile, this.withGeneratedName(input));
     this.db.exec('BEGIN IMMEDIATE');
     let event: LedgerEvent;
     try {
@@ -108,6 +112,18 @@ export class Ledger {
     this.state.apply(event);
     this.events.emit('event', event);
     return event;
+  }
+
+  /** A New Agent intent without a name gets a generated one, recorded in the intent itself. */
+  private withGeneratedName(input: AppendInput): AppendInput {
+    const payload = input.payload as Record<string, unknown> | undefined;
+    if (input.type !== 'intent.create_agent' || !payload || typeof payload !== 'object' || payload.name != null) return input;
+    return { ...input, payload: { ...payload, name: this.suggestNames(1)[0] } };
+  }
+
+  /** Available display names: never retired, in use, or reserved. */
+  suggestNames(count: number): string[] {
+    return suggestNames(this.state, count, this.names);
   }
 
   private insert(profile: Profile, d: Draft): LedgerEvent {

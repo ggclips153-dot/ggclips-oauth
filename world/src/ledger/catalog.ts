@@ -82,7 +82,13 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { name: { t: 'str', max: 120 }, supervisor: { t: 'str', max: 120 } },
   },
   'intent.create_department': { kind: 'intent', writers: OWNER, scope: 'city', schema: departmentFields },
-  'intent.create_agent': { kind: 'intent', writers: OWNER, scope: 'city', schema: agentFields },
+  // Leave `name` out and the ledger generates one (see src/domain/names.ts).
+  'intent.create_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { ...agentFields, name: { t: 'str', max: 80, opt: true } },
+  },
   'intent.place_agent': {
     kind: 'intent',
     writers: OWNER,

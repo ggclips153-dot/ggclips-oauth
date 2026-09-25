@@ -77,6 +77,10 @@ export function createApp(ledger: Ledger, profiles: Profiles): Server {
         });
         return send(res, 201, event);
       }
+      if (req.method === 'GET' && url.pathname === '/api/names') {
+        if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
+        return send(res, 200, { names: ledger.suggestNames(Math.max(1, intParam(url, 'count', 5, 20))) });
+      }
       if (req.method === 'GET' && url.pathname === '/api/verify') {
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
         return send(res, 200, ledger.verify());

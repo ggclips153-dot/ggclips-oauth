@@ -9,7 +9,7 @@ import { Ledger } from '../src/ledger/ledger.ts';
 const root = resolve(import.meta.dirname, '..');
 const seedPath = resolve(root, 'config/seed.json');
 if (!existsSync(seedPath)) {
-  console.error('Missing config/seed.json. Copy config/seed.example.json and fill in the Mayor names.');
+  console.error('Missing config/seed.json.');
   process.exit(1);
 }
 const seed = JSON.parse(readFileSync(seedPath, 'utf8')) as { cities: { name: string; family: string; mayorName: string }[] };
