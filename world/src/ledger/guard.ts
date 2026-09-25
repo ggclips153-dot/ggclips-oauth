@@ -187,8 +187,8 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (isJailed(prof, now)) conflict(`professor ${prof.id} is in jail`);
     return prof;
   };
-  // KPI strikes apply to graduated agents and to professors (same strike rules as everybody else).
-  const canMissKpi = (a: Agent) => a.role === 'professor' || GRADUATED.includes(a.state);
+  // KPI strikes apply to graduated department agents. Professors get teaching strikes instead (A13).
+  const canMissKpi = (a: Agent) => a.role === 'agent' && GRADUATED.includes(a.state);
   const missed = () => {
     if (!(p.value < p.target)) invalid('a strike requires a KPI miss (value < target)');
   };
@@ -333,6 +333,13 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       }
       break;
     }
+    case 'professor.strike': {
+      const prof = state.agents.get(String(p.professorId));
+      if (!prof || prof.role !== 'professor' || prof.deleted) notFound(`unknown professor: ${p.professorId}`);
+      if (prof!.cityId !== d.city) forbid(`professor ${prof!.id} is not in ${d.city}`);
+      if (prof!.strikes >= MAX_STRIKES) conflict(`professor ${prof!.id} already has ${MAX_STRIKES} teaching strikes and awaits deletion`);
+      break;
+    }
     case 'exam.graded': {
       if (agent!.state !== 'student') conflict(`only a student sits an exam (agent is ${agent!.state})`);
       const prof = professorIn(p.professorId, d.city);
@@ -426,12 +433,12 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     }
     case 'agent.school_returned':
       missed();
-      if (!canMissKpi(agent!)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated agents and professors can miss KPI`);
+      if (!canMissKpi(agent!)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated department agents can miss KPI; professors take teaching strikes`);
       if (agent!.strikes >= MAX_STRIKES - 1) conflict(`miss #${agent!.strikes + 1} is the 3rd strike; write agent.third_strike`);
       break;
     case 'agent.third_strike':
       missed();
-      if (!canMissKpi(agent!)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated agents and professors can miss KPI`);
+      if (!canMissKpi(agent!)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated department agents can miss KPI; professors take teaching strikes`);
       if (agent!.strikes !== MAX_STRIKES - 1) conflict(`3rd strike requires ${MAX_STRIKES - 1} prior strikes (agent has ${agent!.strikes})`);
       break;
     case 'agent.deleted':

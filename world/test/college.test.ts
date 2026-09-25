@@ -133,16 +133,36 @@ describe('professors follow the same strike rules as everybody else', () => {
     assert.ok(!isJailed(p, w.time));
   });
 
-  it('KPI strikes: 3 misses and a professor is held awaiting deletion (it keeps its post until then)', () => {
+  it('professors take TEACHING strikes, not KPI strikes: 3 = held awaiting deletion (A13)', () => {
+    const { w, city, dept, mayor } = setup();
+    const prof = w.professor(city, dept);
+    assert.throws(() => w.miss(city, prof), /professors take teaching strikes/);
+    const strike = () =>
+      w.fact(mayor, { type: 'professor.strike', city, payload: { professorId: prof, rule: 'exam not graded within 48h', evidence: 'exam #12 open 3 days' } });
+    strike();
+    strike();
+    const p = w.state.agents.get(prof)!;
+    assert.deepEqual([p.role, p.strikes, p.jail], ['professor', 2, null], 'keeps its post until the 3rd');
+    strike();
+    assert.deepEqual([p.jail!.status, p.jail!.cause], ['awaiting_deletion', 'teaching_strikes']);
+    assert.throws(strike, /awaits deletion/);
+    // Only a professor can take a teaching strike, and only in its own city.
+    const student = w.agent(city, dept, 'Iris');
+    assert.throws(() => w.fact(mayor, { type: 'professor.strike', city, payload: { professorId: student, rule: 'r', evidence: 'e' } }), /unknown professor/);
+
+    const del = w.intent('delete_agent', city, { agentId: prof });
+    w.fact(mayor, { type: 'agent.deleted', city, subject: prof, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
+    assert.equal(college(w, city).professors.length, 0);
+  });
+
+  it('keeps each professor\'s teaching record: exams given, passed, and students graduated under it', () => {
     const { w, city, dept } = setup();
     const prof = w.professor(city, dept);
-    w.miss(city, prof);
-    assert.deepEqual([w.state.agents.get(prof)!.role, w.state.agents.get(prof)!.strikes], ['professor', 1]);
-    w.miss(city, prof);
-    w.miss(city, prof, true);
-    assert.equal(w.state.agents.get(prof)!.jail!.status, 'awaiting_deletion');
-    const del = w.intent('delete_agent', city, { agentId: prof });
-    w.fact(mayorOf(city), { type: 'agent.deleted', city, subject: prof, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
-    assert.equal(college(w, city).professors.length, 0);
+    const a = w.agent(city, dept, 'Iris');
+    w.exam(city, a, 'fail');
+    w.promote(city, a, 'probationer'); // intern + pass + graduate
+    w.promote(city, w.agent(city, dept, 'Juno'), 'probationer');
+    assert.deepEqual(w.state.agents.get(prof)!.teaching, { examsGiven: 3, examsPassed: 2, graduates: 2 });
+    assert.deepEqual(college(w, city).professors[0]!.teaching, { examsGiven: 3, examsPassed: 2, graduates: 2 });
   });
 });

@@ -17,8 +17,10 @@ so nothing is decided silently. Answer here or via the DM.
 | 11 | PROPOSAL-2026-09-25-B-REV2 itself was not in the SOUL upload. Is there anything in it beyond what the SOULs show? | Built from the SOULs: district = supervisor that coordinates + QCs; department = scope + own bank; shared notes on the Mnemosyne shared surface (`surface.db`). |
 | 24 | **Can professors be removed or replaced** other than through strikes? | Only through strikes and deletion today. |
 | 25 | **Enforcing "the Mayor does not give orders to shadows".** The ledger records delegations but can't see Telegram or Hermes messages. | Runtime enforcement comes with the shared-surface guard (phase 5) and the SOUL templates (phase 7). |
-| 26 | **"Transferred if needed":** does a professor transfer between departments (a new specialty), or between cities' colleges? | Change of specialty within the city is built (`intent.specialize_professor`). Cross-city transfer is not: the brief keeps cities apart. |
-| 27 | **A professor's KPI miss:** the brief sends a missing agent back to school. What does that mean for a professor? | The strike counts and 3 strikes means held awaiting deletion, but the professor keeps its post (not sent to school). |
 | 28 | **Maximum time a professor may step in.** | Up to 30 days per assignment, set by the Mayor. |
+| 29 | **The Dean** (one per college, manages the professors): is the dean a professor promoted into it, or created new at the college? Who appoints the dean: Marc via the DM, or the Mayor? | Not built. |
+| 30 | **What the Dean decides** that the Mayor decides today: sending a professor to fill a role? recording teaching strikes? specialising or transferring professors? And who judges the dean? | Not built. The Mayor records these today. |
+| 31 | **Teaching-strike rules.** Marc is writing the full school system. | `professor.strike` takes the rule as text for now; the rule list plugs in when the spec arrives. |
+| 32 | **Do Security's task strikes still apply to professors**, or only teaching strikes? | Both apply today. |
 
-Resolved: Mayor names (A4), Innovations/Security family (A1), cross-city reach (A2), jail and task strikes (A3, A6), shadows, slots and shadow promotions (A7, A8), caps, delegation and dept-lead count (A9), professors and the college (A10-A12). See `BRIEF-AMENDMENTS.md`.
+Resolved: Mayor names (A4), Innovations/Security family (A1), cross-city reach (A2), jail and task strikes (A3, A6), shadows, slots and shadow promotions (A7, A8), caps, delegation and dept-lead count (A9), professors, the college and professor transfers (A10-A13). See `BRIEF-AMENDMENTS.md`.

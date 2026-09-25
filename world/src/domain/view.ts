@@ -46,6 +46,7 @@ const professorView = (a: Agent, now: Date) => ({
   ...agentView(a),
   specialtyDepartmentId: a.specialtyDepartmentId,
   professorSince: a.professorSince,
+  teaching: a.teaching,
   steppedIn: a.steppedIn && Date.parse(a.steppedIn.until) > now.getTime() ? a.steppedIn : null,
 });
 

@@ -258,6 +258,19 @@ export const CATALOG: Record<string, EventSpec> = {
     authorizedBy: ['intent.create_professor'],
     allocates: 'AGT',
   },
+  // A professor breaks one of the college's teaching rules (A13). Professors don't take KPI strikes;
+  // this is their strike. 3 of them = held awaiting deletion, like everybody else.
+  'professor.strike': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      professorId: { t: 'str', max: 20 },
+      rule: { t: 'str', max: 300 },
+      evidence: { t: 'str', max: 4000 },
+      evidenceRef: { t: 'str', max: 300, opt: true },
+    },
+  },
   'exam.graded': {
     kind: 'fact',
     writers: MAYOR,

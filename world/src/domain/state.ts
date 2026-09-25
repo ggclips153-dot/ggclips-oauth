@@ -5,6 +5,7 @@ import {
   AGENT_STATES,
   DEPT_LEAD_BADGE,
   INTERN_BADGE,
+  MAX_STRIKES,
   JAIL_TERMS_HOURS,
   TASK_STRIKES_PER_JAIL,
   type AgentState,
@@ -148,11 +149,13 @@ export interface Agent {
   steppedIn: { departmentId: string; role: string; seq: number; ts: string; until: string } | null;
   /** Set when a senior agent was retired into a professor. */
   professorSince: string | null;
+  /** Professors only: the teaching record the school system judges them on. */
+  teaching: { examsGiven: number; examsPassed: number; graduates: number } | null;
 }
 
 export interface Jail {
   status: 'serving' | 'awaiting_deletion';
-  cause: 'kpi_strikes' | 'task_strikes';
+  cause: 'kpi_strikes' | 'task_strikes' | 'teaching_strikes';
   /** Task-strike term number (1 = 6h, 2 = 24h, 3 = 3 days, 4 = awaiting deletion). */
   term: number | null;
   seq: number;
@@ -314,6 +317,7 @@ export class WorldState {
           state: 'senior',
           specialtyDepartmentId: p.departmentId ?? null,
           professorSince: e.ts,
+          teaching: { examsGiven: 0, examsPassed: 0, graduates: 0 },
         });
         break;
       case 'agent.retired_to_professor':
@@ -323,6 +327,7 @@ export class WorldState {
         agent.departmentId = null;
         agent.badges = agent.badges.filter((b) => b !== DEPT_LEAD_BADGE);
         agent.professorSince = e.ts;
+        agent.teaching = { examsGiven: 0, examsPassed: 0, graduates: 0 };
         break;
       case 'professor.specialized': {
         const prof = this.agents.get(p.professorId);
@@ -342,11 +347,28 @@ export class WorldState {
         if (req) req.filledBy = { professorId: p.professorId, seq: e.seq };
         break;
       }
-      case 'exam.graded':
+      case 'professor.strike': {
+        const prof = this.agents.get(p.professorId);
+        if (!prof) break;
+        prof.strikes += 1;
+        // Professors aren't sent to school; only the 3rd strike appears on the lifecycle strip.
+        if (prof.strikes >= MAX_STRIKES) {
+          prof.lifecycle.push({ stage: '3rd-strike', seq: e.seq, ts: e.ts, detail: `teaching: ${p.rule}` });
+          prof.jail = { status: 'awaiting_deletion', cause: 'teaching_strikes', term: null, seq: e.seq, ts: e.ts, until: null };
+        }
+        break;
+      }
+      case 'exam.graded': {
+        const prof = this.agents.get(p.professorId);
+        if (prof?.teaching) {
+          prof.teaching.examsGiven += 1;
+          if (p.result === 'pass') prof.teaching.examsPassed += 1;
+        }
         if (!agent) break;
         agent.lastExam = { seq: e.seq, ts: e.ts, professorId: p.professorId, result: p.result };
         mark('school', `exam ${p.result}`);
         break;
+      }
       case 'task.delegated': {
         const to = agent!;
         this.delegations.set(e.seq, {
@@ -384,6 +406,9 @@ export class WorldState {
       case 'agent.graduated':
         if (!agent) break;
         agent.badges = agent.badges.filter((b) => b !== INTERN_BADGE);
+        // Credit the professor whose exam cleared this graduation.
+        const examiner = agent.lastExam ? this.agents.get(agent.lastExam.professorId) : undefined;
+        if (examiner?.teaching) examiner.teaching.graduates += 1;
         agent.lastExam = null;
         agent.state = 'probationer';
         agent.graduated = true;
@@ -533,6 +558,7 @@ function newAgent(e: LedgerEvent, p: Record<string, any>): Agent {
     specialtyDepartmentId: null,
     steppedIn: null,
     professorSince: null,
+    teaching: null,
   };
 }
 
