@@ -113,6 +113,13 @@ const intakeAgent = collegeAgent(reception, 'lead qualification');
 place(reception, intakeAgent, intake);
 collegeAgent(reception, 'med-spa bookings'); // waiting at the college
 fact(mayor(reception), { type: 'department.role_requested', city: reception, payload: { departmentId: intake, role: 'evening call coverage' } });
+const success = district(reception, 'Client Success', 'Hale');
+const followUps = department(reception, success, 'Follow-ups', 'Confirm, remind and rebook appointments');
+const profFollow = professor(reception, followUps);
+const follower = collegeAgent(reception, 'appointment reminders');
+place(reception, follower, followUps);
+graduate(reception, follower, profFollow);
+status(reception, follower, 'working', 'Sending tomorrow\'s reminders');
 pulses(reception, 'qualified_bookings', [12, 18, 21, 26, 24, 31, 35, 38], 40);
 status(reception, team[0]!, 'working', 'Booking a cleaning for Bright Smile Dental');
 status(reception, team[1]!, 'working', 'Qualifying an HVAC lead');

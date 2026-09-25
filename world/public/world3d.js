@@ -506,7 +506,8 @@ export function mount3D(container, { onOpenCity }) {
       h('p', { class: 'small' }, kpi),
       h('p', { class: 'small secondary' }, `${agents.length} agent(s), ${working} working now · ${c.jailedCount} in jail`),
       h('div', { class: 'toolbar' },
-        h('button', { type: 'button', class: 'small-btn primary', onclick: () => onOpenCity(c.id) }, 'Open city'),
+        h('button', { type: 'button', class: 'small-btn primary', onclick: () => onOpenCity(c.id, '3d') }, 'Enter 3D city'),
+        h('button', { type: 'button', class: 'small-btn', onclick: () => onOpenCity(c.id) }, 'Details'),
         h('button', { type: 'button', class: 'small-btn', onclick: () => flyTo(cityDirs.get(c.id), R * 1.12) }, 'Zoom here')),
     );
     card.hidden = false;

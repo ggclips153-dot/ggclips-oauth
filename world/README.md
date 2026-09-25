@@ -118,6 +118,11 @@ but `data/demo.db`: the real world is never auto-executed.
   professors, the KPI beacon (green on target, red below), agents coloured by state (working agents walk),
   and Security's jail. Live like the map; loads only when chosen; runs offline (three.js is vendored in
   `public/vendor/three-r186`).
+- **3D city** (the "Details | 3D city" switch on a city's page, or "Enter 3D city" on the globe's card): the
+  city as a small town. City Hall (the Mayor) with the KPI beacon, the college campus (dean, professors,
+  new agents), and each district as its own neighbourhood with a building per department and its agents
+  walking about. Choose a district from the buttons or by clicking its ground: the camera flies there and
+  a panel lists its departments and agents. Live; the camera stays where you leave it.
 - **Live**: every department agent's current status and activity across the cities you can see, filtered by
   city and status, working agents first.
 - **Economy**: dollars earned only from real-revenue deliverables by active or senior agents, vetted by

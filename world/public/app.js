@@ -69,11 +69,41 @@ function setMapMode(mode) {
   }
   render();
 }
+// ---------- detailed 3D city (loaded only when opened) ----------
+const c3dContainer = h('div', { class: 'w3d' });
+let city3d = null;
+let city3dStarting = null;
+let city3dShown = null;
+async function ensureCity3D(city, districtId) {
+  city3dStarting ??= import('./city3d.js').then(({ mountCity3D }) => {
+    city3d = mountCity3D(c3dContainer, {
+      onSelectDistrict: (id) => (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}` : ''}`),
+    });
+    return city3d;
+  });
+  let scene;
+  try {
+    scene = await city3dStarting;
+  } catch (err) {
+    c3dContainer.replaceChildren(h('p', { class: 'empty' }, `The 3D city could not start on this device (${err.message}). The Details view has everything.`));
+    return;
+  }
+  const key = { cityId: city.id, districtId, data };
+  if (city3dShown && city3dShown.cityId === key.cityId && city3dShown.districtId === key.districtId && city3dShown.data === key.data) return;
+  try {
+    scene.show(city, data, districtId);
+    city3dShown = key;
+  } catch (err) {
+    console.error(err);
+    toast(`The 3D city hit an error: ${err.message}`);
+  }
+}
+
 // One globe, however many redraws race to create it (e.g. opening straight into the 3D view).
 let world3dStarting = null;
 async function ensure3D() {
   world3dStarting ??= import('./world3d.js').then(({ mount3D }) => {
-    world3d = mount3D(w3dContainer, { onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}`) });
+    world3d = mount3D(w3dContainer, { onOpenCity: (id, mode) => (location.hash = `#/city/${encodeURIComponent(id)}${mode === '3d' ? '/3d' : ''}`) });
     return world3d;
   });
   let globe;
@@ -387,7 +417,10 @@ function render() {
   const route = (location.hash || '#/').slice(1);
   const ix = index();
   let view;
-  if (route.startsWith('/city/')) view = cityView(ix, decodeURIComponent(route.slice(6)));
+  if (route.startsWith('/city/')) {
+    const [id, mode, districtId] = route.slice(6).split('/').map(decodeURIComponent);
+    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null } : { mode: 'details' });
+  }
   else if (route === '/jail') view = jailView(ix);
   else if (route === '/inbox') view = inboxView(ix);
   else if (route === '/activity') view = activityView(ix);
@@ -396,6 +429,7 @@ function render() {
   else view = mapView(ix);
   app.replaceChildren(topbar(), h('main', {}, view));
   if (w3dContainer.isConnected) ensure3D();
+  if (c3dContainer.isConnected && pending3DCity) ensureCity3D(pending3DCity.city, pending3DCity.districtId);
 }
 
 // ---------- views ----------
@@ -469,15 +503,34 @@ function cityTile(c) {
     stateBar(c.agentCounts));
 }
 
-function cityView(ix, id) {
+let pending3DCity = null;
+function cityView(ix, id, sub = { mode: 'details' }) {
   const c = ix.cities.get(id);
+  pending3DCity = null;
   if (!c) return [h('p', {}, 'City not found. ', h('a', { href: '#/' }, 'Back to the map'))];
+  const base = `#/city/${encodeURIComponent(c.id)}`;
+  const switcher = h('div', { class: 'seg', role: 'group', 'aria-label': 'City view' },
+    h('a', { class: 'seg-link', href: base, 'aria-current': sub.mode === 'details' ? 'page' : null }, 'Details'),
+    h('a', { class: 'seg-link', href: `${base}/3d`, 'aria-current': sub.mode === '3d' ? 'page' : null }, '3D city'));
+  if (sub.mode === '3d') {
+    pending3DCity = { city: c, districtId: sub.districtId && c.districts.some((d) => d.id === sub.districtId) ? sub.districtId : null };
+    return [
+      h('div', { class: 'section' },
+        h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', h('a', { href: base }, c.name), ' / 3D city'),
+        h('div', { class: 'city-head' }, h('h1', {}, c.name), familyMark(c.family), h('span', { class: 'secondary' }, `Mayor ${c.mayorName}`), h('span', { class: 'spacer' }), switcher)),
+      c3dContainer,
+      h('div', { class: 'legend' },
+        h('span', {}, 'Drag to rotate, right-drag or two fingers to pan, scroll or pinch to zoom. Choose a district above the view or click its ground.'),
+        STATES.map((st, i) => h('span', {}, h('span', { class: `swatch st-${i}`, 'aria-hidden': 'true' }), cap(st))),
+        h('span', {}, 'City Hall = the Mayor · dome = the college · beacon = KPI (green on target, red below) · buildings = departments, taller = more agents')),
+    ];
+  }
   const deptName = (dId) => ix.depts.get(dId)?.name ?? dId ?? '—';
 
   const head = h('div', { class: 'section' },
     h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', c.name),
     h('div', { class: 'city-head' }, h('h1', {}, c.name), familyMark(c.family), h('span', { class: 'secondary' }, `Mayor ${c.mayorName}`),
-      c.jailedCount ? statusChip('critical', `${c.jailedCount} in jail`) : null),
+      c.jailedCount ? statusChip('critical', `${c.jailedCount} in jail`) : null, h('span', { class: 'spacer' }), switcher),
     isOwner() && h('div', { class: 'toolbar' },
       act('+ New district', () => forms.newDistrict(c)),
       act('Message Mayor', () => forms.messageMayor(c)),
