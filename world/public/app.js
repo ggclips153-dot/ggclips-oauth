@@ -359,6 +359,7 @@ function topbar() {
     h('a', { class: 'brand', href: '#/' }, globe(), 'World'),
     h('nav', { class: 'nav', 'aria-label': 'Sections' },
       link('#/', 'Map'),
+      link('#/live', 'Live', countWorking(), false),
       link('#/jail', 'Jail', data.jail.length, true),
       link('#/inbox', 'Inbox', data.escalations.length, true),
       link('#/activity', 'Activity')),
@@ -377,6 +378,7 @@ function render() {
   else if (route === '/jail') view = jailView(ix);
   else if (route === '/inbox') view = inboxView(ix);
   else if (route === '/activity') view = activityView(ix);
+  else if (route.startsWith('/live')) view = liveView(ix);
   else view = mapView(ix);
   app.replaceChildren(topbar(), h('main', {}, view));
   if (w3dContainer.isConnected) ensure3D();
@@ -632,6 +634,59 @@ function inboxView(ix) {
       table(['Escalated', 'City', 'Agent', "Dean's reason", 'Security summary'],
         data.escalations.slice().reverse().map((r) => [ago(r.escalated.ts), cityName(r.cityId), agentLabel(ix, r.agentId), r.reason, r.escalated.summary]),
         'Nothing escalated. All quiet.')),
+  ];
+}
+
+// ---------- live agent-status panel ----------
+const liveFilter = { city: '', status: '' };
+const STATUS_ORDER = ['working', 'blocked', 'idle', 'offline', 'unknown'];
+
+function allAgents(ix) {
+  const out = [];
+  for (const c of data.cities) {
+    for (const d of c.districts) {
+      for (const dp of d.departments) for (const a of dp.agents) out.push({ a, c, where: dp.name });
+    }
+  }
+  return out;
+}
+const statusOf = (a) => a.status?.status ?? 'unknown';
+const countWorking = () => allAgents().filter(({ a }) => statusOf(a) === 'working').length;
+
+function liveView(ix) {
+  const rows = allAgents(ix)
+    .filter(({ c }) => !liveFilter.city || c.id === liveFilter.city)
+    .filter(({ a }) => !liveFilter.status || statusOf(a) === liveFilter.status)
+    .sort((x, y) => STATUS_ORDER.indexOf(statusOf(x.a)) - STATUS_ORDER.indexOf(statusOf(y.a)) || Date.parse(y.a.status?.ts ?? 0) - Date.parse(x.a.status?.ts ?? 0));
+  const counts = Object.fromEntries(STATUS_ORDER.map((st) => [st, allAgents(ix).filter(({ a, c }) => (!liveFilter.city || c.id === liveFilter.city) && statusOf(a) === st).length]));
+  const statusCell = (a) => {
+    const st = statusOf(a);
+    const chip = { working: ['good', 'Working'], blocked: ['critical', 'Blocked'], idle: ['warning', 'Idle'], offline: ['serious', 'Offline'] }[st];
+    return chip ? statusChip(...chip) : h('span', { class: 'muted' }, 'No status yet');
+  };
+  const citySelect = h('select', { 'aria-label': 'City', onchange: (ev) => { liveFilter.city = ev.target.value; render(); } },
+    h('option', { value: '' }, 'All cities'),
+    data.cities.map((c) => h('option', { value: c.id, selected: c.id === liveFilter.city }, c.name)));
+  const statusButtons = h('div', { class: 'seg', role: 'group', 'aria-label': 'Status' },
+    [['', 'All'], ...STATUS_ORDER.filter((s) => s !== 'unknown').map((s) => [s, cap(s)])].map(([v, label]) =>
+      h('button', { type: 'button', 'aria-pressed': String(liveFilter.status === v), onclick: () => { liveFilter.status = v; render(); } },
+        label, v && h('span', { class: 'muted' }, ` ${counts[v]}`))));
+  return [
+    h('h1', {}, 'Live agent status'),
+    h('p', { class: 'secondary' }, 'Every department agent, as its Mayor last reported. Updates live.'),
+    h('div', { class: 'toolbar filters' }, citySelect, statusButtons),
+    h('div', { class: 'card' },
+      table(['Agent', 'City', 'Department', 'State', 'Status', 'Doing', 'Updated'],
+        rows.map(({ a, c, where }) => [
+          h('div', {}, a.name, h('div', { class: 'mono muted' }, a.id)),
+          h('a', { href: `#/city/${encodeURIComponent(c.id)}` }, c.name),
+          where,
+          h('div', { class: 'dept-meta' }, badge(cap(a.state)), a.badges.map((b) => badge(b === 'intern' ? 'Shadow' : b)), jailChip(a)),
+          statusCell(a),
+          a.status?.activity ?? h('span', { class: 'muted' }, '—'),
+          a.status ? ago(a.status.ts) : '—',
+        ]),
+        'No agents match these filters.')),
   ];
 }
 

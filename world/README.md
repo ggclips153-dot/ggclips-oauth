@@ -116,6 +116,8 @@ but `data/demo.db`: the real world is never auto-executed.
   jailed agent. Drag to orbit, scroll or pinch to zoom, hover or tap for details, click a city to open it.
   It is live like the map, loads only when chosen, and runs offline (three.js is vendored in
   `public/vendor/three`).
+- **Live**: every department agent's current status and activity across the cities you can see, filtered by
+  city and status, working agents first.
 - **Jail**, **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
 - **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
   New District, New Department (caps, basic tasks, bot token stored as a server secret), department
@@ -170,7 +172,7 @@ The full list of event types, their writers and payloads is in `src/ledger/catal
 1. ✅ Event ledger, writer roles, write-guard, ID rules, state projection, API, live stream
 2. ✅ Password sign-in; world map with family homes, city tiles, live KPI pulse + agent counts; city view; jail, inbox, activity
 3. ✅ Entity forms: city, district, department, college agents, professors, dean; assign, promote, retire, delete, deploy, message Mayor
-4. City layer: Mayor, per-agent lifecycle strip, live agent-status panel
+4. ✅ City layer: Mayor, per-agent lifecycle strip, live agent-status panel; 3D world view
 5. Shared-surface write-guard + no-agent-instructs-agent enforcement + injection red-team tests
 6. Currency ledger + graduation-vetting gate + clean attribution
 7. World Constitution doc + templates
