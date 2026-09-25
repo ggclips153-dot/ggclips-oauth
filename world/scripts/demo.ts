@@ -161,4 +161,4 @@ fact(mayor(security), { type: 'security.escalated', city: security, payload: { r
 
 ledger.close();
 console.log(`Demo world written to ${path} (${ledger.state.lastSeq} events).`);
-console.log('Try it: WORLD_DB=data/demo.db npm start');
+console.log('Try it: npm run demo:start   (then open http://localhost:8787)');

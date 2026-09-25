@@ -1,23 +1,8 @@
 // World dashboard. Reads the world EVENT LEDGER's projection (/api/state) and follows it live
 // (/api/stream). It never owns state. Every string from the ledger is inserted as text, never HTML.
 
-// ---------- tiny DOM helpers (no innerHTML anywhere) ----------
-const SVG_NS = 'http://www.w3.org/2000/svg';
-function build(el, attrs, kids) {
-  for (const [k, v] of Object.entries(attrs ?? {})) {
-    if (v == null || v === false) continue;
-    if (k === 'class') el.setAttribute('class', v);
-    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-    else el.setAttribute(k, v === true ? '' : String(v));
-  }
-  for (const kid of kids.flat(Infinity)) {
-    if (kid == null || kid === false) continue;
-    el.append(kid instanceof Node ? kid : String(kid));
-  }
-  return el;
-}
-const h = (tag, attrs, ...kids) => build(document.createElement(tag), attrs, kids);
-const s = (tag, attrs, ...kids) => build(document.createElementNS(SVG_NS, tag), attrs, kids);
+import { h, s } from './dom.js';
+import { formsFor, plainIntent } from './forms.js';
 
 // ---------- constants ----------
 const FAMILIES = [
@@ -54,6 +39,17 @@ const feed = [];
 let refreshTimer = null;
 
 const serverNow = () => Date.now() + clockSkew;
+const isOwner = () => me?.role === 'owner';
+
+function toast(message) {
+  document.querySelector('.toast')?.remove();
+  const el = h('div', { class: 'toast', role: 'status' }, message);
+  document.body.append(el);
+  setTimeout(() => el.remove(), 4000);
+}
+const forms = formsFor({ api: (...a) => api(...a), toast });
+/** A small action button, owner only. */
+const act = (label, onclick, cls = '') => (isOwner() ? h('button', { class: `small-btn ${cls}`.trim(), type: 'button', onclick }, label) : null);
 
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
@@ -371,7 +367,23 @@ function mapView(ix) {
       cities.length ? h('div', { class: 'tiles' }, cities.map(cityTile)) : h('div', { class: 'empty' }, `No ${label} cities yet.`));
   });
 
-  return [h('h1', {}, 'World map'), kpis, h('div', { class: 'map' }, homes)];
+  return [
+    h('div', { class: 'page-head' }, h('h1', {}, 'World map'), act('+ New city', () => forms.newCity(), 'primary')),
+    kpis,
+    pendingCard(ix),
+    h('div', { class: 'map' }, homes),
+  ];
+}
+
+/** Marc's requests the DM hasn't routed yet. */
+function pendingCard(ix, cityId) {
+  const list = data.pendingIntents.filter((i) => !cityId || i.city === cityId);
+  if (!list.length) return null;
+  return h('section', { class: 'card section' },
+    h('h3', {}, `Waiting on the DM (${list.length})`),
+    h('ul', { class: 'pending' }, list.map((i) =>
+      h('li', {}, h('b', {}, plainIntent(i.type)), ' · ', ix.cities.get(i.city)?.name ?? (i.city === 'WORLD' ? 'World' : i.city),
+        i.payload.name ? ` · ${i.payload.name}` : '', h('span', { class: 'muted' }, ` · ${ago(i.ts)}`)))));
 }
 
 function cityTile(c) {
@@ -399,7 +411,11 @@ function cityView(ix, id) {
   const head = h('div', { class: 'section' },
     h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', c.name),
     h('div', { class: 'city-head' }, h('h1', {}, c.name), familyMark(c.family), h('span', { class: 'secondary' }, `Mayor ${c.mayorName}`),
-      c.jailedCount ? statusChip('critical', `${c.jailedCount} in jail`) : null));
+      c.jailedCount ? statusChip('critical', `${c.jailedCount} in jail`) : null),
+    isOwner() && h('div', { class: 'toolbar' },
+      act('+ New district', () => forms.newDistrict(c)),
+      act('Message Mayor', () => forms.messageMayor(c)),
+      c.id === 'security-city' && act('Deploy an agent', () => forms.deploy(c, data.cities))));
 
   const kpiCard = h('div', { class: 'card section' }, h('h3', {}, 'KPI pulse'),
     c.kpi
@@ -419,13 +435,14 @@ function cityView(ix, id) {
   const agentsCard = h('div', { class: 'card section' }, h('h3', {}, 'Agents by state'), stateBar(c.agentCounts),
     c.lastHealthReport && h('div', { class: 'small' }, h('h4', {}, `Health report · week of ${c.lastHealthReport.weekOf}`), h('p', { class: 'secondary' }, c.lastHealthReport.summary)));
 
-  return [head, h('div', { class: 'two-col' }, kpiCard, agentsCard), collegeSection(ix, c, deptName), ...c.districts.map((d) => districtSection(ix, d)),
+  return [head, pendingCard(ix, c.id), h('div', { class: 'two-col' }, kpiCard, agentsCard), collegeSection(ix, c, deptName), ...c.districts.map((d) => districtSection(ix, c, d)),
     reportsSection(ix, c), retiredSection(c)];
 }
 
 function collegeSection(ix, c, deptName) {
   const dean = c.college.dean;
-  const deanCard = h('div', { class: 'card section' }, h('h3', {}, 'Dean'),
+  const deanCard = h('div', { class: 'card section' },
+    h('div', { class: 'row-head' }, h('h3', {}, 'Dean'), dean ? (c.college.professors.length ? act('Replace dean', () => forms.replaceDean(c)) : null) : act('+ Create dean', () => forms.createDean(c))),
     dean
       ? [
           h('div', {}, h('b', {}, dean.name), ' ', h('span', { class: 'mono muted' }, dean.id), h('span', { class: 'small muted' }, ` · since ${new Date(dean.since).toLocaleDateString()}`)),
@@ -442,7 +459,7 @@ function collegeSection(ix, c, deptName) {
       : h('p', { class: 'muted small' }, 'No dean yet.'));
 
   const profs = table(
-    ['Professor', 'Specialty', { label: 'Exams', num: true }, { label: 'Passed', num: true }, { label: 'Graduates', num: true }, { label: 'Teaching strikes', num: true }, 'Now'],
+    ['Professor', 'Specialty', { label: 'Exams', num: true }, { label: 'Passed', num: true }, { label: 'Graduates', num: true }, { label: 'Teaching strikes', num: true }, 'Now', ''],
     c.college.professors.map((p) => [
       h('div', {}, p.name, h('div', { class: 'mono muted' }, p.id)),
       deptName(p.specialtyDepartmentId),
@@ -451,6 +468,7 @@ function collegeSection(ix, c, deptName) {
       p.teaching?.graduates ?? 0,
       `${p.strikes} / 3`,
       p.jail ? jailChip(p) : p.steppedIn ? badge(`In ${deptName(p.steppedIn.departmentId)}: ${p.steppedIn.role} (${until(p.steppedIn.until)})`) : 'Teaching',
+      act('Specialty', () => forms.specialize(c, p)),
     ]),
     'No professors yet.');
 
@@ -459,7 +477,8 @@ function collegeSection(ix, c, deptName) {
     'No new agents waiting for a department.');
 
   return h('section', { class: 'card section', 'aria-labelledby': `college-${c.id}` },
-    h('h2', { id: `college-${c.id}` }, 'College'),
+    h('div', { class: 'row-head' }, h('h2', { id: `college-${c.id}` }, 'College'),
+      h('div', { class: 'toolbar' }, act('+ Create agent', () => forms.createAgent(c), 'primary'), act('+ Create professor', () => forms.createProfessor(c)))),
     h('div', { class: 'two-col' }, deanCard, h('div', { class: 'card section' }, h('h3', {}, 'Waiting for a department'), waiting)),
     h('h3', {}, 'Professors'), profs);
 }
@@ -473,13 +492,27 @@ function jailChip(a) {
   return statusChip('serious', `Jail · ${until(a.jail.until)}`);
 }
 
-function districtSection(ix, d) {
+function districtSection(ix, c, d) {
   return h('section', { class: 'card section', 'aria-labelledby': `d-${d.id}` },
-    h('div', {}, h('h2', { id: `d-${d.id}` }, d.name), h('span', { class: 'small secondary' }, `District · supervisor ${d.supervisor} · `), h('span', { class: 'mono muted' }, d.id)),
-    d.departments.length ? d.departments.map((dp) => departmentCard(ix, dp)) : h('p', { class: 'muted small' }, 'No departments yet.'));
+    h('div', { class: 'row-head' },
+      h('div', {}, h('h2', { id: `d-${d.id}` }, d.name), h('span', { class: 'small secondary' }, `District · supervisor ${d.supervisor} · `), h('span', { class: 'mono muted' }, d.id)),
+      act('+ New department', () => forms.newDepartment(c, d))),
+    d.departments.length ? d.departments.map((dp) => departmentCard(ix, c, dp)) : h('p', { class: 'muted small' }, 'No departments yet.'));
 }
 
-function departmentCard(ix, dp) {
+/** The owner actions that apply to an agent right now. The server re-checks every one. */
+function agentActions(c, a) {
+  if (!isOwner()) return null;
+  const next = { probationer: 'active', active: 'senior' }[a.state];
+  const lead = a.state === 'senior' && !a.badges.includes('dept-lead');
+  return h('div', { class: 'toolbar' },
+    next && act(`Promote to ${next}`, () => forms.promote(c, a, next)),
+    lead && act('Make dept-lead', () => forms.promote(c, a, 'dept-lead')),
+    a.state === 'senior' && act('Retire to professor', () => forms.retire(c, a)),
+    a.jail?.status === 'awaiting_deletion' && act('Delete', () => forms.remove(c, a), 'danger'));
+}
+
+function departmentCard(ix, c, dp) {
   const capText = (n, max) => (max == null ? `${n}` : `${n} / ${max}`);
   const rows = dp.agents.map((a) => [
     h('div', {}, a.name, h('div', { class: 'mono muted' }, a.id)),
@@ -489,16 +522,19 @@ function departmentCard(ix, dp) {
       : h('span', { class: 'muted' }, '—'),
     h('div', { class: 'small' }, `KPI ${a.strikes}/3 · Task ${a.taskStrikes}/3`, h('div', {}, jailChip(a))),
     lifecycleStrip(a),
+    agentActions(c, a),
   ]);
   return h('div', { class: 'dept' },
-    h('div', {}, h('h3', {}, dp.name), h('p', { class: 'small secondary' }, dp.scope)),
+    h('div', { class: 'row-head' },
+      h('div', {}, h('h3', {}, dp.name), h('p', { class: 'small secondary' }, dp.scope)),
+      h('div', { class: 'toolbar' }, act('+ Assign agent', () => forms.assignAgent(c, dp)), act('Settings', () => forms.departmentSettings(c, dp)))),
     h('div', { class: 'dept-meta' },
       badge(`Graduated ${capText(dp.graduatedCount, dp.maxGraduated)}`),
       badge(`Shadows ${capText(dp.shadowCount, dp.maxShadows)}`),
       badge(`${dp.basicTasks.length} basic task${dp.basicTasks.length === 1 ? '' : 's'}`),
       dp.openRoleRequests.length ? statusChip('warning', `${dp.openRoleRequests.length} unfilled role${dp.openRoleRequests.length === 1 ? '' : 's'}`) : null,
       dp.professors.filter((p) => p.steppedIn?.departmentId === dp.id).map((p) => badge(`Professor ${p.name} stepping in`))),
-    table(['Agent', 'State', 'Live status', 'Strikes', 'Lifecycle'], rows, 'No agents in this department yet.'),
+    table(['Agent', 'State', 'Live status', 'Strikes', 'Lifecycle', ''], rows, 'No agents in this department yet.'),
     dp.openDelegations.length
       ? h('details', {}, h('summary', { class: 'small' }, `${dp.openDelegations.length} open delegated task${dp.openDelegations.length === 1 ? '' : 's'}`),
           table(['Task', 'From', 'To', 'Given'], dp.openDelegations.map((t) => [t.task, agentLabel(ix, t.fromAgentId), agentLabel(ix, t.toAgentId), ago(t.ts)])))
@@ -526,12 +562,13 @@ function jailView(ix) {
     JAIL_CAUSE[j.jail.cause] ?? j.jail.cause,
     j.jail.term ?? '—',
     j.jail.status === 'awaiting_deletion' ? statusChip('critical', 'Awaiting your deletion decision') : statusChip('serious', until(j.jail.until)),
+    j.jail.status === 'awaiting_deletion' && ix.cities.get(j.cityId) ? act('Delete', () => forms.remove(ix.cities.get(j.cityId), j), 'danger') : null,
   ]);
   const strikes = data.taskStrikes.slice(-20).reverse().map((t) => [ago(t.ts), agentLabel(ix, t.agentId), cityName(t.agentCity), t.task, agentLabel(ix, t.observedBy)]);
   return [
     h('h1', {}, 'Security jail'),
     h('p', { class: 'secondary' }, 'Every 3 task strikes means a jail term: 6 hours, then 24 hours, then 3 days. The 4th time, or a 3rd KPI or teaching strike, the agent waits here for your deletion decision. Timed terms end on their own.'),
-    h('div', { class: 'card' }, table(['Agent', 'City', 'Cause', { label: 'Term', num: true }, 'Release'], rows, 'Nobody is in jail.')),
+    h('div', { class: 'card' }, table(['Agent', 'City', 'Cause', { label: 'Term', num: true }, 'Release', ''], rows, 'Nobody is in jail.')),
     h('div', { class: 'card section' }, h('h2', {}, 'Recent task strikes'), table(['When', 'Agent', 'City', 'Task', 'Observed by'], strikes, 'No task strikes recorded.')),
   ];
 }

@@ -60,7 +60,7 @@ and `config/users.json`.
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 85 tests
+npm test                    # 88 tests
 
 # API profiles (bots use the bearer token printed once)
 npm run profile -- add --id marc --role owner --label Marc
@@ -81,8 +81,12 @@ npm start                   # http://127.0.0.1:8787
 `npm run demo` writes a sample world to `data/demo.db` (never the real ledger), then:
 
 ```bash
-WORLD_DB=data/demo.db npm start
+npm run demo:start
 ```
+
+Demo mode also turns on a **demo stand-in for the DM and the Mayors**, so the dashboard's forms take
+effect within a second, through the same write-guard as the real bots. It refuses to run on anything
+but `data/demo.db`: the real world is never auto-executed.
 
 ### Settings
 
@@ -94,6 +98,7 @@ WORLD_DB=data/demo.db npm start
 | `WORLD_PORT` / `WORLD_HOST` | `8787` / `127.0.0.1` | keep it on localhost; reach it through Tailscale or the Hermes route |
 | `WORLD_COOKIE_SECURE` | on | set `0` only when testing over plain `http://` on a machine other than localhost |
 | `WORLD_TRUST_PROXY` | off | set `1` only behind a reverse proxy, so sign-in throttling sees the real client IP |
+| `WORLD_SECRETS` | `config/secrets.json` | bot tokens from the department form (gitignored, mode 600); the ledger keeps only their names |
 | `DM_WEBHOOK_URL` / `DM_WEBHOOK_SECRET` | unset | POSTs each new intent, signed `x-world-signature: sha256=<hmac>` |
 
 ## The dashboard
@@ -106,6 +111,13 @@ WORLD_DB=data/demo.db npm start
   records, new agents waiting for a department), every district and department (caps, shadows, unfilled
   roles, delegated tasks), and each agent's live status, strikes and lifecycle strip.
 - **Jail**, **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
+- **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
+  New District, New Department (caps, basic tasks, bot token stored as a server secret), department
+  settings, college: Create agent / Create professor / Create or Replace dean, Assign an existing agent to a
+  department (from the college, or moved from another department), Promote, Make dept-lead, Retire to
+  professor, Delete (only when awaiting deletion), professor specialty, Security deployment, Message
+  Mayor. Names can be left blank or suggested by the name generator. "Waiting on the DM" lists
+  requests not yet routed.
 - Everything updates live from the ledger. Mayors see only their own city; Marc, the DM, Bob and the
   Essentials Mayors see every city.
 - Security: strict Content-Security-Policy (no inline code), HttpOnly SameSite=Strict cookies, a
@@ -151,7 +163,7 @@ The full list of event types, their writers and payloads is in `src/ledger/catal
 
 1. ✅ Event ledger, writer roles, write-guard, ID rules, state projection, API, live stream
 2. ✅ Password sign-in; world map with family homes, city tiles, live KPI pulse + agent counts; city view; jail, inbox, activity
-3. Entity creation forms (New City / District / Department / Agent)
+3. ✅ Entity forms: city, district, department, college agents, professors, dean; assign, promote, retire, delete, deploy, message Mayor
 4. City layer: Mayor, per-agent lifecycle strip, live agent-status panel
 5. Shared-surface write-guard + no-agent-instructs-agent enforcement + injection red-team tests
 6. Currency ledger + graduation-vetting gate + clean attribution

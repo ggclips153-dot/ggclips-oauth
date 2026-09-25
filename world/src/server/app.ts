@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, join, normalize } from 'node:path';
 import type { Profiles } from '../auth/profiles.ts';
 import { LoginThrottle, SESSION_COOKIE, SESSION_TTL_MS, Sessions, readCookie } from '../auth/sessions.ts';
+import { Secrets } from '../auth/secrets.ts';
 import { Users } from '../auth/users.ts';
 import { canRead, worldView } from '../domain/view.ts';
 import type { LedgerEvent } from '../domain/state.ts';
@@ -33,6 +34,7 @@ const SECURITY_HEADERS = {
 
 export interface AppOptions {
   users?: Users;
+  secrets?: Secrets;
   sessions?: Sessions;
   throttle?: LoginThrottle;
   /** Mark the session cookie Secure (default true; set false only for plain-http local testing). */
@@ -97,6 +99,7 @@ const intParam = (url: URL, name: string, fallback: number, max = Number.MAX_SAF
 
 export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions = {}): Server {
   const users = opts.users ?? new Users([]);
+  const secrets = opts.secrets ?? new Secrets(null);
   const sessions = opts.sessions ?? new Sessions();
   const throttle = opts.throttle ?? new LoginThrottle();
   const secure = opts.cookieSecure ?? true;
@@ -172,6 +175,13 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
       if (req.method === 'GET' && url.pathname === '/api/names') {
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
         return send(res, 200, { names: ledger.suggestNames(Math.max(1, intParam(url, 'count', 5, 20))) });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/secrets') {
+        // Write-only: stores e.g. a department's bot token and returns only its name for the ledger.
+        if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
+        const body = (await readJson(req)) as { purpose?: unknown; value?: unknown };
+        if (typeof body.value !== 'string' || !body.value.trim() || body.value.length > 500) throw new LedgerError('INVALID', 'value must be text (max 500)');
+        return send(res, 201, { ref: secrets.put(typeof body.purpose === 'string' ? body.purpose : 'secret', body.value.trim()) });
       }
       if (req.method === 'GET' && url.pathname === '/api/verify') {
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
