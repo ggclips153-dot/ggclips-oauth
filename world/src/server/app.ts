@@ -1,6 +1,7 @@
 // HTTP API over the ledger. Every request is authenticated to a profile; writes go through the
 // write-guard, reads are filtered to the profile's read scope.
 import { createHash } from 'node:crypto';
+import type { EventEmitter } from 'node:events';
 import { readFile, stat } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -47,7 +48,7 @@ const STATIC_TYPES: Record<string, string> = {
 /** Hardened headers on every response. Scripts and styles only from this origin: no inline code runs. */
 const SECURITY_HEADERS = {
   'content-security-policy':
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src http://127.0.0.1:* http://localhost:*; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
   'x-frame-options': 'DENY',
@@ -69,6 +70,14 @@ export interface AppOptions {
   demo?: boolean;
   /** Where uploaded photos and videos live (default data/media). */
   media?: MediaStore;
+  /** StarNet stations (A20): what the dashboard shows of them, and a signal when that changes. */
+  starnet?: StarnetInfo;
+}
+
+export interface StarnetInfo {
+  /** Stations and conversation state, for the cities the reader can see (`scope` '*' = all). */
+  view(scope: string): unknown;
+  events: EventEmitter;
 }
 
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -233,7 +242,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
           .recentFlags(50)
           .filter((f) => scope === '*' || f.writerCity === scope || f.city === scope)
           .map((f) => (scope === '*' || f.writerCity === scope ? f : { ...f, excerpt: '', writer: '' }));
-        return send(res, 200, { ...worldView(ledger.state, profile, ledger.clock()), surfaceFlags });
+        return send(res, 200, { ...worldView(ledger.state, profile, ledger.clock()), surfaceFlags, starnet: opts.starnet?.view(scope) ?? { enabled: false, reason: 'not set up' } });
       }
       if (req.method === 'GET' && url.pathname === '/api/events') {
         const after = intParam(url, 'after', 0);
@@ -316,7 +325,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         });
       }
       if (req.method === 'GET' && url.pathname === '/api/stream') {
-        return stream(req, res, url, ledger, profile, surface);
+        return stream(req, res, url, ledger, profile, surface, opts.starnet);
       }
       send(res, 404, { error: 'NOT_FOUND', message: 'no such route' });
     } catch (err) {
@@ -328,7 +337,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
 }
 
 /** Server-sent events: replay from Last-Event-ID / ?after, then live. */
-function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Ledger, profile: Profile, surface: SurfaceGuard) {
+function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Ledger, profile: Profile, surface: SurfaceGuard, starnet?: StarnetInfo) {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-store',
@@ -354,10 +363,14 @@ function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Led
     if (scope === '*' || f.writerCity === scope || f.city === scope) res.write('event: surface\ndata: {}\n\n');
   };
   surface.events.on('flag', flag);
+  // A StarNet station came up or went down, or an agent's answer failed: refresh.
+  const station = () => res.write('event: surface\ndata: {}\n\n');
+  starnet?.events.on('change', station);
   const beat = setInterval(() => res.write(': heartbeat\n\n'), HEARTBEAT_MS);
   req.on('close', () => {
     clearInterval(beat);
     ledger.events.off('event', write);
     surface.events.off('flag', flag);
+    starnet?.events.off('change', station);
   });
 }

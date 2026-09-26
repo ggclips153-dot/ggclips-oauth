@@ -579,3 +579,12 @@ dialog.modal form.chat-compose { display: flex; gap: 8px; align-items: flex-end;
 .sent-back { border-left: 3px solid var(--serious); padding: 4px 0 4px 10px; display: grid; gap: 4px; }
 .compose-main .help { margin: 0; }
 .compose-main .help:empty { display: none; }
+
+/* ---------- StarNet station (A20) ---------- */
+.station-host { padding: 0 var(--gap) var(--gap); max-width: 1320px; margin: 0 auto; }
+.station-host[hidden] { display: none; }
+.station-frame { display: block; width: 100%; height: max(560px, calc(100vh - 230px)); border: 1px solid var(--border); border-radius: 14px; background: #05060c; }
+.station-frame[hidden] { display: none; }
+.station-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.station-bar .chips { gap: 4px 12px; }
+.chat-via { margin: 6px 0 0; }

@@ -57,3 +57,24 @@ Marc (2026-09-26): "I should not have to wait on an agent" and "remove the waiti
 - The bots can also still route and carry out any request that is waiting.
 - Agents do the work. Marc builds and decides.
 
+
+## A20 — Agents run on StarNet, one station per city
+
+Marc (2026-09-26): "when you click on the city it shows the integration of this download"
+(StarNet, https://starnetos.com); "one station per city"; "it's an os for the agents".
+
+- StarNet is the operating system the agents run on. Each city has its own StarNet station, run from
+  StarNet's open-source code as a local sidecar: its own port (from 8801) and workspace
+  (`data/starnet/<world|demo>/<city>`), bound to 127.0.0.1. The world server starts a station for every
+  city (and for each new city), checks it every 10 seconds and restarts it if it stops.
+- Clicking a city opens its station. Details and 3D city stay one click away.
+- When Marc talks to an agent whose city has a running station, the station runs the agent's turn: real
+  model calls, tools and costs, under StarNet's own consent rules (anything not granted is refused).
+  StarNet keeps one session per world agent, so each agent has its own transcript and memory. The answer is
+  recorded in the ledger as `agent.said`, written by the station for the city (actor `starnet-<city>`).
+  If the station fails, the conversation shows why, and no answer is made up.
+- Without a running station, the city's Mayor bot answers, as before.
+- The ledger remains the world's record. The world's rules (college, departments, strikes, economy,
+  approvals, no auto-publish) are unchanged.
+- StarNet's desktop download is separate. It picks a new private port each time and can't be shown
+  inside the dashboard, so the stations run from StarNet's source code.

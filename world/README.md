@@ -93,6 +93,28 @@ Receptionist City (Facebook, Instagram), posts in every state, inbox items and 6
 it to a demo world built before Social existed, stop the demo server and run `npm run demo:social` once
 (or delete `data/demo.db` and run `npm run demo` again).
 
+### StarNet: one station per city (A20)
+
+The agents run on [StarNet](https://starnetos.com), one station per city. Get StarNet's source once, next to
+this project, and install its packages:
+
+```bash
+cd ~ && git clone https://github.com/androoAGI/starnet.git && cd starnet && npm install
+```
+
+Then start the world with `STARNET_DIR` pointing at it (works for the demo too):
+
+```bash
+STARNET_DIR=~/starnet npm run demo:start
+```
+
+The server starts a station for each city on ports 8801 and up (`STARNET_BASE_PORT` to change), with its
+workspace in `data/starnet/`. Ports and each station's private API key are kept in `config/starnet.json`
+(gitignored, mode 600). Clicking a city shows its station. Choose each station's model provider there on
+first run (OpenRouter key, a supported sign-in, or free local models with Ollama). To give every station the
+same OpenRouter key instead, start the server with `STARNET_OPENROUTER_KEY=<key>` as well. Only station
+problems are printed in the terminal; `STARNET_VERBOSE=1` prints everything.
+
 ### Settings
 
 | Env var | Default | |
@@ -104,6 +126,8 @@ it to a demo world built before Social existed, stop the demo server and run `np
 | `WORLD_COOKIE_SECURE` | on | set `0` only when testing over plain `http://` on a machine other than localhost |
 | `WORLD_TRUST_PROXY` | off | set `1` only behind a reverse proxy, so sign-in throttling sees the real client IP |
 | `WORLD_SECRETS` | `config/secrets.json` | bot tokens from the department form (gitignored, mode 600); the ledger keeps only their names |
+| `STARNET_DIR` | unset | StarNet's source folder; when set, every city gets a StarNet station (A20) |
+| `STARNET_BASE_PORT` | `8801` | first station port |
 | `DM_WEBHOOK_URL` / `DM_WEBHOOK_SECRET` | unset | POSTs each new intent, signed `x-world-signature: sha256=<hmac>` |
 
 ## The dashboard
@@ -194,10 +218,14 @@ it to a demo world built before Social existed, stop the demo server and run `np
     `pages_manage_posts`), TikTok through the Content Posting API, YouTube through the YouTube Data API v3.
     The publisher (`src/social/publisher.ts`) then posts approved, due posts (it checks every 30 seconds),
     and never anything else.
+- **Station** (with StarNet on, A20): clicking a city opens its StarNet station, the operating system its
+  agents run on, with "Talk to" buttons for the city's agents and a link to open the station in its own
+  tab. Details and 3D city are next to it. The station stays loaded while the dashboard updates.
 - **Talk to an agent**: click any agent's name (a city's departments and college, the Live page, the 3D
   city's panel) or click a person in the 3D city. The conversation opens beside what you were doing: Enter
-  sends, Shift+Enter starts a new line. Your message goes to the agent's city Mayor, whose bot passes it on
-  and writes the agent's answer (`agent.said`); in the demo world a stand-in answers. Conversations are kept
+  sends, Shift+Enter starts a new line. If the agent's city has a running StarNet station, the station runs
+  the agent's answer (real model calls; A20). Otherwise the city's Mayor bot passes it on and writes the
+  answer (`agent.said`); in the demo world a stand-in answers. Conversations are kept
   in the ledger and update live.
 - Everything updates live from the ledger. Mayors see only their own city; Marc, the DM, Bob and the
   Essentials Mayors see every city.

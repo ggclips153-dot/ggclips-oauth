@@ -1,4 +1,6 @@
+import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { Profiles } from '../auth/profiles.ts';
 import { Secrets } from '../auth/secrets.ts';
@@ -10,6 +12,9 @@ import { MediaStore } from '../social/media.ts';
 import { attachPublisher } from '../social/publisher.ts';
 import { attachDemoAutopilot } from './demoAutopilot.ts';
 import { attachDmWebhook } from './dmWebhook.ts';
+import { type StarnetInfo } from './app.ts';
+import { attachStarnetBridge } from '../starnet/bridge.ts';
+import { Stations } from '../starnet/stations.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 // `--demo`: the sample world in data/demo.db, with the demo DM/Mayor stand-in, for trying things locally.
@@ -40,7 +45,54 @@ if (!demo && process.env.DM_WEBHOOK_URL) {
 const users = Users.load(resolve(root, process.env.WORLD_USERS ?? 'config/users.json'));
 if (users.size === 0) console.warn('No dashboard logins yet. Create one with: npm run user -- add --username marc --profile marc');
 
-if (demo) attachDemoAutopilot(ledger, dbPath);
+// StarNet (A20): one station per city, run from StarNet's source. Set STARNET_DIR to that folder.
+const starnetEvents = new EventEmitter();
+let starnet: StarnetInfo = { events: starnetEvents, view: () => ({ enabled: false, reason: 'STARNET_DIR is not set' }) };
+let starnetHandles = (_city: string) => false;
+const starnetDir = process.env.STARNET_DIR?.replace(/^~(?=$|\/)/, homedir());
+if (starnetDir) {
+  const problem = Stations.check(resolve(starnetDir));
+  if (problem) {
+    console.warn(`StarNet: ${problem}. Stations are off.`);
+    starnet = { events: starnetEvents, view: () => ({ enabled: false, reason: problem }) };
+  } else {
+    const changed = () => starnetEvents.emit('change');
+    const scope = demo ? 'demo' : 'world';
+    const stations = new Stations(scope, {
+      starnetDir: resolve(starnetDir),
+      workspacesDir: resolve(root, 'data/starnet', scope),
+      configPath: resolve(root, process.env.WORLD_STARNET_CONFIG ?? 'config/starnet.json'),
+      basePort: Number(process.env.STARNET_BASE_PORT ?? 8801),
+      onChange: changed,
+    });
+    const bridge = attachStarnetBridge(ledger, stations, { onChange: changed });
+    starnetHandles = (city) => bridge.handles(city);
+    stations.startAll([...ledger.state.cities.keys()]);
+    // A new city gets its station as soon as it exists.
+    ledger.events.on('event', (e) => {
+      if (e.type === 'city.created' && e.subject) stations.start(e.subject);
+    });
+    const inScope = (scopeId: string, cityId: string) => scopeId === '*' || scopeId === cityId;
+    starnet = {
+      events: starnetEvents,
+      view: (scopeId) => ({
+        enabled: true,
+        stations: Object.fromEntries(Object.entries(stations.statuses()).filter(([c]) => inScope(scopeId, c))),
+        errors: Object.fromEntries(Object.entries(bridge.errors()).filter(([id]) => inScope(scopeId, ledger.state.agents.get(id)?.cityId ?? ''))),
+        working: bridge.working().filter((id) => inScope(scopeId, ledger.state.agents.get(id)?.cityId ?? '')),
+      }),
+    };
+    for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+      process.once(sig, () => {
+        stations.stop();
+        setTimeout(() => process.exit(0), 300);
+      });
+    }
+    console.log(`StarNet: starting a station per city from ${starnetDir} (ports from ${process.env.STARNET_BASE_PORT ?? 8801})`);
+  }
+}
+
+if (demo) attachDemoAutopilot(ledger, dbPath, undefined, { starnetHandles: (city) => starnetHandles(city) });
 // Photos and videos for posts, and the publisher that posts approved, scheduled posts when their time comes
 // (through a platform connector once one is connected; until then they wait, ready to post by hand).
 const media = new MediaStore(resolve(root, 'data/media'));
@@ -62,6 +114,7 @@ createApp(ledger, profiles, {
   trustProxy: process.env.WORLD_TRUST_PROXY === '1',
   demo,
   media,
+  starnet,
 }).listen(port, host, () => {
   console.log(`World ledger: ${integrity.count} events verified. Listening on http://${host}:${port}`);
   console.log(`Build ${buildId(root)} · serving ${root}`);

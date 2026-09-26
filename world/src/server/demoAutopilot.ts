@@ -11,7 +11,7 @@ import { carryOut } from './executor.ts';
 const DM: Profile = { id: 'dm-demo', role: 'dm', writeScope: ['*'] };
 const mayor = (city: string): Profile => ({ id: `mayor-demo-${city}`, role: 'mayor', writeScope: [city] });
 
-export function attachDemoAutopilot(ledger: Ledger, dbPath: string, log = (m: string) => console.log(m)): () => void {
+export function attachDemoAutopilot(ledger: Ledger, dbPath: string, log = (m: string) => console.log(m), { starnetHandles = (_city: string): boolean => false } = {}): () => void {
   if (basename(dbPath) !== 'demo.db') throw new Error('the demo autopilot only runs on data/demo.db, never on the real ledger');
   const later = (ms: number, what: string, fn: () => void) =>
     setTimeout(() => {
@@ -24,7 +24,8 @@ export function attachDemoAutopilot(ledger: Ledger, dbPath: string, log = (m: st
   const onEvent = (e: LedgerEvent) => {
     const p = e.payload as Record<string, any>;
     // Marc talks to an agent: the demo Mayor answers for it after a moment.
-    if (e.type === 'intent.message_agent') {
+    // (A city with a running StarNet station answers for itself.)
+    if (e.type === 'intent.message_agent' && !starnetHandles(e.city)) {
       later(1200, `reply to message #${e.seq}`, () => {
         const a = ledger.state.agents.get(p.agentId);
         if (!a || a.deleted) return;

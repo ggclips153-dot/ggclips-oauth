@@ -303,6 +303,8 @@ function showLogin() {
 }
 
 async function logout() {
+  stationShown = null;
+  syncStation();
   await api('/api/logout', { method: 'POST' }).catch(() => {});
   me = null;
   showLogin();
@@ -499,10 +501,13 @@ function render() {
   if (!me || !data) return;
   const route = (location.hash || '#/').slice(1);
   const ix = index();
+  stationShown = null; // set again by the station view
   let view;
   if (route.startsWith('/city/')) {
     const [id, mode, districtId, deptId] = route.slice(6).split('/').map(decodeURIComponent);
-    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null, deptId: deptId || null } : { mode: 'details' });
+    // With StarNet on, a city opens on its station (A20); Details and 3D are one click away.
+    const station = mode === 'station' || (!mode && data.starnet?.enabled);
+    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null, deptId: deptId || null } : station ? { mode: 'station' } : { mode: 'details' });
   }
   else if (route === '/jail') view = jailView(ix);
   else if (route === '/inbox') view = inboxView(ix);
@@ -520,6 +525,7 @@ function render() {
   if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
   jumpToPlace();
   refreshChat();
+  syncStation();
   if (w3dContainer.isConnected) ensure3D();
   if (c3dContainer.isConnected && pending3DCity) ensureCity3D(pending3DCity.city, pending3DCity.districtId, pending3DCity.deptId);
 }
@@ -619,14 +625,75 @@ function cityTile(c) {
 }
 
 let pending3DCity = null;
+// ---------- StarNet station (A20) ----------
+// Each city's station runs in its own frame, kept outside the redrawn page so live updates never reload it.
+const stationHost = h('div', { class: 'station-host', hidden: true });
+app.after(stationHost);
+const stationFrames = new Map(); // cityId -> iframe
+let stationShown = null; // { cityId, url } while a running station is on screen
+
+function stationView(ix, c, base, switcher) {
+  const st = data.starnet?.stations?.[c.id];
+  const crew = [
+    ...(c.college.dean ? [c.college.dean] : []),
+    ...c.college.professors,
+    ...c.districts.flatMap((d) => d.departments.flatMap((dp) => dp.agents)),
+    ...c.college.enrolled,
+  ];
+  const chip = !st ? statusChip('warning', 'No station yet')
+    : st.state === 'up' ? statusChip('good', 'Station running')
+      : st.state === 'starting' ? statusChip('warning', 'Station starting…')
+        : statusChip('critical', `Station down${st.error ? `: ${st.error}` : ''}`);
+  if (st?.state === 'up') stationShown = { cityId: c.id, url: st.url };
+  return [
+    h('div', { class: 'section' },
+      h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', c.name, ' / Station'),
+      h('div', { class: 'city-head' }, h('h1', {}, c.name), familyMark(c.family), h('span', { class: 'secondary' }, `Mayor ${c.mayorName}`), h('span', { class: 'spacer' }), switcher),
+      h('div', { class: 'station-bar' },
+        chip,
+        st && h('span', { class: 'small secondary' }, `StarNet on port ${st.port}`),
+        st?.state === 'up' && h('a', { class: 'small', href: st.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open in its own tab'),
+        h('span', { class: 'spacer' }),
+        h('span', { class: 'small secondary' }, 'Talk to:'),
+        crew.length
+          ? h('div', { class: 'chips' }, crew.map((a) => agentName(chatCtx(), a)))
+          : h('span', { class: 'small muted' }, 'no agents yet (create them at the college)'))),
+    st?.state === 'up'
+      ? null
+      : h('div', { class: 'card section' },
+          h('h3', {}, st?.state === 'starting' ? 'The station is starting' : 'The station is not running'),
+          h('p', { class: 'secondary' }, st?.state === 'starting'
+            ? 'It will appear here in a few seconds.'
+            : 'The world server starts one StarNet station per city and restarts it if it stops. Check the terminal running the server for the station\'s messages.'),
+          h('p', { class: 'small' }, h('a', { href: `${base}/details` }, 'Open the Details view'))),
+  ];
+}
+
+/** Show the running station of the city on screen (or none), reusing its frame so it keeps its state. */
+function syncStation() {
+  for (const [cityId, frame] of stationFrames) frame.hidden = cityId !== stationShown?.cityId;
+  stationHost.hidden = !stationShown || !app.isConnected;
+  if (!stationShown) return;
+  let frame = stationFrames.get(stationShown.cityId);
+  if (!frame || frame.dataset.url !== stationShown.url) {
+    frame?.remove();
+    frame = h('iframe', { class: 'station-frame', src: stationShown.url, title: `StarNet station of ${stationShown.cityId}`, referrerpolicy: 'no-referrer' });
+    frame.dataset.url = stationShown.url;
+    stationFrames.set(stationShown.cityId, frame);
+    stationHost.append(frame);
+  }
+}
+
 function cityView(ix, id, sub = { mode: 'details' }) {
   const c = ix.cities.get(id);
   pending3DCity = null;
   if (!c) return [h('p', {}, 'City not found. ', h('a', { href: '#/' }, 'Back to the map'))];
   const base = `#/city/${encodeURIComponent(c.id)}`;
   const switcher = h('div', { class: 'seg', role: 'group', 'aria-label': 'City view' },
-    h('a', { class: 'seg-link', href: base, 'aria-current': sub.mode === 'details' ? 'page' : null }, 'Details'),
+    data.starnet?.enabled && h('a', { class: 'seg-link', href: `${base}/station`, 'aria-current': sub.mode === 'station' ? 'page' : null }, 'Station'),
+    h('a', { class: 'seg-link', href: data.starnet?.enabled ? `${base}/details` : base, 'aria-current': sub.mode === 'details' ? 'page' : null }, 'Details'),
     h('a', { class: 'seg-link', href: `${base}/3d`, 'aria-current': sub.mode === '3d' ? 'page' : null }, '3D city'));
+  if (sub.mode === 'station') return stationView(ix, c, base, switcher);
   if (sub.mode === '3d') {
     const district = sub.districtId ? c.districts.find((d) => d.id === sub.districtId) : null;
     pending3DCity = {
