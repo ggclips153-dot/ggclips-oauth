@@ -74,6 +74,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
   const pickables = [];
   let districtSpots = new Map(); // districtId -> { center, radius, plot }
   let deptSpots = new Map(); // departmentId -> { pos, top, districtId }
+  let collegeSpot = null;
   let current = { city: null, districtId: null, deptId: null };
 
   const raycaster = new THREE.Raycaster();
@@ -221,6 +222,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
 
     // ---- College campus ----
     const campus = new THREE.Vector3(-14, 0, 4);
+    collegeSpot = campus;
     const pad = new THREE.Mesh(new THREE.CircleGeometry(8, 48), solid('#0d1420', { rough: 0.8 }));
     pad.rotation.x = -Math.PI / 2;
     pad.position.set(campus.x, 0.02, campus.z);
@@ -536,20 +538,28 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
   }
 
   function renderPicker(city) {
-    const withDepts = city.districts.filter((d) => d.departments.length);
-    const jump = withDepts.length
-      ? h('select', {
-          'aria-label': 'Jump to department',
-          onchange: (ev) => {
-            const [dId, dpId] = ev.target.value.split('|');
-            if (dpId) onSelectDistrict(dId, dpId);
-          },
-        },
-        h('option', { value: '' }, 'Jump to department…'),
-        withDepts.map((d) => h('optgroup', { label: d.name }, d.departments.map((dp) => h('option', { value: `${d.id}|${dp.id}`, selected: current.deptId === dp.id }, dp.name)))))
-      : null;
+    // One list: the college, every district, and each district's departments beneath it.
+    const jump = h('select', {
+      'aria-label': 'Jump to the college, a district or a department',
+      onchange: (ev) => {
+        const v = ev.target.value;
+        if (!v) return;
+        if (v === 'college') return onSelectDistrict('college');
+        const d = city.districts.find((x) => x.id === v);
+        if (d) return onSelectDistrict(d.id);
+        const owner = city.districts.find((x) => x.departments.some((dp) => dp.id === v));
+        if (owner) onSelectDistrict(owner.id, v);
+      },
+    },
+    h('option', { value: '' }, 'Jump to…'),
+    h('option', { value: 'college', selected: current.districtId === 'college' }, 'College'),
+    city.districts.map((d) => [
+      h('option', { value: d.id, selected: current.districtId === d.id && !current.deptId }, `District: ${d.name}`),
+      d.departments.map((dp) => h('option', { value: dp.id, selected: current.deptId === dp.id }, `\u00a0\u00a0\u00a0\u00a0${dp.name}`)),
+    ]));
     picker.replaceChildren(
       h('button', { type: 'button', 'aria-pressed': String(!current.districtId), onclick: () => onSelectDistrict(null) }, 'Whole city'),
+      h('button', { type: 'button', 'aria-pressed': String(current.districtId === 'college'), onclick: () => onSelectDistrict('college') }, 'College'),
       ...city.districts.map((d) => h('button', { type: 'button', 'aria-pressed': String(current.districtId === d.id && !current.deptId), onclick: () => onSelectDistrict(d.id) }, d.name)),
       jump,
     );
@@ -558,6 +568,23 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
   function renderPanel(city) {
     const act = actions();
     const btn = (label, onclick, cls = '') => h('button', { type: 'button', class: `small-btn ${cls}`.trim(), onclick }, label);
+    if (current.districtId === 'college') {
+      const col = city.college;
+      panel.replaceChildren(
+        h('h3', {}, `${city.name} college`),
+        h('p', { class: 'small secondary' }, col.dean ? `Dean ${col.dean.name}` : 'No dean yet'),
+        h('b', {}, `Professors (${col.professors.length})`),
+        col.professors.length
+          ? h('ul', {}, col.professors.map((p) => h('li', { class: 'small' }, `${p.name}${p.steppedIn ? ` · stepping in: ${p.steppedIn.role}` : ' · teaching'}`)))
+          : h('p', { class: 'small muted' }, 'None yet.'),
+        h('b', {}, `New agents waiting for a department (${col.enrolled.length})`),
+        col.enrolled.length
+          ? h('ul', {}, col.enrolled.map((a) => h('li', { class: 'small' }, `${a.name} · ${a.domainFocus}`)))
+          : h('p', { class: 'small muted' }, 'None waiting.'),
+        act && h('div', { class: 'toolbar' }, btn('+ Create agent', () => act.createAgent(city), 'primary')),
+      );
+      return;
+    }
     const d = city.districts.find((x) => x.id === current.districtId);
     if (!d) {
       const counts = city.agentCounts;
@@ -609,6 +636,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
     const dept = current.deptId && deptSpots.get(current.deptId);
     const spot = current.districtId && districtSpots.get(current.districtId);
     if (dept) flyTo(dept.pos.clone().setY(Math.min(dept.top * 0.35, 6)), Math.max(16, dept.top * 1.5), first ? 0 : 900);
+    else if (current.districtId === 'college' && collegeSpot) flyTo(collegeSpot.clone().setY(1.5), 26, first ? 0 : 900);
     else if (spot) flyTo(spot.center, spot.radius * 2.6 + 12, first ? 0 : 900);
     else {
       let far = 30;
@@ -620,7 +648,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
   /** Dim the other districts while one is chosen. */
   function dimOthers() {
     for (const [id, s] of districtSpots) {
-      s.plot.material.transparent = !!current.districtId && id !== current.districtId;
+      s.plot.material.transparent = !!current.districtId && current.districtId !== 'college' && id !== current.districtId;
       s.plot.material.opacity = s.plot.material.transparent ? 0.45 : 1;
     }
   }

@@ -141,9 +141,15 @@ but `data/demo.db`: the real world is never auto-executed.
   (Ratify / Decline, owner only), and the version history.
 - **Security**: the jail, recent task strikes, and notes the shared-surface guard rejected or quarantined.
 - **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
-- **Jump to department**: on a city's Details page and in its 3D view, a picker (grouped by district)
-  goes straight to a department: the page scrolls to it, or the 3D camera flies to its tower. It is part of
-  the address (`#/city/<id>/dept/<dept>`, `#/city/<id>/3d/<district>/<dept>`), so Back works.
+- **Jump to…**: on a city's Details page and in its 3D view, one picker lists the college, every district
+  and each district's departments: the page scrolls there, or the 3D camera flies there (the 3D view also
+  has a College button). It is part of the address (`#/city/<id>/at/<college|district|dept>`,
+  `#/city/<id>/3d/<college|district>/<dept>`), so Back works.
+- **Create now**: creating cities, districts, departments, agents (at the college), professors and deans,
+  and assigning an existing agent to a department, can be applied by Marc himself ("Create now" in the
+  form or on a waiting request) as well as by the DM and Mayor bots. He acts as DM and Mayor through the
+  same write-guard, and the ledger records it as him (`marc-as-dm`, `marc-as-mayor`). Everything else
+  (promotions, strikes, the economy, work) stays with the bots.
 - **Traffic means work**: cars appear only while agents are working, two per working agent on their
   district's roads and one on the beltway and superhighways; a city with nobody working has empty roads.
 - **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
@@ -173,6 +179,7 @@ Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie
 | POST | `/api/events` | append `{type, city, subject?, payload, authorizedBy?}` |
 | GET | `/api/names?count=5` | owner only: suggested agent names (never retired, in use or reserved) |
 | GET | `/api/verify` | owner only: verify the hash chain |
+| POST | `/api/intents/<seq>/create-now` | owner only: apply a creation request now, as DM and Mayor |
 | GET | `/api/constitution` | the Constitution file, its fingerprint, the ratified record, in-force status and the SOUL pointer line |
 | POST | `/api/surface/check` | gateway (Hermes): may this agent write this note to the shared surface? See `docs/SURFACE-GUARD.md` |
 

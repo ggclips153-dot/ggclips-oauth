@@ -51,7 +51,10 @@ export function parseMoney(text) {
  * types: text | textarea | select | number | lines | secret | name (text + "Suggest" button).
  * onSubmit(values) sends the request; `repeat` adds "Send and add another".
  */
-function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', repeat = false, onSubmit }) {
+function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', repeat = false, createNow = false, onSubmit }) {
+  // Creation forms can also be applied at once by Marc (acting as DM and Mayor), without waiting for the bots.
+  const canCreateNow = createNow && !!ctx.createNow;
+  const preferNow = canCreateNow && !!ctx.noDm?.();
   const dialog = h('dialog', { class: 'modal', 'aria-labelledby': 'form-title' });
   const error = h('p', { class: 'error', role: 'alert' });
   const controls = {};
@@ -111,7 +114,7 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
   };
 
   let busy = false;
-  const send = async (again) => {
+  const send = async (again, now = false) => {
     if (busy) return; // a double-click must not send the request twice
     error.textContent = '';
     const values = collect();
@@ -124,9 +127,15 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
     busy = true;
     for (const b of dialog.querySelectorAll('button')) b.disabled = true;
     try {
+      ctx.captured = now ? [] : null;
       const msg = await onSubmit(values);
-      const pendingNote = ctx.noDm?.() ? ' It waits under "Waiting on the DM": no DM bot is connected to carry it out.' : '';
-      ctx.toast(`${msg ?? 'Sent to the DM for routing.'}${pendingNote}`);
+      if (now) {
+        await ctx.createNow(ctx.captured);
+        ctx.toast(`${(msg ?? 'Done.').replace(/ sent to the DM\.?$/, '')}: created.`);
+      } else {
+        const pendingNote = ctx.noDm?.() ? ' It waits under "Waiting on the DM" until a DM bot routes it, or you press "Create now" there.' : '';
+        ctx.toast(`${msg ?? 'Sent to the DM for routing.'}${pendingNote}`);
+      }
       if (again) {
         for (const { f, control } of Object.values(controls)) if (!f.keep) control.value = f.type === 'select' ? control.value : '';
         Object.values(controls)[0]?.control.focus();
@@ -136,21 +145,24 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
     } catch (err) {
       error.textContent = err.message;
     } finally {
+      ctx.captured = null;
       busy = false;
       for (const b of dialog.querySelectorAll('button')) b.disabled = false;
     }
   };
 
   dialog.append(
-    h('form', { onsubmit: (ev) => { ev.preventDefault(); send(false); } },
+    h('form', { onsubmit: (ev) => { ev.preventDefault(); send(false, preferNow); } },
       h('h2', { id: 'form-title' }, title),
       intro && h('p', { class: 'secondary small' }, intro),
       fields.map(fieldEl),
       error,
       h('div', { class: 'actions' },
         h('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'),
-        repeat && h('button', { type: 'button', onclick: () => send(true) }, 'Send and add another'),
-        h('button', { type: 'submit', class: 'primary' }, submitLabel))),
+        repeat && h('button', { type: 'button', onclick: () => send(true, preferNow) }, preferNow ? 'Create and add another' : 'Send and add another'),
+        canCreateNow && !preferNow && h('button', { type: 'button', title: 'Apply it now yourself, acting as DM and Mayor', onclick: () => send(false, true) }, 'Create now'),
+        canCreateNow && preferNow && h('button', { type: 'button', title: 'Leave it for the DM and Mayor bots', onclick: () => send(false, false) }, submitLabel),
+        h('button', { type: 'submit', class: 'primary' }, preferNow ? 'Create now' : submitLabel))),
   );
   dialog.addEventListener('close', () => dialog.remove());
   document.body.append(dialog);
@@ -160,7 +172,11 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
 
 /** Form openers bound to the dashboard context: { api, toast, data() }. */
 export function formsFor(ctx) {
-  const intent = (type, city, payload) => ctx.api('/api/events', { method: 'POST', body: { type, city, payload } });
+  const intent = async (type, city, payload) => {
+    const e = await ctx.api('/api/events', { method: 'POST', body: { type, city, payload } });
+    ctx.captured?.push(e.seq); // "Create now" applies exactly what this form sent
+    return e;
+  };
   const departmentsOf = (city) => city.districts.flatMap((d) => d.departments.map((dp) => [dp.id, `${dp.name} (${d.name})`]));
   const personaFields = [
     { name: 'voice', label: 'Persona voice', type: 'text', required: true, placeholder: 'e.g. warm, concise, professional', keep: true },
@@ -172,6 +188,7 @@ export function formsFor(ctx) {
   return {
     newCity() {
       openForm(ctx, {
+        createNow: true,
         title: 'New city',
         intro: 'One business endeavor, with its own Mayor. The DM creates it once routed.',
         repeat: true,
@@ -195,6 +212,7 @@ export function formsFor(ctx) {
 
     newDistrict(city) {
       openForm(ctx, {
+        createNow: true,
         title: `New district in ${city.name}`,
         repeat: true,
         fields: [
@@ -210,6 +228,7 @@ export function formsFor(ctx) {
 
     newDepartment(city, district) {
       openForm(ctx, {
+        createNow: true,
         title: `New department in ${district.name}`,
         intro: 'A department is the agents who specialise in it. Caps are optional.',
         repeat: true,
@@ -248,6 +267,7 @@ export function formsFor(ctx) {
     /** New agents are created only here, at the city's college (A11). A department then takes an existing one. */
     createAgent(city) {
       openForm(ctx, {
+        createNow: true,
         title: `New agent at ${city.name}'s college`,
         intro: 'A beginner agent, enrolled at the college. A department then takes it with "Assign agent". Its ID is permanent and never reused.',
         repeat: true,
@@ -261,6 +281,7 @@ export function formsFor(ctx) {
 
     createProfessor(city) {
       openForm(ctx, {
+        createNow: true,
         title: `New professor at ${city.name}'s college`,
         intro: 'Teaches, gives exams and judges fitness to graduate. Steps in only at its specialty department when needed.',
         repeat: true,
@@ -278,6 +299,7 @@ export function formsFor(ctx) {
 
     createDean(city) {
       openForm(ctx, {
+        createNow: true,
         title: `Dean for ${city.name}'s college`,
         intro: 'Manages the professors. Judged by the Mayor on how the college\'s graduates perform.',
         fields: [{ name: 'name', label: 'Display name', type: 'name', help: 'Leave blank and one is generated for you.' }, ...personaFields],
@@ -322,6 +344,7 @@ export function formsFor(ctx) {
         return;
       }
       openForm(ctx, {
+        createNow: true,
         title: `Assign an agent to ${dept.name}`,
         intro: 'Assigns an EXISTING agent of this city: one waiting at the college, or one moved from another department. New agents are created only at the college.',
         repeat: true,

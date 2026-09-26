@@ -53,7 +53,18 @@ function toast(message) {
   document.body.append(el);
   setTimeout(() => el.remove(), Math.max(4000, String(message).length * 60));
 }
-const forms = formsFor({ api: (...a) => api(...a), toast, noDm: () => noDm() });
+/** Creation requests Marc may apply himself (the server enforces the same list). */
+const CREATE_NOW = new Set(['intent.create_city', 'intent.create_district', 'intent.create_department', 'intent.create_agent', 'intent.create_professor', 'intent.create_dean', 'intent.place_agent']);
+const forms = formsFor({
+  api: (...a) => api(...a),
+  toast,
+  noDm: () => noDm(),
+  // Apply the requests a form just sent, in order; stops at the first one the rules refuse.
+  createNow: async (seqs) => {
+    for (const seq of seqs) await api(`/api/intents/${seq}/create-now`, { method: 'POST' });
+    scheduleRefresh();
+  },
+});
 
 // ---------- 3D world (loaded only when chosen) ----------
 const w3dContainer = h('div', { class: 'w3d' });
@@ -259,7 +270,7 @@ function setLive(v) {
 
 window.addEventListener('hashchange', () => {
   // A department jump scrolls to its department (in render); everything else starts at the top.
-  if (!/\/dept\//.test(location.hash)) window.scrollTo(0, 0);
+  if (!/\/(at|dept)\//.test(location.hash)) window.scrollTo(0, 0);
   render();
 });
 
@@ -485,7 +496,7 @@ function render() {
   let view;
   if (route.startsWith('/city/')) {
     const [id, mode, districtId, deptId] = route.slice(6).split('/').map(decodeURIComponent);
-    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null, deptId: deptId || null } : { mode: 'details', deptId: mode === 'dept' ? districtId : null });
+    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null, deptId: deptId || null } : { mode: 'details' });
   }
   else if (route === '/jail') view = jailView(ix);
   else if (route === '/inbox') view = inboxView(ix);
@@ -500,7 +511,7 @@ function render() {
   app.replaceChildren(topbar(), h('main', {}, dmBanner(), view));
   for (const sm of app.querySelectorAll('details > summary')) if (open.has(sm.textContent)) sm.parentElement.open = true;
   if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
-  jumpToDepartment();
+  jumpToPlace();
   if (w3dContainer.isConnected) ensure3D();
   if (c3dContainer.isConnected && pending3DCity) ensureCity3D(pending3DCity.city, pending3DCity.districtId, pending3DCity.deptId);
 }
@@ -552,11 +563,32 @@ function mapView(ix) {
 function pendingCard(ix, cityId) {
   const list = data.pendingIntents.filter((i) => !cityId || i.city === cityId);
   if (!list.length) return null;
+  const creatable = list.filter((i) => CREATE_NOW.has(i.type));
   return h('section', { class: 'card section' },
-    h('h3', {}, `Waiting on the DM (${list.length})`),
+    h('div', { class: 'row-head' },
+      h('h3', {}, `Waiting on the DM (${list.length})`),
+      creatable.length > 1 ? act(`Create all ${creatable.length} now`, () => carryOutRequests(creatable.map((i) => i.seq)), 'primary') : null),
+    isOwner() && creatable.length ? h('p', { class: 'small secondary' }, 'The DM bot routes these and the Mayor carries them out. New cities, districts, departments, agents, professors and deans (and assigning an agent) you can also create yourself now with "Create now": the same rules apply, and the ledger records that it was you.') : null,
     h('ul', { class: 'pending' }, list.map((i) =>
       h('li', {}, h('b', {}, plainIntent(i.type)), ' · ', ix.cities.get(i.city)?.name ?? (i.city === 'WORLD' ? 'World' : i.city),
-        i.payload.name ? ` · ${i.payload.name}` : '', h('span', { class: 'muted' }, ` · ${ago(i.ts)}`)))));
+        i.payload.name ? ` · ${i.payload.name}` : '', h('span', { class: 'muted' }, ` · ${ago(i.ts)} `),
+        CREATE_NOW.has(i.type) ? act('Create now', () => carryOutRequests([i.seq])) : null))));
+}
+
+/** Apply creation requests as DM + Mayor, oldest first (a district before the department that needs it). */
+async function carryOutRequests(seqs) {
+  let done = 0;
+  const failures = [];
+  for (const seq of [...seqs].sort((a, b) => a - b)) {
+    try {
+      await api(`/api/intents/${seq}/create-now`, { method: 'POST' });
+      done++;
+    } catch (err) {
+      failures.push(`#${seq}: ${err.message}`);
+    }
+  }
+  toast(failures.length ? `Created ${done}; not created: ${failures.join('; ')}` : `Created ${done}.`);
+  scheduleRefresh();
 }
 
 function cityTile(c) {
@@ -587,7 +619,11 @@ function cityView(ix, id, sub = { mode: 'details' }) {
     h('a', { class: 'seg-link', href: `${base}/3d`, 'aria-current': sub.mode === '3d' ? 'page' : null }, '3D city'));
   if (sub.mode === '3d') {
     const district = sub.districtId ? c.districts.find((d) => d.id === sub.districtId) : null;
-    pending3DCity = { city: c, districtId: district?.id ?? null, deptId: district && district.departments.some((dp) => dp.id === sub.deptId) ? sub.deptId : null };
+    pending3DCity = {
+      city: c,
+      districtId: sub.districtId === 'college' ? 'college' : district?.id ?? null,
+      deptId: district && district.departments.some((dp) => dp.id === sub.deptId) ? sub.deptId : null,
+    };
     return [
       h('div', { class: 'section' },
         h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', h('a', { href: base }, c.name), ' / 3D city'),
@@ -605,12 +641,12 @@ function cityView(ix, id, sub = { mode: 'details' }) {
     h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', c.name),
     h('div', { class: 'city-head' }, h('h1', {}, c.name), familyMark(c.family), h('span', { class: 'secondary' }, `Mayor ${c.mayorName}`),
       c.jailedCount ? statusChip('critical', `${c.jailedCount} in jail`) : null, h('span', { class: 'spacer' }), switcher),
-    deptJump(c, (dp) => {
+    placeJump(c, (place) => {
       // The jump is part of the address, so it survives live redraws and the back button works.
-      const target = `${base}/dept/${encodeURIComponent(dp.id)}`;
+      const target = `${base}/at/${encodeURIComponent(place)}`;
       if (location.hash === target) {
-        jumpedTo = null; // same department again: scroll again
-        jumpToDepartment();
+        jumpedTo = null; // same place again: scroll again
+        jumpToPlace();
       } else location.hash = target; // the redraw after the hash change does the scrolling
     }),
     isOwner() && h('div', { class: 'toolbar' },
@@ -677,7 +713,7 @@ function collegeSection(ix, c, deptName) {
     c.college.enrolled.map((a) => [h('div', {}, a.name, h('div', { class: 'mono muted' }, a.id)), a.domainFocus, ago(a.lifecycle[0].ts)]),
     'No new agents waiting for a department.');
 
-  return h('section', { class: 'card section', 'aria-labelledby': `college-${c.id}` },
+  return h('section', { class: 'card section', id: 'at-college', 'aria-labelledby': `college-${c.id}` },
     h('div', { class: 'row-head' }, h('h2', { id: `college-${c.id}` }, 'College'),
       h('div', { class: 'toolbar' }, act('+ Create agent', () => forms.createAgent(c), 'primary'), act('+ Create professor', () => forms.createProfessor(c)))),
     h('div', { class: 'two-col' }, deanCard, h('div', { class: 'card section' }, h('h3', {}, 'Waiting for a department'), waiting)),
@@ -694,7 +730,7 @@ function jailChip(a) {
 }
 
 function districtSection(ix, c, d) {
-  return h('section', { class: 'card section', 'aria-labelledby': `d-${d.id}` },
+  return h('section', { class: 'card section', id: `at-${d.id}`, 'aria-labelledby': `d-${d.id}` },
     h('div', { class: 'row-head' },
       h('div', {}, h('h2', { id: `d-${d.id}` }, d.name), h('span', { class: 'small secondary' }, `District · supervisor ${d.supervisor} · `), h('span', { class: 'mono muted' }, d.id)),
       act('+ New department', () => forms.newDepartment(c, d))),
@@ -714,12 +750,12 @@ function agentActions(c, a) {
     a.jail?.status === 'awaiting_deletion' && act('Delete', () => forms.remove(c, a), 'danger'));
 }
 
-/** Scroll to the department named in the address (#/city/<id>/dept/<dept>), once per jump. */
+/** Scroll to the place named in the address (#/city/<id>/at/<college | district | department>), once per jump. */
 let jumpedTo = null;
-function jumpToDepartment() {
-  const m = /^#\/city\/[^/]+\/dept\/([^/]+)$/.exec(location.hash);
+function jumpToPlace() {
+  const m = /^#\/city\/[^/]+\/(?:at|dept)\/([^/]+)$/.exec(location.hash);
   if (!m || jumpedTo === location.hash) return;
-  const el = document.getElementById(`dept-${decodeURIComponent(m[1])}`);
+  const el = document.getElementById(`at-${decodeURIComponent(m[1])}`);
   if (!el) return;
   jumpedTo = location.hash;
   requestAnimationFrame(() => {
@@ -737,29 +773,29 @@ function dmBanner() {
   return h('div', { class: 'card section dm-banner', role: 'status' },
     h('h3', {}, 'No District Messenger is connected'),
     h('p', { class: 'small' }, `This is your real world, and nothing is auto-executed: every request (new city, district, department, agent…) is recorded and waits for the DM to route it and the Mayor to carry it out. No DM bot has connected${runtime.dmSeenAt ? ' in the last 15 minutes' : ' yet'}, so ${waiting ? `${waiting} request(s) are waiting` : 'new requests will wait'} under "Waiting on the DM".`),
-    h('p', { class: 'small secondary' }, 'Connect the DM bot (and the Mayor bots) to make them happen. To try everything end to end now, stop the server and run the demo world instead: npm run demo:start.'));
+    h('p', { class: 'small secondary' }, 'You can create cities, districts, departments, agents, professors and deans yourself with "Create now" (in the forms, or on a waiting request); the ledger records it was you. Everything else waits for the DM and Mayor bots.'));
 }
 
-/** "Jump to department" picker, grouped by district. A city with no departments says so instead. */
-function deptJump(c, onPick) {
-  if (!c.districts.some((d) => d.departments.length)) {
-    return h('select', { class: 'dept-jump', disabled: true, 'aria-label': 'Jump to department', title: 'Add a district and a department first' },
-      h('option', {}, c.districts.length ? 'No departments yet' : 'No districts or departments yet'));
-  }
-  const select = h('select', {
+/**
+ * "Jump to…" picker: the college, then every district with its departments indented beneath it.
+ * onPick gets 'college', a district id or a department id.
+ */
+function placeJump(c, onPick) {
+  return h('select', {
     class: 'dept-jump',
-    'aria-label': 'Jump to department',
+    'aria-label': 'Jump to the college, a district or a department',
     onchange: (ev) => {
-      const [dId, dpId] = ev.target.value.split('|');
-      const dp = c.districts.find((d) => d.id === dId)?.departments.find((x) => x.id === dpId);
+      const v = ev.target.value;
       ev.target.value = '';
-      if (dp) onPick(dp, dId);
+      if (v) onPick(v);
     },
   },
-  h('option', { value: '' }, 'Jump to department…'),
-  c.districts.filter((d) => d.departments.length).map((d) =>
-    h('optgroup', { label: d.name }, d.departments.map((dp) => h('option', { value: `${d.id}|${dp.id}` }, `${dp.name} · ${dp.agents.length} agent(s)`)))));
-  return select;
+  h('option', { value: '' }, 'Jump to…'),
+  h('option', { value: 'college' }, `College · ${c.college.professors.length} professor(s), ${c.college.enrolled.length} waiting`),
+  c.districts.map((d) => [
+    h('option', { value: d.id }, `District: ${d.name} · ${d.departments.length} department(s)`),
+    d.departments.map((dp) => h('option', { value: dp.id }, `\u00a0\u00a0\u00a0\u00a0${dp.name} · ${dp.agents.length} agent(s)`)),
+  ]));
 }
 
 function departmentCard(ix, c, dp) {
@@ -774,7 +810,7 @@ function departmentCard(ix, c, dp) {
     lifecycleStrip(a),
     agentActions(c, a),
   ]);
-  return h('div', { class: 'dept', id: `dept-${dp.id}` },
+  return h('div', { class: 'dept', id: `at-${dp.id}` },
     h('div', { class: 'row-head' },
       h('div', {}, h('h3', {}, dp.name), h('p', { class: 'small secondary' }, dp.scope)),
       h('div', { class: 'toolbar' }, act('+ Assign agent', () => forms.assignAgent(c, dp)), act('Settings', () => forms.departmentSettings(c, dp)))),

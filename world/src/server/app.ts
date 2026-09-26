@@ -11,6 +11,7 @@ import { Secrets } from '../auth/secrets.ts';
 import { Users } from '../auth/users.ts';
 import { SurfaceGuard, type SurfaceNote } from '../security/surfaceGuard.ts';
 import { buildId } from './build.ts';
+import { carryOut } from './executor.ts';
 import { CONSTITUTION_DOC_REF, pointerLine, readConstitution } from '../domain/constitution.ts';
 import { readScope } from '../domain/view.ts';
 import { canRead, worldView } from '../domain/view.ts';
@@ -24,6 +25,16 @@ const HEARTBEAT_MS = 25_000;
 // A real filesystem path (not a URL pathname), so folders with spaces and Windows drives work.
 const PUBLIC_DIR = resolve(import.meta.dirname, '../../public') + sep;
 const WORLD_DIR = resolve(import.meta.dirname, '../..');
+/** Requests Marc may apply himself: creating the world's structure and agents, and assigning an existing agent. */
+export const CREATE_NOW = new Set([
+  'intent.create_city',
+  'intent.create_district',
+  'intent.create_department',
+  'intent.create_agent',
+  'intent.create_professor',
+  'intent.create_dean',
+  'intent.place_agent',
+]);
 const STATIC_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -227,6 +238,20 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
           authorizedBy: (input.authorizedBy as number | undefined) ?? null,
         });
         return send(res, 201, event);
+      }
+      // Marc can create his world's structure and agents himself, without waiting for the bots: he acts as the
+      // DM and the Mayor for CREATION requests only (work and everything else stays with the DM and Mayors).
+      // Recorded as him (actor "<id>-as-dm" / "<id>-as-mayor"); the write-guard checks it exactly as for a bot.
+      const carry = /^\/api\/intents\/(\d+)\/create-now$/.exec(url.pathname);
+      if (req.method === 'POST' && carry) {
+        if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
+        const intent = ledger.state.intents.get(Number(carry[1])) ?? (() => { throw new LedgerError('NOT_FOUND', `intent #${carry[1]} not found`); })();
+        if (!CREATE_NOW.has(intent.type)) throw new LedgerError('FORBIDDEN', `${intent.type} is not a creation request; the DM and the Mayor carry it out`);
+        const written = carryOut(ledger, intent, {
+          dm: { id: `${profile.id}-as-dm`, role: 'dm', writeScope: ['*'] },
+          mayor: (city) => ({ id: `${profile.id}-as-mayor`, role: 'mayor', writeScope: [city] }),
+        }, `carried out by ${profile.id}`);
+        return send(res, 201, { events: written });
       }
       if (req.method === 'GET' && url.pathname === '/api/names') {
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
