@@ -2,7 +2,7 @@
 // The one rule that matters most: nothing is published unless Marc approved it (no auto-publish).
 import { isJailed, type LedgerEvent, type WorldState } from '../domain/state.ts';
 import { conflict, forbid, invalid, notFound } from '../ledger/errors.ts';
-import { PLATFORM_RULES, platformProblems, type MediaItem } from './model.ts';
+import { MAX_TAGS, PLATFORM_RULES, TAG, platformProblems, type MediaItem } from './model.ts';
 import type { Post } from './state.ts';
 
 interface Draft {
@@ -51,8 +51,23 @@ export function checkSocial(state: WorldState, d: Draft, intent: LedgerEvent | u
     }
     return v as MediaItem[];
   };
+  const tagList = (v: unknown): string[] | undefined => {
+    if (v === undefined) return undefined;
+    if (!Array.isArray(v) || v.length > MAX_TAGS || v.some((x) => typeof x !== 'string' || !TAG.test(x))) {
+      invalid(`tags must be a list of up to ${MAX_TAGS} hashtags (letters, digits and _; no "#" or spaces)`);
+    }
+    if (new Set((v as string[]).map((x) => x.toLowerCase())).size !== (v as string[]).length) invalid('tags has duplicates');
+    return v as string[];
+  };
+  const GRADUATED_AGENT = (id: unknown) => {
+    const a = state.agents.get(String(id)) ?? notFound(`unknown agent: ${id}`);
+    if (a.cityId !== d.city || a.deleted || a.role !== 'agent') forbid(`agent ${a.id} is not a working agent of ${d.city}`);
+    if (!GRADUATED.includes(a.state)) forbid(`agent ${a.id} is ${a.state}; only graduated agents draft posts`);
+    if (isJailed(a, now)) conflict(`agent ${a.id} is in jail`);
+    return a;
+  };
   /** Every channel's platform must accept the post as it stands (checked on approval and scheduling). */
-  const ready = (post: Pick<Post, 'channelIds' | 'text' | 'title' | 'media'>) => {
+  const ready = (post: Pick<Post, 'channelIds' | 'text' | 'title' | 'media' | 'tags'>) => {
     const problems = post.channelIds.flatMap((c) => platformProblems(channelIn(c).platform, post));
     if (problems.length) conflict(`not ready to publish: ${problems.join('; ')}`);
   };
@@ -83,26 +98,36 @@ export function checkSocial(state: WorldState, d: Draft, intent: LedgerEvent | u
 
     case 'intent.social_draft_post':
     case 'social.post_drafted': {
-      if (d.type === 'social.post_drafted') match(['channelIds', 'text', 'title', 'media', 'firstComment', 'scheduledAt', 'approve']);
+      if (d.type === 'social.post_drafted') match(['channelIds', 'text', 'title', 'media', 'firstComment', 'tags', 'scheduledAt', 'approve']);
       const channelIds = channelList(p.channelIds);
       const media = mediaList(p.media);
+      const tags = tagList(p.tags) ?? [];
       if (p.scheduledAt && !p.approve) invalid('a post can only be scheduled once it is approved');
       future(p.scheduledAt);
-      if (p.approve) ready({ channelIds, text: p.text, title: p.title ?? null, media });
+      if (p.approve) ready({ channelIds, text: p.text, title: p.title ?? null, media, tags });
       break;
     }
     case 'social.agent_drafted': {
-      const a = state.agents.get(String(p.authorAgentId)) ?? notFound(`unknown agent: ${p.authorAgentId}`);
-      if (a.cityId !== d.city || a.deleted || a.role !== 'agent') forbid(`agent ${a.id} is not a working agent of ${d.city}`);
-      if (!GRADUATED.includes(a.state)) forbid(`agent ${a.id} is ${a.state}; only graduated agents draft posts`);
-      if (isJailed(a, now)) conflict(`agent ${a.id} is in jail`);
+      GRADUATED_AGENT(p.authorAgentId);
       channelList(p.channelIds);
       mediaList(p.media);
+      tagList(p.tags);
+      break;
+    }
+    case 'social.agent_revised': {
+      // An agent reworks a post Marc sent back; it waits for his approval again.
+      const post = postIn(p.postId);
+      if (post.author.kind !== 'agent') forbid(`post ${post.id} was not drafted by an agent`);
+      if (post.status !== 'rejected') conflict(`post ${post.id} is ${post.status}; agents revise only posts Marc rejected`);
+      GRADUATED_AGENT(post.author.id);
+      if (p.channelIds !== undefined) channelList(p.channelIds);
+      mediaList(p.media);
+      tagList(p.tags);
       break;
     }
     case 'intent.social_edit_post':
     case 'social.post_edited': {
-      if (d.type === 'social.post_edited') match(['postId', 'channelIds', 'text', 'title', 'media', 'firstComment']);
+      if (d.type === 'social.post_edited') match(['postId', 'channelIds', 'text', 'title', 'media', 'firstComment', 'tags']);
       const post = postIn(p.postId);
       if (['published', 'partial'].includes(post.status)) conflict(`post ${post.id} is already published`);
       const next = {
@@ -110,6 +135,7 @@ export function checkSocial(state: WorldState, d: Draft, intent: LedgerEvent | u
         text: p.text ?? post.text,
         title: p.title ?? post.title,
         media: p.media !== undefined ? mediaList(p.media) : post.media,
+        tags: p.tags !== undefined ? tagList(p.tags)! : post.tags,
       };
       // An approved post stays publishable after the edit.
       if (['approved', 'scheduled'].includes(post.status)) ready(next);

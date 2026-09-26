@@ -156,6 +156,11 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
     },
     worldRollup: scope === '*' ? state.worldRollup : null,
     social: socialView(state, scope, now),
+    // Marc's direct conversations with agents the reader can see.
+    chats: Object.fromEntries([...state.chats].filter(([id]) => {
+      const a = state.agents.get(id);
+      return a && inScope(a.cityId);
+    })),
     cities,
     pendingIntents,
   };

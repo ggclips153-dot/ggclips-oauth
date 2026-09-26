@@ -5,6 +5,7 @@ import { h, s } from './dom.js';
 import { formsFor, plainIntent } from './forms.js';
 import { renderMarkdown } from './markdown.js';
 import { openSocialFor, socialPage } from './social.js';
+import { agentName, openAgentChat, refreshChat } from './chat.js';
 
 // ---------- constants ----------
 const FAMILIES = [
@@ -88,6 +89,7 @@ async function ensureCity3D(city, districtId, deptId = null) {
       onSelectDistrict: (id, dept = null) =>
         (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}${dept ? `/${encodeURIComponent(dept)}` : ''}` : ''}`),
       onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}/3d`),
+      onTalk: (agentId) => openAgentChat(chatCtx(), agentId),
       // Owner-only forms, opened from the 3D panel (the server re-checks every request anyway).
       actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp), newDistrict: (c) => forms.newDistrict(c), renameDistrict: (c, d) => forms.renameDistrict(c, d), deleteDistrict: (c, d) => forms.deleteDistrict(c, d), renameDepartment: (c, dp) => forms.renameDepartment(c, dp), deleteDepartment: (c, dp) => forms.deleteDepartment(c, dp), newDepartment: (c, d) => forms.newDepartment(c, d), createProfessor: (c, dp) => forms.createProfessor(c, dp), createDean: (c) => forms.createDean(c) } : null),
     });
@@ -461,8 +463,11 @@ function table(headers, rows, empty = 'Nothing here yet.') {
 function socialAttention() {
   return (data.social?.posts ?? []).filter((p) => p.status === 'pending' || p.due).length;
 }
+function chatCtx() {
+  return { data: () => data, index, api, toast, scheduleRefresh, isOwner };
+}
 function socialCtx(ix) {
-  return { data, render, isOwner, api, toast, scheduleRefresh, statusChip, table, stat, ago, index: () => ix, serverNow };
+  return { data, render, isOwner, api, toast, scheduleRefresh, statusChip, table, stat, ago, index: () => ix, serverNow, talk: (agentId) => openAgentChat(chatCtx(), agentId) };
 }
 
 // ---------- chrome ----------
@@ -514,6 +519,7 @@ function render() {
   for (const sm of app.querySelectorAll('details > summary')) if (open.has(sm.textContent)) sm.parentElement.open = true;
   if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
   jumpToPlace();
+  refreshChat();
   if (w3dContainer.isConnected) ensure3D();
   if (c3dContainer.isConnected && pending3DCity) ensureCity3D(pending3DCity.city, pending3DCity.districtId, pending3DCity.deptId);
 }
@@ -693,7 +699,7 @@ function collegeSection(ix, c, deptName) {
     h('div', { class: 'row-head' }, h('h3', {}, 'Dean'), dean ? (c.college.professors.length ? act('Replace dean', () => forms.replaceDean(c)) : null) : act('+ Create dean', () => forms.createDean(c))),
     dean
       ? [
-          h('div', {}, h('b', {}, dean.name), ' ', h('span', { class: 'mono muted' }, dean.id), h('span', { class: 'small muted' }, ` · since ${new Date(dean.since).toLocaleDateString()}`)),
+          h('div', {}, h('b', {}, agentName(chatCtx(), dean)), ' ', h('span', { class: 'mono muted' }, dean.id), h('span', { class: 'small muted' }, ` · since ${new Date(dean.since).toLocaleDateString()}`)),
           h('div', { class: 'kpi-row' },
             miniStat('Graduates', dean.scorecard.graduates),
             miniStat('Still working', dean.scorecard.stillWorking),
@@ -709,7 +715,7 @@ function collegeSection(ix, c, deptName) {
   const profs = table(
     ['Professor', 'Specialty', { label: 'Exams', num: true }, { label: 'Passed', num: true }, { label: 'Graduates', num: true }, { label: 'Teaching strikes', num: true }, 'Now', ''],
     c.college.professors.map((p) => [
-      h('div', {}, p.name, h('div', { class: 'mono muted' }, p.id)),
+      h('div', {}, agentName(chatCtx(), p), h('div', { class: 'mono muted' }, p.id)),
       deptName(p.specialtyDepartmentId),
       p.teaching?.examsGiven ?? 0,
       p.teaching?.examsPassed ?? 0,
@@ -721,7 +727,7 @@ function collegeSection(ix, c, deptName) {
     'No professors yet.');
 
   const waiting = table(['New agent', 'Domain focus', 'Created'],
-    c.college.enrolled.map((a) => [h('div', {}, a.name, h('div', { class: 'mono muted' }, a.id)), a.domainFocus, ago(a.lifecycle[0].ts)]),
+    c.college.enrolled.map((a) => [h('div', {}, agentName(chatCtx(), a), h('div', { class: 'mono muted' }, a.id)), a.domainFocus, ago(a.lifecycle[0].ts)]),
     'No new agents waiting for a department.');
 
   return h('section', { class: 'card section', id: 'at-college', 'aria-labelledby': `college-${c.id}` },
@@ -827,7 +833,7 @@ function worldDistrictJump(onPick) {
 function departmentCard(ix, c, dp) {
   const capText = (n, max) => (max == null ? `${n}` : `${n} / ${max}`);
   const rows = dp.agents.map((a) => [
-    h('div', {}, a.name, h('div', { class: 'mono muted' }, a.id)),
+    h('div', {}, agentName(chatCtx(), a), h('div', { class: 'mono muted' }, a.id)),
     h('div', { class: 'dept-meta' }, badge(cap(a.state)), a.badges.map((b) => badge(b === 'intern' ? 'Shadow (intern)' : b))),
     a.status
       ? h('div', {}, h('b', {}, cap(a.status.status)), a.status.activity && h('div', { class: 'small secondary' }, a.status.activity), h('div', { class: 'small muted' }, ago(a.status.ts)))
@@ -1100,7 +1106,7 @@ function liveView(ix) {
     h('div', { class: 'card' },
       table(['Agent', 'City', 'Department', 'State', 'Status', 'Doing', 'Updated'],
         rows.map(({ a, c, where }) => [
-          h('div', {}, a.name, h('div', { class: 'mono muted' }, a.id)),
+          h('div', {}, agentName(chatCtx(), a), h('div', { class: 'mono muted' }, a.id)),
           h('a', { href: `#/city/${encodeURIComponent(c.id)}` }, c.name),
           where,
           h('div', { class: 'dept-meta' }, badge(cap(a.state)), a.badges.map((b) => badge(b === 'intern' ? 'Shadow' : b)), jailChip(a)),

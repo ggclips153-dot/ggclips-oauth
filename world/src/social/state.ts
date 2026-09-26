@@ -30,6 +30,8 @@ export interface Post {
   title: string | null;
   media: MediaItem[];
   firstComment: string | null;
+  /** Hashtags, without "#": added to the caption (video tags on YouTube). */
+  tags: string[];
   author: { kind: 'owner' | 'agent'; id: string };
   note: string | null;
   status: PostStatus;
@@ -38,6 +40,8 @@ export interface Post {
   updatedAt: string;
   approvedAt: string | null;
   rejectReason: string | null;
+  /** How many times the agent reworked it after a rejection. */
+  revisions: number;
   results: Record<string, PostResult>;
   history: { seq: number; ts: string; what: string }[];
 }
@@ -113,7 +117,8 @@ export class SocialState {
           text: p.text,
           title: p.title ?? null,
           media: p.media ?? [],
-          firstComment: p.firstComment ?? null,
+          firstComment: p.firstComment || null,
+          tags: p.tags ?? [],
           author: byAgent ? { kind: 'agent', id: p.authorAgentId } : { kind: 'owner', id: e.actor.replace(/-as-(dm|mayor)$/, '') },
           note: p.note ?? null,
           status,
@@ -122,6 +127,7 @@ export class SocialState {
           updatedAt: e.ts,
           approvedAt: status === 'approved' || status === 'scheduled' ? e.ts : null,
           rejectReason: null,
+          revisions: 0,
           results: {},
           history: [{ seq: e.seq, ts: e.ts, what: byAgent ? `drafted by agent ${p.authorAgentId}, waiting for approval` : status === 'draft' ? 'draft saved' : status === 'scheduled' ? `approved and scheduled for ${p.scheduledAt}` : 'approved' }],
         });
@@ -129,10 +135,21 @@ export class SocialState {
       }
       case 'social.post_edited':
         if (!post) break;
-        for (const k of ['channelIds', 'text', 'title', 'media', 'firstComment'] as const) if (p[k] !== undefined) (post as any)[k] = p[k];
+        for (const k of ['channelIds', 'text', 'title', 'media', 'firstComment', 'tags'] as const) if (p[k] !== undefined) (post as any)[k] = p[k];
+        if (post.firstComment === '') post.firstComment = null;
         if (post.status === 'rejected') post.status = 'draft';
         post.updatedAt = e.ts;
         log('edited');
+        break;
+      case 'social.agent_revised':
+        if (!post) break;
+        for (const k of ['channelIds', 'text', 'title', 'media', 'firstComment', 'tags'] as const) if (p[k] !== undefined) (post as any)[k] = p[k];
+        if (post.firstComment === '') post.firstComment = null;
+        post.status = 'pending';
+        post.revisions += 1;
+        if (p.note) post.note = p.note;
+        post.updatedAt = e.ts;
+        log(`revised by agent ${post.author.id}${p.note ? `: ${p.note}` : ''}, waiting for approval`);
         break;
       case 'social.post_approved':
         if (!post) break;

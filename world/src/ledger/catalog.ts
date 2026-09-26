@@ -249,6 +249,14 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { text: { t: 'str', max: 4000 } },
   },
 
+  // Marc talks to one agent directly. Routed to the city's Mayor, whose bot relays it and answers as the agent.
+  'intent.message_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, text: { t: 'str', max: 4000 } },
+  },
+
   // ---- DM (world events + routing) ----
   'dm.routed': {
     kind: 'fact',
@@ -613,6 +621,14 @@ export const CATALOG: Record<string, EventSpec> = {
       status: { t: 'str', oneOf: AGENT_STATUSES },
       activity: { t: 'str', max: 280, opt: true },
     },
+    subject: 'agent',
+  },
+  // What an agent says back to Marc, written by its city's Mayor bot. `replyTo` = the message's intent seq.
+  'agent.said': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { text: { t: 'str', max: 8000 }, replyTo: { t: 'int', min: 1, opt: true } },
     subject: 'agent',
   },
   'city.kpi_pulse': {

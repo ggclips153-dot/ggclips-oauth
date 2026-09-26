@@ -162,17 +162,21 @@ export function seedSocial(ledger: Ledger, mediaDir: string, setNow: (ms: number
   const [gAgent] = graduates(gaming);
   const [rAgent] = graduates(reception);
   if (gAgent) {
-    ledger.append(mayor(gaming), { type: 'social.agent_drafted', city: gaming, payload: { channelIds: [tt, yt], title: 'Ace with a pistol only', text: 'Pistol round ace, no armour, no excuses. #clutch #ace', media: [video(4)], authorAgentId: gAgent, note: 'Cut from last night\'s stream, 0:58 long; passed QC.' } });
+    ledger.append(mayor(gaming), { type: 'social.agent_drafted', city: gaming, payload: { channelIds: [tt, yt], title: 'Ace with a pistol only', text: 'Pistol round ace, no armour, no excuses.', tags: ['clutch', 'ace', 'valorant'], firstComment: 'Crosshair and settings in the pinned comment 👇', media: [video(4)], authorAgentId: gAgent, note: 'Cut from last night\'s stream, 0:58 long; passed QC.' } });
     ledger.append(mayor(gaming), { type: 'social.agent_drafted', city: gaming, payload: { channelIds: [ig], text: 'Which map should we grind this week? Vote in the comments 👇', media: [media(4)], authorAgentId: gAgent } });
   }
   if (rAgent) ledger.append(mayor(reception), { type: 'social.agent_drafted', city: reception, payload: { channelIds: [fb], text: 'HVAC season is here. Every after-hours call answered, every service call booked. Try it free for 14 days.', media: [], authorAgentId: rAgent, note: 'For the fall HVAC push.' } });
   // A draft of Marc's, and a rejected one.
   carry('draft_post', gaming, { channelIds: [yt], text: 'Weekly recap: best plays, worst fails.', media: [] });
-  const rej = carry('draft_post', reception, { channelIds: [ig2], text: 'Call us!!!', media: [media(5)] })!;
-  carry('reject_post', reception, { postId: rej, reason: 'Too thin: say what the receptionist does and add the booking link.' });
+  carry('draft_post', reception, { channelIds: [ig2], text: 'Front desk, but make it AI.', media: [media(5)] });
+  // An agent's post Marc sent back: it waits with the agent for a rework.
+  if (rAgent) {
+    const rej = ledger.append(mayor(reception), { type: 'social.agent_drafted', city: reception, payload: { channelIds: [ig2], text: 'Call us!!!', media: [media(5)], authorAgentId: rAgent } }).subject!;
+    carry('reject_post', reception, { postId: rej, reason: 'Too thin: say what the receptionist does and add the booking link.' });
+  }
   // Scheduled for the coming days, and one due now (post it by hand, then mark it posted).
   for (const [d, hr, city, ch, text, m, title] of [
-    [1, 18, gaming, [tt], 'Clutch or kick? You decide. #valorant', [video(5)], null],
+    [1, 18, gaming, [tt], 'Clutch or kick? You decide.', [video(5)], null],
     [2, 17, gaming, [yt, tt], 'Ranked grind day 30: finally Immortal?', [video(6)], 'Road to Immortal: day 30'],
     [3, 12, reception, [fb, ig2], 'Meet Ana, the Mayor of our AI Receptionist City. She keeps every desk staffed around the clock.', [media(6)], null],
     [6, 19, gaming, [ig], 'Behind the scenes: how a clip goes from stream to your feed.', [media(7), media(8)], null],
@@ -202,6 +206,14 @@ export function seedSocial(ledger: Ledger, mediaDir: string, setNow: (ms: number
   carry('reply', gaming, { itemId: items[0], text: 'Thanks! Small cyan dot, no outline. Full settings in the pinned comment.' });
   carry('close', gaming, { itemId: items[0] });
   if (rAgent) carry('assign', reception, { itemId: items[3], agentId: rAgent });
+
+  // A conversation with an agent (Marc's message, then the agent's answer through its Mayor).
+  if (gAgent) {
+    at(now - 20 * 60_000);
+    const m = request('message_agent', gaming, { agentId: gAgent, text: 'Nice work on the pistol ace clip. Can you cut a 15-second version for Reels?' });
+    at(now - 18 * 60_000);
+    ledger.append(mayor(gaming), { type: 'agent.said', city: gaming, subject: gAgent, payload: { text: 'On it. I\'ll trim it to the ace itself and add captions; it\'ll be in Approvals within the hour.', replyTo: m.seq } });
+  }
 
   setNow(null);
 }

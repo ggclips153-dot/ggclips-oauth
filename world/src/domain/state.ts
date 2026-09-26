@@ -282,6 +282,14 @@ export class WorldState {
   readonly reworks = new Map<string, number>();
   readonly currency: CurrencyEntry[] = [];
   readonly intents = new Map<number, LedgerEvent>();
+  /** Marc's direct conversations with agents: agentId -> messages, oldest first (last CHAT_KEEP kept). */
+  readonly chats = new Map<string, ChatMessage[]>();
+  private chat(agentId: string, m: ChatMessage) {
+    if (!this.chats.has(agentId)) this.chats.set(agentId, []);
+    const list = this.chats.get(agentId)!;
+    list.push(m);
+    if (list.length > CHAT_KEEP) list.shift();
+  }
   /** intent seq -> dm.routed seq */
   readonly routed = new Map<number, number>();
   /** `${intentSeq}|${factType}|${key}` once an intent has been fulfilled by that fact. */
@@ -358,6 +366,7 @@ export class WorldState {
     this.lastHash = e.hash;
     if (e.kind === 'intent') {
       this.intents.set(e.seq, e);
+      if (e.type === 'intent.message_agent') this.chat(String((e.payload as Record<string, unknown>).agentId), { seq: e.seq, ts: e.ts, from: 'marc', text: String((e.payload as Record<string, unknown>).text) });
       return;
     }
     const p = e.payload as Record<string, any>;
@@ -740,6 +749,9 @@ export class WorldState {
         this.retiredNames.add(nameKey(agent.name));
         mark('deletion');
         break;
+      case 'agent.said':
+        if (agent) this.chat(agent.id, { seq: e.seq, ts: e.ts, from: 'agent', text: p.text, replyTo: p.replyTo ?? null });
+        break;
       case 'agent.status':
         if (!agent) break;
         agent.status = { status: p.status, activity: p.activity ?? null, ts: e.ts, seq: e.seq };
@@ -774,6 +786,15 @@ export class WorldState {
     if (e.authorizedBy !== null) this.consumed.add(consumeKey(e));
   }
 }
+
+export interface ChatMessage {
+  seq: number;
+  ts: string;
+  from: 'marc' | 'agent';
+  text: string;
+  replyTo?: number | null;
+}
+const CHAT_KEEP = 200;
 
 /** A fresh identity record at the college: enrolled, unplaced. */
 function newAgent(e: LedgerEvent, p: Record<string, any>): Agent {

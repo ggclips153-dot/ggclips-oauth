@@ -69,6 +69,13 @@ const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFracti
 const whole = new Intl.NumberFormat('en');
 const pct = new Intl.NumberFormat('en', { style: 'percent', maximumFractionDigits: 1 });
 const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1).trimEnd()}…` : text);
+/** "#One two,#three" -> ['One', 'two', 'three'] (letters, digits and _ only; duplicates dropped). */
+const parseTags = (s) => {
+  const seen = new Set();
+  return s.split(/[\s,]+/).map((x) => x.replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')).filter((x) => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase())).slice(0, 30);
+};
+/** The caption as it goes out: text plus hashtags (YouTube takes them as video tags instead). */
+const captionFor = (platform, text, tags) => (platform === 'youtube' || !tags.length ? text : `${text}${text ? '\n\n' : ''}${tags.map((x) => `#${x}`).join(' ')}`);
 const mediaUrl = (ref) => (ref.startsWith('media/') ? `/${ref}` : ref);
 
 /** The Social tab. `sub` is the section (calendar, posts…); ctx carries the dashboard's data and helpers. */
@@ -203,8 +210,12 @@ function compose(v, post = null) {
   text.value = post?.text ?? '';
   const title = h('input', { type: 'text', placeholder: 'Video title (YouTube)', 'aria-label': 'Title' });
   title.value = post?.title ?? '';
-  const firstComment = h('input', { type: 'text', placeholder: 'First comment (optional)', 'aria-label': 'First comment' });
+  const firstComment = h('textarea', { rows: 2, placeholder: 'Posted as the first comment right after the post (optional)', 'aria-label': 'First comment' });
   firstComment.value = post?.firstComment ?? '';
+  const tagsInput = h('input', { type: 'text', placeholder: '#valorant #clutch #gaming', 'aria-label': 'Hashtags' });
+  tagsInput.value = (post?.tags ?? []).map((x) => `#${x}`).join(' ');
+  const tagChips = h('div', { class: 'chips tag-chips' });
+  const firstCommentNote = h('p', { class: 'help small muted' });
   const channelsBox = h('div', { class: 'chan-pick', role: 'group', 'aria-label': 'Channels' });
   const counters = h('div', { class: 'counters small' });
   const problemsBox = h('ul', { class: 'problems small' });
@@ -230,9 +241,12 @@ function compose(v, post = null) {
   const selectedPlatforms = () => [...new Set([...state.channelIds].map((id) => v.channel(id)?.platform).filter(Boolean))];
   const problems = () => {
     const out = [];
+    const tags = parseTags(tagsInput.value);
     for (const pl of selectedPlatforms()) {
       const r = v.platforms[pl];
-      if (text.value.length > r.maxText) out.push(`${r.label}: ${text.value.length}/${r.maxText} characters`);
+      const len = captionFor(pl, text.value, tags).length;
+      if (len > r.maxText) out.push(`${r.label}: ${len}/${r.maxText} characters${tags.length && pl !== 'youtube' ? ' with hashtags' : ''}`);
+      if (pl === 'youtube' && tags.join(',').length > 500) out.push('YouTube: tags total more than 500 characters');
       if (r.needsMedia && !state.media.length) out.push(`${r.label}: needs ${r.videoOnly ? 'a video' : 'a photo or video'}`);
       if (r.videoOnly && state.media.some((m) => m.kind !== 'video')) out.push(`${r.label}: video only`);
       if (state.media.length > r.maxMedia) out.push(`${r.label}: at most ${r.maxMedia} file(s)`);
@@ -261,13 +275,15 @@ function compose(v, post = null) {
         : [h('p', { class: 'muted small' }, 'No channels yet. Add one on the Channels page.')]),
     );
     const plats = selectedPlatforms();
+    const tags = parseTags(tagsInput.value);
     counters.replaceChildren(...plats.map((pl) => {
       const r = v.platforms[pl];
-      const over = text.value.length > r.maxText;
-      return h('span', { class: over ? 'over' : '' }, `${r.label} ${whole.format(text.value.length)}/${whole.format(r.maxText)}`);
+      const len = captionFor(pl, text.value, tags).length;
+      return h('span', { class: len > r.maxText ? 'over' : '' }, `${r.label} ${whole.format(len)}/${whole.format(r.maxText)}`);
     }));
     title.hidden = !plats.includes('youtube');
-    firstComment.hidden = !plats.some((pl) => pl === 'instagram' || pl === 'facebook');
+    tagChips.replaceChildren(...tags.map((x) => h('span', { class: 'chip' }, `#${x}`)), ...(tags.length ? [h('span', { class: 'muted small' }, `${tags.length}/30${plats.includes('youtube') ? ' · YouTube gets them as video tags' : ''}`)] : []));
+    firstCommentNote.textContent = plats.includes('tiktok') ? 'TikTok doesn\'t let apps post comments: copy the first comment there by hand.' : '';
     mediaBox.replaceChildren(
       ...state.media.map((m, i) => h('div', { class: 'media-item' }, mediaThumb(m),
         h('button', { type: 'button', class: 'small-btn', 'aria-label': 'Remove', onclick: () => { state.media.splice(i, 1); refresh(); } }, '×'))),
@@ -284,7 +300,7 @@ function compose(v, post = null) {
     problemsBox.replaceChildren(...list.map((p) => h('li', {}, p)));
     submit.textContent = editing ? 'Save changes' : { draft: 'Save draft', approve: 'Approve', schedule: 'Approve and schedule' }[when_.value];
     at.hidden = editing || when_.value !== 'schedule';
-    preview.replaceChildren(...(plats.length ? plats.map((pl) => previewCard(v, pl, [...state.channelIds].map(v.channel).find((c) => c?.platform === pl), text.value, title.value, state.media)) : [h('p', { class: 'muted small' }, 'Pick a channel to see a preview.')]));
+    preview.replaceChildren(...(plats.length ? plats.map((pl) => previewCard(v, pl, [...state.channelIds].map(v.channel).find((c) => c?.platform === pl), captionFor(pl, text.value, tags), title.value, state.media, pl === 'youtube' ? tags : [], firstComment.value.trim())) : [h('p', { class: 'muted small' }, 'Pick a channel to see a preview.')]));
   };
   file.addEventListener('change', async () => {
     for (const f of file.files) {
@@ -302,7 +318,7 @@ function compose(v, post = null) {
     file.value = '';
     refresh();
   });
-  for (const el of [text, title]) el.addEventListener('input', refresh);
+  for (const el of [text, title, tagsInput, firstComment]) el.addEventListener('input', refresh);
   when_.addEventListener('change', refresh);
 
   let busy = false;
@@ -316,7 +332,8 @@ function compose(v, post = null) {
       text: text.value,
       ...(title.value.trim() && !title.hidden ? { title: title.value.trim() } : {}),
       media: state.media,
-      ...(firstComment.value.trim() && !firstComment.hidden ? { firstComment: firstComment.value.trim() } : {}),
+      ...(firstComment.value.trim() ? { firstComment: firstComment.value.trim() } : editing && post.firstComment ? { firstComment: '' } : {}),
+      tags: parseTags(tagsInput.value),
     };
     const cityId = cityOfChannel(payload.channelIds[0]);
     busy = true;
@@ -347,8 +364,9 @@ function compose(v, post = null) {
       h('div', { class: 'compose-main' },
         h('label', { class: 'small secondary' }, 'Channels'), channelsBox,
         title, text, counters,
+        h('label', { class: 'small secondary' }, 'Hashtags'), tagsInput, tagChips,
         h('label', { class: 'small secondary' }, 'Photos and videos'), mediaBox, file,
-        firstComment,
+        h('label', { class: 'small secondary' }, 'First comment'), firstComment, firstCommentNote,
         h('div', { class: 'compose-when' }, when_, at),
         problemsBox, error),
       h('div', { class: 'compose-preview' }, h('div', { class: 'small secondary' }, 'Preview'), preview)),
@@ -360,13 +378,15 @@ function compose(v, post = null) {
 }
 
 /** A simple look at how the post reads on a platform (not a pixel copy of the platform's app). */
-function previewCard(v, platform, channel, text, title, media) {
+function previewCard(v, platform, channel, text, title, media, videoTags = [], comment = '') {
   const lim = v.platforms[platform].maxText;
   return h('div', { class: `preview preview-${platform}` },
     h('div', { class: 'preview-head' }, platformBadge(platform), h('b', {}, channel?.displayName ?? PLAT[platform].label), h('span', { class: 'muted small' }, channel?.handle ?? '')),
     media.length ? mediaThumb(media[0], { big: true }) : null,
     platform === 'youtube' && title ? h('div', { class: 'preview-title' }, title) : null,
     h('div', { class: 'preview-text' }, text.length > 280 ? `${text.slice(0, 280)}… more` : text || h('span', { class: 'muted' }, 'Your text appears here')),
+    videoTags.length ? h('div', { class: 'small muted' }, `Tags: ${videoTags.join(', ')}`) : null,
+    comment ? h('div', { class: 'preview-comment small' }, h('b', {}, channel?.handle ?? 'You'), ` ${comment}`) : null,
     text.length > lim ? h('div', { class: 'error small' }, `Too long for ${PLAT[platform].label}`) : null);
 }
 
@@ -389,16 +409,18 @@ function postDetail(v, post) {
         ? h('button', { type: 'button', class: 'small-btn', onclick: () => markPosted(v, post, id, close) }, 'Mark as posted')
         : null);
   });
-  const copyText = () => navigator.clipboard?.writeText([post.title, post.text].filter(Boolean).join('\n\n')).then(() => v.toast('Text copied.'), () => v.toast('Copy failed; select the text instead.'));
+  const copyText = () => navigator.clipboard?.writeText([post.title, captionFor('instagram', post.text, post.tags ?? []), post.firstComment && `First comment: ${post.firstComment}`].filter(Boolean).join('\n\n')).then(() => v.toast('Text copied.'), () => v.toast('Copy failed; select the text instead.'));
   dialog.append(
     h('div', { class: 'post-detail' },
       h('div', { class: 'row-head' }, h('h2', {}, post.title || 'Post'), statusOf(v, post)),
-      h('p', { class: 'small secondary' }, `${v.cityName(post.cityId)} · by ${authorOf(v, post)}${post.scheduledAt ? ` · ${when(post.scheduledAt)}` : ''}`),
+      h('p', { class: 'small secondary' }, `${v.cityName(post.cityId)} · by ${authorOf(v, post)}${post.scheduledAt ? ` · ${when(post.scheduledAt)}` : ''}`,
+        post.author.kind === 'agent' && v.isOwner() ? [' · ', h('button', { type: 'button', class: 'linkish', onclick: () => { close(); v.talk(post.author.id); } }, 'Talk to the agent')] : null),
       post.rejectReason && post.status === 'rejected' ? h('p', { class: 'small' }, `Rejected: ${post.rejectReason}`) : null,
       post.note ? h('p', { class: 'small' }, `Agent's note: ${post.note}`) : null,
       h('div', { class: 'media-row' }, post.media.map((m) => mediaThumb(m, { big: true }))),
       h('pre', { class: 'post-text' }, post.text || '(no text)'),
-      post.firstComment ? h('p', { class: 'small' }, `First comment: ${post.firstComment}`) : null,
+      post.tags?.length ? h('div', { class: 'chips' }, post.tags.map((x) => h('span', { class: 'chip' }, `#${x}`))) : null,
+      post.firstComment ? h('p', { class: 'small' }, h('b', {}, 'First comment: '), post.firstComment) : null,
       h('h3', {}, 'Channels'),
       h('ul', { class: 'results' }, results),
       h('details', {}, h('summary', { class: 'small' }, 'History'), h('ul', { class: 'small' }, post.history.map((x) => h('li', {}, `${new Date(x.ts).toLocaleString()} · ${x.what}`)))),
@@ -574,14 +596,22 @@ function postsSection(v) {
 // ---------- approvals ----------
 function approvalsSection(v) {
   const pending = v.posts.filter((p) => p.status === 'pending');
-  const drafts = v.posts.filter((p) => p.status === 'draft' || p.status === 'rejected');
+  // Agents' posts Marc rejected: back with the agent, who reworks them and resubmits (social.agent_revised).
+  const sentBack = v.posts.filter((p) => p.status === 'rejected' && p.author.kind === 'agent');
+  const drafts = v.posts.filter((p) => p.status === 'draft' || (p.status === 'rejected' && p.author.kind !== 'agent'));
   const card = (p) => h('div', { class: 'card appr' },
     h('div', { class: 'row-head' }, h('div', {}, p.title ? h('b', {}, p.title) : null, h('div', { class: 'small secondary' }, `By ${authorOf(v, p)} · ${v.cityName(p.cityId)} · ${v.ago(p.createdAt)}`)), statusOf(v, p)),
     h('div', { class: 'chips' }, p.channelIds.map((id) => channelChip(v, id))),
     p.media.length ? h('div', { class: 'media-row' }, p.media.map((m) => mediaThumb(m))) : null,
     h('p', {}, p.text || h('span', { class: 'muted' }, '(no text)')),
-    p.note ? h('p', { class: 'small secondary' }, `Note: ${p.note}`) : null,
-    v.isOwner() && h('div', { class: 'toolbar' },
+    p.tags?.length ? h('div', { class: 'small secondary' }, p.tags.map((x) => `#${x}`).join(' ')) : null,
+    p.firstComment ? h('p', { class: 'small secondary' }, `First comment: ${p.firstComment}`) : null,
+    p.note ? h('p', { class: 'small secondary' }, `${p.author.kind === 'agent' ? 'Agent\'s note' : 'Note'}: ${p.note}`) : null,
+    p.revisions && p.status === 'pending' ? h('p', { class: 'small' }, v.statusChip('good', `Revised ${p.revisions > 1 ? `${p.revisions} times` : ''}`.trim()), p.rejectReason ? ` · you had said: "${p.rejectReason}"` : '') : null,
+    p.status === 'rejected' && p.author.kind === 'agent'
+      ? h('div', { class: 'sent-back small' }, h('b', {}, 'Your feedback: '), p.rejectReason || '(no reason)', h('div', { class: 'muted' }, `Waiting for ${authorOf(v, p).replace(' (agent)', '')} to rework it. `, v.isOwner() && h('button', { type: 'button', class: 'linkish', onclick: () => v.talk(p.author.id) }, 'Talk to the agent')))
+      : null,
+    v.isOwner() && p.status === 'rejected' && p.author.kind === 'agent' ? null : v.isOwner() && h('div', { class: 'toolbar' },
       h('button', { type: 'button', class: 'small-btn primary', onclick: run(v, () => send(v, 'intent.social_approve_post', p.cityId, { postId: p.id }), 'Approved.') }, 'Approve'),
       h('button', { type: 'button', class: 'small-btn', onclick: () => rejectPost(v, p, () => {}) }, 'Reject'),
       h('button', { type: 'button', class: 'small-btn', onclick: () => compose(v, p) }, 'Edit'),
@@ -590,7 +620,10 @@ function approvalsSection(v) {
     h('p', { class: 'secondary' }, 'Agents draft posts through their Mayor; nothing is published until you approve it.'),
     h('h2', {}, `Needs your approval (${pending.length})`),
     pending.length ? h('div', { class: 'appr-list' }, pending.map(card)) : h('p', { class: 'muted small' }, 'Nothing waiting for approval.'),
-    h('h2', {}, `Drafts and rejected (${drafts.length})`),
+    h('h2', {}, `Sent back to agents (${sentBack.length})`),
+    h('p', { class: 'small secondary' }, 'Posts you rejected go back to the agent who wrote it, with your reason. The agent reworks it and it returns above for your approval.'),
+    sentBack.length ? h('div', { class: 'appr-list' }, sentBack.map(card)) : h('p', { class: 'muted small' }, 'Nothing is with the agents.'),
+    h('h2', {}, `Your drafts and rejected (${drafts.length})`),
     drafts.length ? h('div', { class: 'appr-list' }, drafts.map(card)) : h('p', { class: 'muted small' }, 'No drafts.'),
   ];
 }

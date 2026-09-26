@@ -216,6 +216,15 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
       if (req.method === 'GET' && url.pathname === '/api/me') {
         return send(res, 200, profile);
       }
+      // For agents' bots: posts Marc sent back, with his reason, to revise (social.agent_revised) and resubmit.
+      if (req.method === 'GET' && url.pathname === '/api/social/rejected') {
+        const scope = readScope(profile, ledger.state);
+        const agentId = url.searchParams.get('agentId');
+        const posts = [...ledger.state.social.posts.values()]
+          .filter((p) => p.status === 'rejected' && p.author.kind === 'agent' && (scope === '*' || p.cityId === scope) && (!agentId || p.author.id === agentId))
+          .map((p) => ({ postId: p.id, city: p.cityId, authorAgentId: p.author.id, reason: p.rejectReason, channelIds: p.channelIds, text: p.text, title: p.title, media: p.media, firstComment: p.firstComment, tags: p.tags, revisions: p.revisions, rejectedAt: p.updatedAt }));
+        return send(res, 200, { posts });
+      }
       if (req.method === 'GET' && url.pathname === '/api/state') {
         const scope = readScope(profile, ledger.state);
         // A Mayor sees flags on notes aimed at their city, but the text only when their own agent wrote it:

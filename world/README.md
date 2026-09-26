@@ -172,13 +172,16 @@ it to a demo world built before Social existed, stop the demo server and run `np
 - **Social** (a Vista Social-style manager for the channels each city posts to). Each city is a brand;
   pick one or "All brands" at the top. "+ Create post" picks channels (one brand per post), shows a
   character count per platform, takes photos and videos (uploaded to `data/media/`, or a link), a YouTube
-  title and an Instagram/Facebook first comment, previews it per platform, and saves it as a draft,
+  title, hashtags (added to the caption; YouTube gets them as video tags), and a first comment posted right
+  after the post (TikTok doesn't allow that through apps, so it's copied by hand there), previews it per platform, and saves it as a draft,
   approves it, or approves and schedules it. Platform rules are checked before approval (Instagram needs
   media; TikTok and YouTube need one video; YouTube needs a title; text limits).
   - **Calendar**: the month's posts by day; drag an approved post to another day to reschedule it (same time).
   - **Posts**: every post, filtered (due, drafts, needs approval, scheduled, published, failed or rejected).
   - **Approvals**: drafts agents wrote through their Mayor (`social.agent_drafted`, graduated agents only)
     and your own drafts; Approve, Reject with a reason, Edit. **Nothing is published without your approval.**
+    An agent's post you reject goes to **Sent back to agents** with your reason; the agent reworks it
+    (`social.agent_revised`) and it returns to "Needs your approval", marked Revised, with your last feedback.
   - **Inbox**: comments, messages and mentions from every channel; reply, assign to one of the city's
     agents, close or reopen.
   - **Analytics**: 7 / 30 / 90 days: followers, impressions, engagements and engagement rate, a followers
@@ -191,6 +194,11 @@ it to a demo world built before Social existed, stop the demo server and run `np
     `pages_manage_posts`), TikTok through the Content Posting API, YouTube through the YouTube Data API v3.
     The publisher (`src/social/publisher.ts`) then posts approved, due posts (it checks every 30 seconds),
     and never anything else.
+- **Talk to an agent**: click any agent's name (a city's departments and college, the Live page, the 3D
+  city's panel) or click a person in the 3D city. The conversation opens beside what you were doing: Enter
+  sends, Shift+Enter starts a new line. Your message goes to the agent's city Mayor, whose bot passes it on
+  and writes the agent's answer (`agent.said`); in the demo world a stand-in answers. Conversations are kept
+  in the ledger and update live.
 - Everything updates live from the ledger. Mayors see only their own city; Marc, the DM, Bob and the
   Essentials Mayors see every city.
 - Security: strict Content-Security-Policy (no inline code), HttpOnly SameSite=Strict cookies, a
@@ -213,6 +221,7 @@ Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie
 | GET | `/api/verify` | owner only: verify the hash chain |
 | POST | `/api/intents/<seq>/create-now` | owner only: apply an unfinished request now, as DM and Mayor (Marc's new requests are applied on submit) |
 | GET | `/api/constitution` | the Constitution file, its fingerprint, the ratified record, in-force status and the SOUL pointer line |
+| GET | `/api/social/rejected?agentId=` | agents' posts Marc rejected, with his reason, for the agent to rework (caller's cities) |
 | POST | `/api/media` | owner or Mayor: upload a photo or video (raw body, its content-type; up to 512 MB); returns `{ref, kind}` for a post's `media` |
 | GET | `/media/<file>` | signed in: an uploaded file (Range supported) |
 | POST | `/api/surface/check` | gateway (Hermes): may this agent write this note to the shared surface? See `docs/SURFACE-GUARD.md` |
@@ -230,7 +239,12 @@ Social, for bots: a Mayor writes an agent's draft as `social.agent_drafted` (`ch
 approval. The DM (or a platform bot) reports `social.inbox_received` (`channelId`, `kind`: comment / dm /
 mention, `from`, `text`, `postId?`) and `social.metrics` (`channelId`, `date`, `postId?`, and any of
 `followers`, `impressions`, `reach`, `views`, `likes`, `comments`, `shares`, `saves`). Only an approved post
-can be reported `social.post_published` or `social.post_failed`.
+can be reported `social.post_published` or `social.post_failed`. To rework a rejected post, the Mayor writes
+`social.agent_revised` (`postId`, and any of `text`, `title`, `media`, `firstComment`, `tags`, `channelIds`,
+`note`); it goes back to Marc as pending. Posts take `tags` (hashtags without "#", up to 30).
+
+Talking to agents: Marc's `intent.message_agent` (`agentId`, `text`) is routed to `mayor:<city>`. The Mayor
+bot answers as the agent with `agent.said` (`subject` = the agent's ID, `text`, `replyTo` = the message's seq).
 
 ## Seed cities
 

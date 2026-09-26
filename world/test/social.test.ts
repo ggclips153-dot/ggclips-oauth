@@ -161,6 +161,63 @@ describe('social: media upload', () => {
   });
 });
 
+describe('social: hashtags, first comment, agents revising rejected posts', () => {
+  it('hashtags count toward the caption; bad or duplicate tags are refused; YouTube takes them as tags', () => {
+    const { w, city, ig, yt } = setup();
+    assert.throws(() => ask(w, city, 'social_draft_post', { channelIds: [ig], text: 'x', tags: ['has space'] }), /hashtags/);
+    assert.throws(() => ask(w, city, 'social_draft_post', { channelIds: [ig], text: 'x', tags: ['Clutch', 'clutch'] }), /duplicates/);
+    const text = 'a'.repeat(2190);
+    assert.throws(() => ask(w, city, 'social_draft_post', { channelIds: [ig], text, media: [IMG], tags: ['clutch', 'valorant'], approve: true }), /Instagram: text with hashtags is 2209 characters/);
+    const [d] = ask(w, city, 'social_draft_post', { channelIds: [yt], text, title: 'T', media: [VID], tags: ['clutch', 'valorant'], firstComment: 'Settings in bio', approve: true }).slice(-1);
+    const post = w.state.social.posts.get(d!.subject!)!;
+    assert.deepEqual(post.tags, ['clutch', 'valorant']);
+    assert.equal(post.firstComment, 'Settings in bio');
+    ask(w, city, 'social_edit_post', { postId: post.id, firstComment: '' });
+    assert.equal(w.state.social.posts.get(post.id)!.firstComment, null, 'an empty first comment clears it');
+  });
+
+  it("a rejected agent post goes back to the agent, who revises it; it waits for Marc again", async () => {
+    const { w, city, ig } = setup();
+    const dept = w.department(city, w.district(city));
+    const writer = w.agent(city, dept, 'Kai');
+    w.promote(city, writer, 'probationer');
+    const post = w.fact(mayorOf(city), { type: 'social.agent_drafted', city, payload: { channelIds: [ig], text: 'Call us!!!', media: [IMG], authorAgentId: writer } }).subject!;
+    assert.throws(() => w.fact(mayorOf(city), { type: 'social.agent_revised', city, payload: { postId: post, text: 'x' } }), /only posts Marc rejected/);
+    ask(w, city, 'social_reject_post', { postId: post, reason: 'Say what we do' });
+    const mine = ask(w, city, 'social_draft_post', { channelIds: [ig], text: 'mine' }).at(-1)!.subject!;
+    ask(w, city, 'social_reject_post', { postId: mine, reason: 'no' });
+    assert.throws(() => w.fact(mayorOf(city), { type: 'social.agent_revised', city, payload: { postId: mine, text: 'x' } }), /not drafted by an agent/);
+    w.fact(mayorOf(city), { type: 'social.agent_revised', city, payload: { postId: post, text: 'We answer every call and book it.', tags: ['booking'], note: 'Added what we do' } });
+    const p = w.state.social.posts.get(post)!;
+    assert.equal(p.status, 'pending');
+    assert.equal(p.revisions, 1);
+    assert.equal(p.rejectReason, 'Say what we do', 'the last feedback stays visible');
+    assert.match(p.history.at(-1)!.what, /revised by agent/);
+  });
+});
+
+describe('talking to an agent', () => {
+  it("Marc's message routes to the Mayor; the agent's answer is written by its Mayor bot", () => {
+    const w = new TestWorld();
+    const city = w.city();
+    const other = w.city('Other City');
+    const dept = w.department(city, w.district(city));
+    const kai = w.agent(city, dept, 'Kai');
+    const msg = ask(w, city, 'message_agent', { agentId: kai, text: 'How is the booking going?' });
+    assert.equal(msg.length, 1, 'routed; nothing else to carry out');
+    const intentSeq = (msg[0]!.payload as { intentSeq: number }).intentSeq;
+    assert.throws(() => ask(w, other, 'message_agent', { agentId: kai, text: 'hi' }), /not in/);
+    assert.throws(() => w.fact(mayorOf(other), { type: 'agent.said', city: other, subject: kai, payload: { text: 'hi' } }), /./);
+    assert.throws(() => w.fact(mayorOf(city), { type: 'agent.said', city, subject: kai, payload: { text: 'hi', replyTo: 1 } }), /not a message to/);
+    w.fact(mayorOf(city), { type: 'agent.said', city, subject: kai, payload: { text: 'Three booked today.', replyTo: intentSeq } });
+    const chat = w.state.chats.get(kai)!;
+    assert.deepEqual(chat.map((m) => [m.from, m.text]), [['marc', 'How is the booking going?'], ['agent', 'Three booked today.']]);
+    const view = worldView(w.state, { id: `mayor-${other}`, role: 'mayor', writeScope: [other] }, w.time);
+    assert.deepEqual(view.chats, {}, "another city's Mayor doesn't see it");
+    assert.equal(worldView(w.state, { id: 'marc', role: 'owner', writeScope: ['*'] }, w.time).chats[kai]!.length, 2);
+  });
+});
+
 describe('demo world', () => {
   it('builds with the Social sample through the real write path', async () => {
     const { execFileSync } = await import('node:child_process');

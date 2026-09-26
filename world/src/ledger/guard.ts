@@ -445,6 +445,15 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     }
 
+    case 'intent.message_agent':
+      agentIn(p.agentId, d.city);
+      break;
+    case 'agent.said':
+      if (p.replyTo !== undefined) {
+        const m = state.intents.get(p.replyTo);
+        if (!m || m.type !== 'intent.message_agent' || (m.payload as Record<string, unknown>).agentId !== agent!.id) invalid(`replyTo #${p.replyTo} is not a message to ${agent!.id}`);
+      }
+      break;
     case 'intent.rename_district':
     case 'district.renamed':
       if (d.type === 'district.renamed') match(['districtId', 'name', 'supervisor']);

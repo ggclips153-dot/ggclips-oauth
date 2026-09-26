@@ -23,7 +23,7 @@ const CELL = 8; // spacing between department towers in a district
 const HIGHWAY_Y = 7;
 const WORLD_EDGE = 250;
 
-export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, actions = () => null }) {
+export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, onTalk = null, actions = () => null }) {
   const canvasHost = h('div', { class: 'w3d-canvas', role: 'img', 'aria-label': 'Three-dimensional view of this city. The Details view has everything as text.' });
   const labels = h('div', { class: 'w3d-labels', 'aria-hidden': 'true' });
   const tip = h('div', { class: 'w3d-tip', role: 'status' });
@@ -114,7 +114,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
   function addPerson(opts, info, { center = null, radius = 0, phase = 0, speed = 1.2, at = null, face = 0 } = {}) {
     const p = person(opts);
     p.group.userData.dynamic = true;
-    pick(p.hit, info);
+    // Every person is an agent (its seed is the agent's ID): click to talk to it.
+    pick(p.hit, onTalk ? { ...info, agentId: opts.seed, tip: `${info.tip} · click to talk` } : info);
     world.add(p.group);
     if (center) {
       movers.push({ kind: 'walk', p, center, radius, phase, speed: speed / radius });
@@ -575,18 +576,19 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
   function renderPanel(city) {
     const act = actions();
     const btn = (label, onclick, cls = '') => h('button', { type: 'button', class: `small-btn ${cls}`.trim(), onclick }, label);
+    const talk = (a) => (onTalk ? h('button', { type: 'button', class: 'linkish', title: `Talk to ${a.name}`, onclick: () => onTalk(a.id) }, a.name) : a.name);
     if (current.districtId === 'college') {
       const col = city.college;
       panel.replaceChildren(
         h('h3', {}, `${city.name} college`),
-        h('p', { class: 'small secondary' }, col.dean ? `Dean ${col.dean.name}` : 'No dean yet'),
+        h('p', { class: 'small secondary' }, col.dean ? ['Dean ', talk(col.dean)] : 'No dean yet'),
         h('b', {}, `Professors (${col.professors.length})`),
         col.professors.length
-          ? h('ul', {}, col.professors.map((p) => h('li', { class: 'small' }, `${p.name}${p.steppedIn ? ` · stepping in: ${p.steppedIn.role}` : ' · teaching'}`)))
+          ? h('ul', {}, col.professors.map((p) => h('li', { class: 'small' }, talk(p), `${p.steppedIn ? ` · stepping in: ${p.steppedIn.role}` : ' · teaching'}`)))
           : h('p', { class: 'small muted' }, 'None yet.'),
         h('b', {}, `New agents waiting for a department (${col.enrolled.length})`),
         col.enrolled.length
-          ? h('ul', {}, col.enrolled.map((a) => h('li', { class: 'small' }, `${a.name} · ${a.domainFocus}`)))
+          ? h('ul', {}, col.enrolled.map((a) => h('li', { class: 'small' }, talk(a), ` · ${a.domainFocus}`)))
           : h('p', { class: 'small muted' }, 'None waiting.'),
         act && h('div', { class: 'toolbar' },
           btn('+ Create agent', () => act.createAgent(city), 'primary'),
@@ -615,7 +617,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
         h('div', { class: `c3d-dept${current.deptId === dp.id ? ' current' : ''}` },
           h('button', { type: 'button', class: 'c3d-dept-name', title: 'Fly to this department', onclick: () => onSelectDistrict(d.id, dp.id) }, dp.name),
           h('span', { class: 'small secondary' }, ` · ${dp.graduatedCount} working, ${dp.shadowCount} shadow(s)`),
-          h('ul', {}, dp.agents.map((a) => h('li', { class: 'small' }, `${a.name} · ${a.state}${a.status ? ` · ${a.status.status}${a.status.activity ? `: ${a.status.activity}` : ''}` : ''}`))),
+          h('ul', {}, dp.agents.map((a) => h('li', { class: 'small' }, talk(a), ` · ${a.state}${a.status ? ` · ${a.status.status}${a.status.activity ? `: ${a.status.activity}` : ''}` : ''}`))),
           act && h('div', { class: 'toolbar c3d-dept-actions' }, btn('+ Assign agent', () => act.assignAgent(city, dp)), btn('+ Professor', () => act.createProfessor(city, dp)), btn('Rename', () => act.renameDepartment(city, dp)), btn('Delete', () => act.deleteDepartment(city, dp), 'danger')),
         )),
       ...(d.departments.length ? [] : [h('p', { class: 'small muted' }, 'No departments yet.')]),
@@ -675,7 +677,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
       tip.classList.add('on');
       tip.style.left = `${ev.clientX - r.left + 14}px`;
       tip.style.top = `${ev.clientY - r.top + 14}px`;
-      renderer.domElement.style.cursor = hovered.userData.districtId || (hovered.userData.openCity && onOpenCity) ? 'pointer' : 'default';
+      renderer.domElement.style.cursor = hovered.userData.districtId || hovered.userData.agentId || (hovered.userData.openCity && onOpenCity) ? 'pointer' : 'default';
     } else {
       tip.classList.remove('on');
       renderer.domElement.style.cursor = 'grab';
@@ -690,7 +692,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
     if (downAt && Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) < 6) {
       setPointer(ev);
       const id = hovered?.userData.districtId;
-      if (id && id !== current.districtId) onSelectDistrict(id);
+      if (hovered?.userData.agentId && onTalk) onTalk(hovered.userData.agentId);
+      else if (id && id !== current.districtId) onSelectDistrict(id);
       else if (hovered?.userData.openCity && onOpenCity) onOpenCity(hovered.userData.openCity);
     }
     downAt = null;

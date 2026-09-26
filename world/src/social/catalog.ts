@@ -16,7 +16,8 @@ const postContent: Schema = {
   text: { t: 'str', min: 0, max: 63206 },
   title: { t: 'str', max: 100, opt: true },
   media: { t: 'json', maxBytes: 8000, opt: true },
-  firstComment: { t: 'str', max: 2200, opt: true },
+  firstComment: { t: 'str', min: 0, max: 2200, opt: true },
+  tags: { t: 'json', maxBytes: 4000, opt: true },
 };
 const postEdit: Schema = {
   postId: id,
@@ -24,7 +25,8 @@ const postEdit: Schema = {
   text: { t: 'str', min: 0, max: 63206, opt: true },
   title: { t: 'str', max: 100, opt: true },
   media: { t: 'json', maxBytes: 8000, opt: true },
-  firstComment: { t: 'str', max: 2200, opt: true },
+  firstComment: { t: 'str', min: 0, max: 2200, opt: true },
+  tags: { t: 'json', maxBytes: 4000, opt: true },
 };
 const channel: Schema = {
   platform: { t: 'str', oneOf: PLATFORMS },
@@ -76,6 +78,8 @@ export const SOCIAL_CATALOG: Record<string, EventSpec> = {
   'social.post_drafted': byMayor({ ...postContent, scheduledAt: { t: 'datetime', opt: true }, approve: { t: 'bool', opt: true } }, 'intent.social_draft_post', 'PST'),
   // An agent's draft, written by its Mayor bot: waits for Marc's approval. Never published without it.
   'social.agent_drafted': { kind: 'fact', writers: MAYOR, scope: 'city', schema: { ...postContent, authorAgentId: id, note: { t: 'str', max: 2000, opt: true } }, allocates: 'PST' },
+  // The agent's revision of a post Marc rejected: back to "pending" for his approval.
+  'social.agent_revised': { kind: 'fact', writers: MAYOR, scope: 'city', schema: { ...postEdit, note: { t: 'str', max: 2000, opt: true } } },
   'social.post_edited': byMayor(postEdit, 'intent.social_edit_post'),
   'social.post_approved': byMayor({ postId: id }, 'intent.social_approve_post'),
   'social.post_rejected': byMayor({ postId: id, reason: { t: 'str', max: 2000 } }, 'intent.social_reject_post'),
