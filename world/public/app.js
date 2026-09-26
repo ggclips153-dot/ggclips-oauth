@@ -6,6 +6,7 @@ import { formsFor, plainIntent } from './forms.js';
 import { renderMarkdown } from './markdown.js';
 import { openSocialFor, socialPage } from './social.js';
 import { agentName, openAgentChat, refreshChat } from './chat.js';
+import { memoryFor, memoryPage } from './memory.js';
 
 // ---------- constants ----------
 const FAMILIES = [
@@ -488,6 +489,7 @@ function topbar() {
       link('#/economy', 'Economy', awaitingCredit(index()).length || null, false),
       link('#/constitution', 'Constitution', openProposals().length || null, false),
       link('#/social', 'Social', socialAttention() || null, true),
+      link('#/memory', 'Memory'),
       link('#/activity', 'Activity', data.pendingIntents.length || null, true)),
     h('span', { class: 'spacer' }),
     h('span', { class: `live ${live}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), live === 'on' ? 'Live' : 'Reconnecting…'),
@@ -515,6 +517,7 @@ function render() {
   else if (route.startsWith('/live')) view = liveView(ix);
   else if (route === '/economy') view = economyView(ix);
   else if (route === '/constitution') view = constitutionView(ix);
+  else if (route === '/memory') view = memoryPage({ data, render, table, statusChip, cityName: (id) => ix.cities.get(id)?.name ?? id });
   else if (route === '/social' || route.startsWith('/social/')) view = socialPage(socialCtx(ix), route.split('/')[2]);
   else view = mapView(ix);
   // Live updates redraw the page: keep open panels open and the focused control focused.
@@ -734,6 +737,7 @@ function cityView(ix, id, sub = { mode: 'details' }) {
         const chans = (data.social?.channels ?? []).filter((ch) => ch.cityId === c.id).length;
         return h('button', { class: 'small-btn', type: 'button', onclick: () => openSocialFor(c.id) }, chans ? `Social (${chans} channel${chans === 1 ? '' : 's'})` : 'Social');
       })(),
+      h('button', { class: 'small-btn', type: 'button', onclick: () => memoryFor(c.id) }, 'Memory'),
       isOwner() && act('+ New district', () => forms.newDistrict(c)),
       isOwner() && act('Message Mayor', () => forms.messageMayor(c)),
       isOwner() && c.id === 'security-city' && act('Deploy an agent', () => forms.deploy(c, data.cities))));

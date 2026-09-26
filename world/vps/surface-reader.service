@@ -1,0 +1,19 @@
+# systemd unit for the read-only shared-surface reader (A21). Copy to /etc/systemd/system/, fill in the
+# three values, then: sudo systemctl daemon-reload && sudo systemctl enable --now surface-reader
+[Unit]
+Description=World shared-surface reader (read-only)
+After=network-online.target tailscaled.service
+
+[Service]
+User=hermeswebui
+Environment=SURFACE_DB=/home/hermeswebui/.hermes/mnemosyne_shared/surface.db
+# The VPS's Tailscale IP (tailscale ip -4), so only your tailnet can reach it:
+Environment=SURFACE_READER_HOST=100.x.y.z
+Environment=SURFACE_READER_PORT=8765
+# openssl rand -hex 32 — the same value goes in the world server's SURFACE_TOKEN:
+Environment=SURFACE_READER_TOKEN=replace-with-a-long-random-secret
+ExecStart=/usr/bin/python3 /home/hermeswebui/world/vps/surface_reader.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -105,3 +105,17 @@ college creates a Hermes agent. Our copy of StarNet lives inside this project.
   opening the database as a second writer (SQLite is one writer at a time), so it never contends with agents.
 - **Pending:** the World Architect is formalizing the exact schema and will send it as a Markdown file. The
   surface view and the Hermes link are built against that schema, not guessed.
+
+### A21, continued (2026-09-26)
+
+- **Schema received:** SPEC 2026-09-26 "Shared-memory spec for the four-tier world" (Innovations), saved as
+  `docs/SPEC-2026-09-26-SHARED-MEMORY-FOUR-TIER.md`.
+- **Where things run:** Hermes and `surface.db` on the VPS; the world server on Marc's PC.
+- **Dashboard read view (built):** `vps/surface_reader.py` on the VPS opens `surface.db` read-only and serves it
+  over Tailscale with a token; the dashboard's Memory tab shows it, filtered by the spec's matrix.
+- **Tag mechanism (build note, for the Messenger):** Mnemosyne's stock `mnemosyne_shared_remember` accepts only
+  its own kinds (`meta`, `preference`, `correction`, `identity`) and has no city/dept/agent fields. The reader
+  therefore takes the four tags from the note's `metadata` object (`city`, `dept`, `agent`, `kind`, with `kind`
+  one of the spec's eight), or from a first content line `city=… dept=… agent=… kind=…`.
+- **Creating agents:** an agent is made only by Marc (from the dashboard) or by the DM, a Mayor or the Architect
+  when Marc tells them to. Never automatically.

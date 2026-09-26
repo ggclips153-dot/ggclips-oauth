@@ -588,3 +588,7 @@ dialog.modal form.chat-compose { display: flex; gap: 8px; align-items: flex-end;
 .station-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .station-bar .chips { gap: 4px 12px; }
 .chat-via { margin: 6px 0 0; }
+
+/* ---------- Memory (shared surface, read-only) ---------- */
+.surface-text { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 640px; }
+.filters input[type="search"] { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--axis); background: var(--surface); color: var(--ink); min-width: 180px; }

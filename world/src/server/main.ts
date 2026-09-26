@@ -15,6 +15,7 @@ import { attachDmWebhook } from './dmWebhook.ts';
 import { type StarnetInfo } from './app.ts';
 import { attachStarnetBridge } from '../starnet/bridge.ts';
 import { Stations } from '../starnet/stations.ts';
+import { SurfaceFeed } from '../surface/feed.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 // `--demo`: the sample world in data/demo.db, with the demo DM/Mayor stand-in, for trying things locally.
@@ -92,6 +93,22 @@ if (starnetDir) {
   }
 }
 
+// The shared memory surface (A21), read-only, from vps/surface_reader.py over Tailscale.
+const surfaceEvents = new EventEmitter();
+let sharedSurface: StarnetInfo | undefined;
+if (process.env.SURFACE_URL) {
+  if (!process.env.SURFACE_TOKEN) throw new Error('SURFACE_TOKEN is required with SURFACE_URL');
+  const feed = new SurfaceFeed({
+    url: process.env.SURFACE_URL,
+    token: process.env.SURFACE_TOKEN,
+    cityMapPath: resolve(root, process.env.WORLD_SURFACE_CITIES ?? 'config/surface-cities.json'),
+    onChange: () => surfaceEvents.emit('change'),
+  });
+  feed.start();
+  sharedSurface = { events: surfaceEvents, view: (scope) => feed.view(scope, (id) => ledger.state.cities.has(id)) };
+  console.log(`Shared surface: reading ${process.env.SURFACE_URL} (read-only)`);
+}
+
 if (demo) attachDemoAutopilot(ledger, dbPath, undefined, { starnetHandles: (city) => starnetHandles(city) });
 // Photos and videos for posts, and the publisher that posts approved, scheduled posts when their time comes
 // (through a platform connector once one is connected; until then they wait, ready to post by hand).
@@ -115,6 +132,7 @@ createApp(ledger, profiles, {
   demo,
   media,
   starnet,
+  sharedSurface,
 }).listen(port, host, () => {
   console.log(`World ledger: ${integrity.count} events verified. Listening on http://${host}:${port}`);
   console.log(`Build ${buildId(root)} · serving ${root}`);

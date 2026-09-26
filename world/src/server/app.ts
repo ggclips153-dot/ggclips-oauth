@@ -72,6 +72,8 @@ export interface AppOptions {
   media?: MediaStore;
   /** StarNet stations (A20): what the dashboard shows of them, and a signal when that changes. */
   starnet?: StarnetInfo;
+  /** The shared memory surface, read-only (A21): what the reader may see, and a signal when it changes. */
+  sharedSurface?: StarnetInfo;
 }
 
 export interface StarnetInfo {
@@ -242,7 +244,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
           .recentFlags(50)
           .filter((f) => scope === '*' || f.writerCity === scope || f.city === scope)
           .map((f) => (scope === '*' || f.writerCity === scope ? f : { ...f, excerpt: '', writer: '' }));
-        return send(res, 200, { ...worldView(ledger.state, profile, ledger.clock()), surfaceFlags, starnet: opts.starnet?.view(scope) ?? { enabled: false, reason: 'not set up' } });
+        return send(res, 200, { ...worldView(ledger.state, profile, ledger.clock()), surfaceFlags, starnet: opts.starnet?.view(scope) ?? { enabled: false, reason: 'not set up' }, sharedSurface: opts.sharedSurface?.view(scope) ?? { enabled: false } });
       }
       if (req.method === 'GET' && url.pathname === '/api/events') {
         const after = intParam(url, 'after', 0);
@@ -325,7 +327,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         });
       }
       if (req.method === 'GET' && url.pathname === '/api/stream') {
-        return stream(req, res, url, ledger, profile, surface, opts.starnet);
+        return stream(req, res, url, ledger, profile, surface, [opts.starnet, opts.sharedSurface]);
       }
       send(res, 404, { error: 'NOT_FOUND', message: 'no such route' });
     } catch (err) {
@@ -337,7 +339,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
 }
 
 /** Server-sent events: replay from Last-Event-ID / ?after, then live. */
-function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Ledger, profile: Profile, surface: SurfaceGuard, starnet?: StarnetInfo) {
+function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Ledger, profile: Profile, surface: SurfaceGuard, live: (StarnetInfo | undefined)[] = []) {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-store',
@@ -365,12 +367,12 @@ function stream(req: IncomingMessage, res: ServerResponse, url: URL, ledger: Led
   surface.events.on('flag', flag);
   // A StarNet station came up or went down, or an agent's answer failed: refresh.
   const station = () => res.write('event: surface\ndata: {}\n\n');
-  starnet?.events.on('change', station);
+  for (const l of live) l?.events.on('change', station);
   const beat = setInterval(() => res.write(': heartbeat\n\n'), HEARTBEAT_MS);
   req.on('close', () => {
     clearInterval(beat);
     ledger.events.off('event', write);
     surface.events.off('flag', flag);
-    starnet?.events.off('change', station);
+    for (const l of live) l?.events.off('change', station);
   });
 }

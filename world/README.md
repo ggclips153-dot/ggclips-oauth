@@ -115,6 +115,31 @@ first run (OpenRouter key, a supported sign-in, or free local models with Ollama
 same OpenRouter key instead, start the server with `STARNET_OPENROUTER_KEY=<key>` as well. Only station
 problems are printed in the terminal; `STARNET_VERBOSE=1` prints everything.
 
+### Shared memory surface (A21)
+
+The agents' shared memory surface lives on the VPS (`surface.db`, written only by Mnemosyne's shared-surface
+path). The dashboard reads it **read-only** and never opens the database itself: `vps/surface_reader.py`
+(Python standard library, nothing to install) runs next to it, opens it with SQLite's read-only mode, and
+serves it over Tailscale with a bearer token.
+
+On the VPS: copy `vps/surface_reader.py` there, then run it (or install `vps/surface-reader.service`):
+
+```bash
+SURFACE_READER_TOKEN=$(openssl rand -hex 32)   # keep this; the PC needs the same value
+SURFACE_READER_TOKEN=$SURFACE_READER_TOKEN SURFACE_READER_HOST=$(tailscale ip -4) \
+  SURFACE_DB=/home/hermeswebui/.hermes/mnemosyne_shared/surface.db python3 surface_reader.py
+```
+
+On the PC, start the world with `SURFACE_URL=http://<VPS Tailscale IP>:8765 SURFACE_TOKEN=<the token>`. The
+**Memory** tab then shows the surface: live status per agent, KPI pulses, and every note with its four tags
+(city, dept, agent, kind), filtered by city, department, kind and text. Marc sees every city and WORLD; a Mayor
+sees its own city and WORLD only. If the surface names a city differently from the world (e.g. `receptionist`),
+map it in `config/surface-cities.json` (see `config/surface-cities.example.json`). Notes missing a tag are shown
+and flagged, never guessed.
+
+Tags are read from each note's metadata (`city`, `dept`, `agent`, `kind`), or from a first line like
+`city=ggclutchplays dept=fps agent=fps-agent-2 kind=status`.
+
 ### Settings
 
 | Env var | Default | |
@@ -128,6 +153,7 @@ problems are printed in the terminal; `STARNET_VERBOSE=1` prints everything.
 | `WORLD_SECRETS` | `config/secrets.json` | bot tokens from the department form (gitignored, mode 600); the ledger keeps only their names |
 | `STARNET_DIR` | unset | StarNet's source folder; when set, every city gets a StarNet station (A20) |
 | `STARNET_BASE_PORT` | `8801` | first station port |
+| `SURFACE_URL` / `SURFACE_TOKEN` | unset | the read-only shared-surface reader on the VPS (A21) |
 | `DM_WEBHOOK_URL` / `DM_WEBHOOK_SECRET` | unset | POSTs each new intent, signed `x-world-signature: sha256=<hmac>` |
 
 ## The dashboard
