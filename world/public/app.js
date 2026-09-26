@@ -54,16 +54,11 @@ function toast(message) {
   setTimeout(() => el.remove(), Math.max(4000, String(message).length * 60));
 }
 /** Creation requests Marc may apply himself (the server enforces the same list). */
-const CREATE_NOW = new Set(['intent.create_city', 'intent.create_district', 'intent.create_department', 'intent.create_agent', 'intent.create_professor', 'intent.create_dean', 'intent.place_agent']);
+const CREATE_NOW = new Set(['intent.create_city', 'intent.create_district', 'intent.create_department', 'intent.create_agent', 'intent.create_professor', 'intent.create_dean', 'intent.place_agent', 'intent.move_agent']);
 const forms = formsFor({
   api: (...a) => api(...a),
   toast,
   noDm: () => noDm(),
-  // Apply the requests a form just sent, in order; stops at the first one the rules refuse.
-  createNow: async (seqs) => {
-    for (const seq of seqs) await api(`/api/intents/${seq}/create-now`, { method: 'POST' });
-    scheduleRefresh();
-  },
 });
 
 // ---------- 3D world (loaded only when chosen) ----------
@@ -568,7 +563,7 @@ function pendingCard(ix, cityId) {
     h('div', { class: 'row-head' },
       h('h3', {}, `Waiting on the DM (${list.length})`),
       creatable.length > 1 ? act(`Create all ${creatable.length} now`, () => carryOutRequests(creatable.map((i) => i.seq)), 'primary') : null),
-    isOwner() && creatable.length ? h('p', { class: 'small secondary' }, 'The DM bot routes these and the Mayor carries them out. New cities, districts, departments, agents, professors and deans (and assigning an agent) you can also create yourself now with "Create now": the same rules apply, and the ledger records that it was you.') : null,
+    isOwner() && creatable.length ? h('p', { class: 'small secondary' }, 'New things you create are made at once. These were sent before that, or the rules held them back: press "Create now" to try again.') : null,
     h('ul', { class: 'pending' }, list.map((i) =>
       h('li', {}, h('b', {}, plainIntent(i.type)), ' · ', ix.cities.get(i.city)?.name ?? (i.city === 'WORLD' ? 'World' : i.city),
         i.payload.name ? ` · ${i.payload.name}` : '', h('span', { class: 'muted' }, ` · ${ago(i.ts)} `),
@@ -768,12 +763,12 @@ function jumpToPlace() {
 
 /** Real world, no DM bot connected: say plainly why requests aren't being carried out. */
 function dmBanner() {
-  if (!noDm()) return null;
   const waiting = data.pendingIntents.length;
+  if (!noDm() || !waiting) return null;
   return h('div', { class: 'card section dm-banner', role: 'status' },
     h('h3', {}, 'No District Messenger is connected'),
-    h('p', { class: 'small' }, `This is your real world, and nothing is auto-executed: every request (new city, district, department, agent…) is recorded and waits for the DM to route it and the Mayor to carry it out. No DM bot has connected${runtime.dmSeenAt ? ' in the last 15 minutes' : ' yet'}, so ${waiting ? `${waiting} request(s) are waiting` : 'new requests will wait'} under "Waiting on the DM".`),
-    h('p', { class: 'small secondary' }, 'You can create cities, districts, departments, agents, professors and deans yourself with "Create now" (in the forms, or on a waiting request); the ledger records it was you. Everything else waits for the DM and Mayor bots.'));
+    h('p', { class: 'small' }, `No DM bot has connected${runtime.dmSeenAt ? ' in the last 15 minutes' : ' yet'}${waiting ? `, so ${waiting} request(s) are waiting under "Waiting on the DM"` : ''}.`),
+    h('p', { class: 'small secondary' }, 'Anything you create (cities, districts, departments, agents, professors, deans, assignments) is made at once and never waits. Only other requests, like promotions and messages to Mayors, wait for the DM and Mayor bots.'));
 }
 
 /**

@@ -66,4 +66,29 @@ describe('Marc can create structure and agents himself (as DM and Mayor), or lea
     assert.equal((await carry(place.seq)).status, 201);
     assert.equal(w.state.agents.get(a)!.departmentId, dept);
   });
+
+  it("Marc's creation requests through the API are applied at once: nothing waits on the DM", async () => {
+    const res = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer t-marc', 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'intent.create_district', city, payload: { name: 'Night Desk', supervisor: 'Vale' } }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json();
+    assert.equal(body.applied, true);
+    assert.deepEqual(body.created.map((e: { type: string }) => e.type), ['dm.routed', 'district.created']);
+    assert.ok([...w.state.districts.values()].some((d) => d.name === 'Night Desk'));
+    assert.ok(w.state.routed.has(body.seq), 'not left waiting on the DM');
+  });
+
+  it('other requests from Marc still go to the DM and Mayor', async () => {
+    const res = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer t-marc', 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'intent.message_mayor', city, payload: { text: 'hello' } }),
+    });
+    const body = await res.json();
+    assert.equal(body.applied, undefined);
+    assert.ok(!w.state.routed.has(body.seq));
+  });
 });

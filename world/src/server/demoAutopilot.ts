@@ -17,6 +17,8 @@ export function attachDemoAutopilot(ledger: Ledger, dbPath: string, log = (m: st
     if (e.kind !== 'intent') return;
     // Run after the current append has finished.
     setImmediate(() => {
+      // Already routed (e.g. Marc's own creation requests are applied at once): nothing left to do.
+      if (ledger.state.routed.has(e.seq)) return;
       try {
         carryOut(ledger, e, { dm: DM, mayor });
       } catch (err) {

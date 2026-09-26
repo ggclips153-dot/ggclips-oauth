@@ -51,10 +51,9 @@ export function parseMoney(text) {
  * types: text | textarea | select | number | lines | secret | name (text + "Suggest" button).
  * onSubmit(values) sends the request; `repeat` adds "Send and add another".
  */
-function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', repeat = false, createNow = false, onSubmit }) {
-  // Creation forms can also be applied at once by Marc (acting as DM and Mayor), without waiting for the bots.
-  const canCreateNow = createNow && !!ctx.createNow;
-  const preferNow = canCreateNow && !!ctx.noDm?.();
+function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = false, createNow = false, onSubmit }) {
+  // Creation forms apply at once (the server carries Marc's creation requests out immediately); others go to the DM.
+  const submitLabel = label ?? (createNow ? 'Create' : 'Send to the DM');
   const dialog = h('dialog', { class: 'modal', 'aria-labelledby': 'form-title' });
   const error = h('p', { class: 'error', role: 'alert' });
   const controls = {};
@@ -114,7 +113,7 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
   };
 
   let busy = false;
-  const send = async (again, now = false) => {
+  const send = async (again) => {
     if (busy) return; // a double-click must not send the request twice
     error.textContent = '';
     const values = collect();
@@ -127,13 +126,10 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
     busy = true;
     for (const b of dialog.querySelectorAll('button')) b.disabled = true;
     try {
-      ctx.captured = now ? [] : null;
       const msg = await onSubmit(values);
-      if (now) {
-        await ctx.createNow(ctx.captured);
-        ctx.toast(`${(msg ?? 'Done.').replace(/ sent to the DM\.?$/, '')}: created.`);
-      } else {
-        const pendingNote = ctx.noDm?.() ? ' It waits under "Waiting on the DM" until a DM bot routes it, or you press "Create now" there.' : '';
+      if (createNow) ctx.toast(`${(msg ?? 'Done').replace(/ sent to the DM\.?$/, '')}: done.`);
+      else {
+        const pendingNote = ctx.noDm?.() ? ' It waits under "Waiting on the DM" until a DM bot routes it.' : '';
         ctx.toast(`${msg ?? 'Sent to the DM for routing.'}${pendingNote}`);
       }
       if (again) {
@@ -145,24 +141,21 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
     } catch (err) {
       error.textContent = err.message;
     } finally {
-      ctx.captured = null;
       busy = false;
       for (const b of dialog.querySelectorAll('button')) b.disabled = false;
     }
   };
 
   dialog.append(
-    h('form', { onsubmit: (ev) => { ev.preventDefault(); send(false, preferNow); } },
+    h('form', { onsubmit: (ev) => { ev.preventDefault(); send(false); } },
       h('h2', { id: 'form-title' }, title),
       intro && h('p', { class: 'secondary small' }, intro),
       fields.map(fieldEl),
       error,
       h('div', { class: 'actions' },
         h('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'),
-        repeat && h('button', { type: 'button', onclick: () => send(true, preferNow) }, preferNow ? 'Create and add another' : 'Send and add another'),
-        canCreateNow && !preferNow && h('button', { type: 'button', title: 'Apply it now yourself, acting as DM and Mayor', onclick: () => send(false, true) }, 'Create now'),
-        canCreateNow && preferNow && h('button', { type: 'button', title: 'Leave it for the DM and Mayor bots', onclick: () => send(false, false) }, submitLabel),
-        h('button', { type: 'submit', class: 'primary' }, preferNow ? 'Create now' : submitLabel))),
+        repeat && h('button', { type: 'button', onclick: () => send(true) }, createNow ? 'Create and add another' : 'Send and add another'),
+        h('button', { type: 'submit', class: 'primary' }, submitLabel))),
   );
   dialog.addEventListener('close', () => dialog.remove());
   document.body.append(dialog);
@@ -174,7 +167,8 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
 export function formsFor(ctx) {
   const intent = async (type, city, payload) => {
     const e = await ctx.api('/api/events', { method: 'POST', body: { type, city, payload } });
-    ctx.captured?.push(e.seq); // "Create now" applies exactly what this form sent
+    // A creation the rules refused is kept as a waiting request; say why instead of claiming success.
+    if (e.applied === false) throw new Error(`Not created: ${e.reason}`);
     return e;
   };
   const departmentsOf = (city) => city.districts.flatMap((d) => d.departments.map((dp) => [dp.id, `${dp.name} (${d.name})`]));

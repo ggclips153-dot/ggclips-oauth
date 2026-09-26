@@ -25,6 +25,12 @@ const HEARTBEAT_MS = 25_000;
 // A real filesystem path (not a URL pathname), so folders with spaces and Windows drives work.
 const PUBLIC_DIR = resolve(import.meta.dirname, '../../public') + sep;
 const WORLD_DIR = resolve(import.meta.dirname, '../..');
+/** Marc acting as the DM and the Mayor, recorded under his own id. */
+const ownerActors = (profile: Profile) => ({
+  dm: { id: `${profile.id}-as-dm`, role: 'dm' as const, writeScope: ['*'] },
+  mayor: (city: string) => ({ id: `${profile.id}-as-mayor`, role: 'mayor' as const, writeScope: [city] }),
+});
+
 /** Requests Marc may apply himself: creating the world's structure and agents, and assigning an existing agent. */
 export const CREATE_NOW = new Set([
   'intent.create_city',
@@ -34,6 +40,7 @@ export const CREATE_NOW = new Set([
   'intent.create_professor',
   'intent.create_dean',
   'intent.place_agent',
+  'intent.move_agent',
 ]);
 const STATIC_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -237,6 +244,17 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
           payload: input.payload,
           authorizedBy: (input.authorizedBy as number | undefined) ?? null,
         });
+        // Marc never waits on an agent to create things: his creation requests are applied at once, as DM and
+        // Mayor, through the same write-guard. If the rules refuse it, the request stays waiting and he's told why.
+        if (profile.role === 'owner' && CREATE_NOW.has(event.type)) {
+          try {
+            const applied = carryOut(ledger, event, ownerActors(profile), `created by ${profile.id}`);
+            return send(res, 201, { ...event, applied: true, created: applied.map((e) => ({ type: e.type, subject: e.subject })) });
+          } catch (err) {
+            if (!(err instanceof LedgerError)) throw err;
+            return send(res, 201, { ...event, applied: false, reason: err.message });
+          }
+        }
         return send(res, 201, event);
       }
       // Marc can create his world's structure and agents himself, without waiting for the bots: he acts as the
@@ -247,10 +265,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
         const intent = ledger.state.intents.get(Number(carry[1])) ?? (() => { throw new LedgerError('NOT_FOUND', `intent #${carry[1]} not found`); })();
         if (!CREATE_NOW.has(intent.type)) throw new LedgerError('FORBIDDEN', `${intent.type} is not a creation request; the DM and the Mayor carry it out`);
-        const written = carryOut(ledger, intent, {
-          dm: { id: `${profile.id}-as-dm`, role: 'dm', writeScope: ['*'] },
-          mayor: (city) => ({ id: `${profile.id}-as-mayor`, role: 'mayor', writeScope: [city] }),
-        }, `carried out by ${profile.id}`);
+        const written = carryOut(ledger, intent, ownerActors(profile), `created by ${profile.id}`);
         return send(res, 201, { events: written });
       }
       if (req.method === 'GET' && url.pathname === '/api/names') {
