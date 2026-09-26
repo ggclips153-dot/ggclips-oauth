@@ -52,6 +52,8 @@ export interface AppOptions {
   trustProxy?: boolean;
   /** The World Constitution file (default docs/constitution/WORLD-CONSTITUTION.md). */
   constitutionPath?: string;
+  /** Demo mode: the autopilot plays the DM and the Mayors (data/demo.db only). */
+  demo?: boolean;
 }
 
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -139,6 +141,8 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
   const secure = opts.cookieSecure ?? true;
   const cookie = (value: string, maxAgeS: number) =>
     `${SESSION_COOKIE}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAgeS}${secure ? '; Secure' : ''}`;
+  // When a DM bot last talked to the server: tells the dashboard whether anyone is routing requests.
+  let dmSeenAt: string | null = null;
   const clientIp = (req: IncomingMessage) =>
     // Behind a proxy, the address the proxy itself appended (the last one) is the only one to trust.
     (opts.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',').at(-1)!.trim() : '') || req.socket.remoteAddress || 'unknown';
@@ -152,7 +156,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
       }
       if (req.method === 'GET' && url.pathname === '/api/health') {
         // Re-read each time, so a `git pull` shows up without restarting the server.
-        return send(res, 200, { ok: true, lastSeq: ledger.state.lastSeq, build: buildId(WORLD_DIR) });
+        return send(res, 200, { ok: true, lastSeq: ledger.state.lastSeq, build: buildId(WORLD_DIR), mode: opts.demo ? 'demo' : 'live', dmSeenAt });
       }
       if (req.method === 'POST' && url.pathname === '/api/login') {
         const ip = clientIp(req);
@@ -179,6 +183,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
       }
 
       const { profile, viaCookie } = authenticate(req, profiles, sessions);
+      if (profile.role === 'dm') dmSeenAt = ledger.clock().toISOString();
       // CSRF: a browser write must carry a custom header, which another site cannot send without CORS.
       if (viaCookie && req.method !== 'GET' && req.headers['x-world-request'] !== '1') {
         throw new LedgerError('FORBIDDEN', 'missing x-world-request header');

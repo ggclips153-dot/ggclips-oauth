@@ -125,7 +125,8 @@ function openForm(ctx, { title, intro, fields, submitLabel = 'Send to the DM', r
     for (const b of dialog.querySelectorAll('button')) b.disabled = true;
     try {
       const msg = await onSubmit(values);
-      ctx.toast(msg ?? 'Sent to the DM for routing.');
+      const pendingNote = ctx.noDm?.() ? ' It waits under "Waiting on the DM": no DM bot is connected to carry it out.' : '';
+      ctx.toast(`${msg ?? 'Sent to the DM for routing.'}${pendingNote}`);
       if (again) {
         for (const { f, control } of Object.values(controls)) if (!f.keep) control.value = f.type === 'select' ? control.value : '';
         Object.values(controls)[0]?.control.focus();

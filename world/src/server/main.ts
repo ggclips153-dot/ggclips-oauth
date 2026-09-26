@@ -53,6 +53,7 @@ createApp(ledger, profiles, {
   secrets: new Secrets(resolve(root, process.env.WORLD_SECRETS ?? 'config/secrets.json')),
   cookieSecure: !demo && process.env.WORLD_COOKIE_SECURE !== '0',
   trustProxy: process.env.WORLD_TRUST_PROXY === '1',
+  demo,
 }).listen(port, host, () => {
   console.log(`World ledger: ${integrity.count} events verified. Listening on http://${host}:${port}`);
   console.log(`Build ${buildId(root)} · serving ${root}`);

@@ -39,6 +39,9 @@ let stream = null;
 const feed = [];
 let refreshTimer = null;
 let build = null;
+let runtime = null; // /api/health: { mode: 'demo' | 'live', dmSeenAt }
+/** Is anyone routing requests? In the real world only a connected DM bot does (nothing auto-executes). */
+const noDm = () => runtime?.mode === 'live' && (!runtime.dmSeenAt || serverNow() - Date.parse(runtime.dmSeenAt) > 15 * 60_000);
 const timers = [];
 
 const serverNow = () => Date.now() + clockSkew;
@@ -48,9 +51,9 @@ function toast(message) {
   document.querySelector('.toast')?.remove();
   const el = h('div', { class: 'toast', role: 'status' }, message);
   document.body.append(el);
-  setTimeout(() => el.remove(), 4000);
+  setTimeout(() => el.remove(), Math.max(4000, String(message).length * 60));
 }
-const forms = formsFor({ api: (...a) => api(...a), toast });
+const forms = formsFor({ api: (...a) => api(...a), toast, noDm: () => noDm() });
 
 // ---------- 3D world (loaded only when chosen) ----------
 const w3dContainer = h('div', { class: 'w3d' });
@@ -154,10 +157,7 @@ async function api(path, { method = 'GET', body } = {}) {
 
 // ---------- boot ----------
 async function boot() {
-  api('/api/health').then((hl) => {
-    build = hl.build;
-    render();
-  }).catch(() => {});
+  loadHealth();
   me = (await api('/api/session')).profile;
   if (!me) return showLogin();
   await refresh();
@@ -188,7 +188,18 @@ function on3DPage() {
   return /^#\/city\/[^/]+\/3d/.test(route) || ((route === '#/' || route === '#') && mapMode() === '3d');
 }
 
+function loadHealth() {
+  return api('/api/health')
+    .then((hl) => {
+      build = hl.build;
+      runtime = hl;
+      render();
+    })
+    .catch(() => {});
+}
+
 async function refresh() {
+  loadHealth();
   const main = document.querySelector('main');
   main?.classList.add('refreshing');
   const before = data?.lastSeq;
@@ -463,6 +474,7 @@ function topbar() {
     h('span', { class: `live ${live}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), live === 'on' ? 'Live' : 'Reconnecting…'),
     h('span', { class: 'user' }, `${me.label ?? me.id} · ${me.role === 'owner' ? 'Owner' : cap(me.role)}`),
     h('button', { onclick: logout }, 'Sign out'),
+    runtime?.mode === 'demo' && h('span', { class: 'chip warning demo-chip', title: 'Demo world: the autopilot plays the DM and the Mayors' }, 'Demo'),
     build && h('span', { class: 'build muted small', title: 'Version of the world this server is running' }, `build ${build}`));
 }
 
@@ -485,7 +497,7 @@ function render() {
   // Live updates redraw the page: keep open panels open and the focused control focused.
   const open = new Set([...app.querySelectorAll('details[open] > summary')].map((x) => x.textContent));
   const focusKey = document.activeElement?.getAttribute?.('aria-label') ?? document.activeElement?.name;
-  app.replaceChildren(topbar(), h('main', {}, view));
+  app.replaceChildren(topbar(), h('main', {}, dmBanner(), view));
   for (const sm of app.querySelectorAll('details > summary')) if (open.has(sm.textContent)) sm.parentElement.open = true;
   if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
   jumpToDepartment();
@@ -718,9 +730,22 @@ function jumpToDepartment() {
   });
 }
 
-/** "Jump to department" picker, grouped by district; null when the city has no departments yet. */
+/** Real world, no DM bot connected: say plainly why requests aren't being carried out. */
+function dmBanner() {
+  if (!noDm()) return null;
+  const waiting = data.pendingIntents.length;
+  return h('div', { class: 'card section dm-banner', role: 'status' },
+    h('h3', {}, 'No District Messenger is connected'),
+    h('p', { class: 'small' }, `This is your real world, and nothing is auto-executed: every request (new city, district, department, agent…) is recorded and waits for the DM to route it and the Mayor to carry it out. No DM bot has connected${runtime.dmSeenAt ? ' in the last 15 minutes' : ' yet'}, so ${waiting ? `${waiting} request(s) are waiting` : 'new requests will wait'} under "Waiting on the DM".`),
+    h('p', { class: 'small secondary' }, 'Connect the DM bot (and the Mayor bots) to make them happen. To try everything end to end now, stop the server and run the demo world instead: npm run demo:start.'));
+}
+
+/** "Jump to department" picker, grouped by district. A city with no departments says so instead. */
 function deptJump(c, onPick) {
-  if (!c.districts.some((d) => d.departments.length)) return null;
+  if (!c.districts.some((d) => d.departments.length)) {
+    return h('select', { class: 'dept-jump', disabled: true, 'aria-label': 'Jump to department', title: 'Add a district and a department first' },
+      h('option', {}, c.districts.length ? 'No departments yet' : 'No districts or departments yet'));
+  }
   const select = h('select', {
     class: 'dept-jump',
     'aria-label': 'Jump to department',
