@@ -407,7 +407,7 @@ pre.pointer, pre.proposal-text { white-space: pre-wrap; word-break: break-word; 
 .flash { animation: dept-flash 1.6s ease-out; }
 @keyframes dept-flash { 0%, 30% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
 @media (prefers-reduced-motion: reduce) { .flash { animation: none; outline: 3px solid var(--accent); } }
-.c3d-picker select { border-radius: 999px; padding: 6px 10px; font-size: 13px; }
+.c3d-picker select { pointer-events: auto; border-radius: 999px; padding: 6px 10px; font-size: 13px; background: var(--surface); color: var(--ink); border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); }
 .c3d-dept button.c3d-dept-name { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .c3d-dept.current { border-left: 3px solid var(--accent); padding-left: 8px; }
 .dm-banner { border-color: var(--warning); border-left-width: 4px; }
