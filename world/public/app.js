@@ -88,7 +88,7 @@ async function ensureCity3D(city, districtId, deptId = null) {
         (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}${dept ? `/${encodeURIComponent(dept)}` : ''}` : ''}`),
       onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}/3d`),
       // Owner-only forms, opened from the 3D panel (the server re-checks every request anyway).
-      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp) } : null),
+      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp), newDistrict: (c) => forms.newDistrict(c) } : null),
     });
     return city3d;
   });
@@ -534,7 +534,12 @@ function mapView(ix) {
     h('button', { type: 'button', 'aria-pressed': String(mode === 'map'), onclick: () => setMapMode('map') }, 'Map'),
     h('button', { type: 'button', 'aria-pressed': String(mode === '3d'), onclick: () => setMapMode('3d') }, '3D world'));
   return [
-    h('div', { class: 'page-head' }, h('h1', {}, 'World'), h('div', { class: 'toolbar' }, switcher, act('+ New city', () => forms.newCity(), 'primary'))),
+    h('div', { class: 'page-head' }, h('h1', {}, 'World'), h('div', { class: 'toolbar' },
+      // From the globe go to the 3D city; from the map, to the city's page at that district.
+      worldDistrictJump((cityId, place) => (location.hash = mode === '3d'
+        ? `#/city/${encodeURIComponent(cityId)}/3d/${encodeURIComponent(place)}`
+        : `#/city/${encodeURIComponent(cityId)}/at/${encodeURIComponent(place)}`)),
+      switcher, act('+ New city', () => forms.newCity(), 'primary'))),
     kpis,
     mode === '3d'
       ? h('section', { class: 'section' },
@@ -628,14 +633,17 @@ function cityView(ix, id, sub = { mode: 'details' }) {
     h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', c.name),
     h('div', { class: 'city-head' }, h('h1', {}, c.name), familyMark(c.family), h('span', { class: 'secondary' }, `Mayor ${c.mayorName}`),
       c.jailedCount ? statusChip('critical', `${c.jailedCount} in jail`) : null, h('span', { class: 'spacer' }), switcher),
-    placeJump(c, (place) => {
+    (() => {
       // The jump is part of the address, so it survives live redraws and the back button works.
-      const target = `${base}/at/${encodeURIComponent(place)}`;
-      if (location.hash === target) {
-        jumpedTo = null; // same place again: scroll again
-        jumpToPlace();
-      } else location.hash = target; // the redraw after the hash change does the scrolling
-    }),
+      const go = (place) => {
+        const target = `${base}/at/${encodeURIComponent(place)}`;
+        if (location.hash === target) {
+          jumpedTo = null; // same place again: scroll again
+          jumpToPlace();
+        } else location.hash = target; // the redraw after the hash change does the scrolling
+      };
+      return h('div', { class: 'jumps' }, districtJump(c, go), departmentJump(c, go));
+    })(),
     isOwner() && h('div', { class: 'toolbar' },
       act('+ New district', () => forms.newDistrict(c)),
       act('Message Mayor', () => forms.messageMayor(c)),
@@ -753,26 +761,48 @@ function jumpToPlace() {
   });
 }
 
-/**
- * "Jump to…" picker: the college, then every district with its departments indented beneath it.
- * onPick gets 'college', a district id or a department id.
- */
-function placeJump(c, onPick) {
+/** "Jump to district…": the college and every district; the owner can also start a new district from it. */
+function districtJump(c, onPick) {
   return h('select', {
     class: 'dept-jump',
-    'aria-label': 'Jump to the college, a district or a department',
+    'aria-label': 'Jump to district',
     onchange: (ev) => {
       const v = ev.target.value;
       ev.target.value = '';
-      if (v) onPick(v);
+      if (v === '+new') forms.newDistrict(c);
+      else if (v) onPick(v);
     },
   },
-  h('option', { value: '' }, 'Jump to…'),
-  h('option', { value: 'college' }, `College · ${c.college.professors.length} professor(s), ${c.college.enrolled.length} waiting`),
-  c.districts.map((d) => [
-    h('option', { value: d.id }, `District: ${d.name} · ${d.departments.length} department(s)`),
-    d.departments.map((dp) => h('option', { value: dp.id }, `\u00a0\u00a0\u00a0\u00a0${dp.name} · ${dp.agents.length} agent(s)`)),
-  ]));
+  h('option', { value: '' }, `Jump to district… (${c.districts.length})`),
+  h('option', { value: 'college' }, 'College'),
+  c.districts.map((d) => h('option', { value: d.id }, `${d.name} · ${d.departments.length} department(s)`)),
+  isOwner() && h('option', { value: '+new' }, '+ New district…'));
+}
+
+/** "Jump to department…": every department, grouped by district. */
+function departmentJump(c, onPick) {
+  const withDepts = c.districts.filter((d) => d.departments.length);
+  return h('select', { class: 'dept-jump', 'aria-label': 'Jump to department', disabled: !withDepts.length, onchange: (ev) => {
+    const v = ev.target.value;
+    ev.target.value = '';
+    if (v) onPick(v);
+  } },
+  h('option', { value: '' }, withDepts.length ? 'Jump to department…' : 'No departments yet'),
+  withDepts.map((d) => h('optgroup', { label: d.name }, d.departments.map((dp) => h('option', { value: dp.id }, `${dp.name} · ${dp.agents.length} agent(s)`)))));
+}
+
+/** World-wide "Jump to district…": every city's districts, grouped by city. */
+function worldDistrictJump(onPick) {
+  const withDistricts = data.cities.filter((c) => c.districts.length);
+  return h('select', { class: 'dept-jump', 'aria-label': 'Jump to a district in any city', disabled: !withDistricts.length, onchange: (ev) => {
+    const [cityId, place] = ev.target.value.split('|');
+    ev.target.value = '';
+    if (cityId) onPick(cityId, place);
+  } },
+  h('option', { value: '' }, withDistricts.length ? 'Jump to district…' : 'No districts yet'),
+  withDistricts.map((c) => h('optgroup', { label: c.name },
+    h('option', { value: `${c.id}|college` }, `${c.name} · College`),
+    c.districts.map((d) => h('option', { value: `${c.id}|${d.id}` }, d.name)))));
 }
 
 function departmentCard(ix, c, dp) {

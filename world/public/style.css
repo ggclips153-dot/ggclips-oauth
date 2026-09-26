@@ -414,3 +414,5 @@ pre.pointer, pre.proposal-text { white-space: pre-wrap; word-break: break-word; 
 .dm-banner h3 { margin: 0 0 4px; }
 .dm-banner p { margin: 4px 0; }
 .demo-chip { margin-right: 4px; }
+.jumps { display: flex; flex-wrap: wrap; gap: 8px; }
+.page-head .dept-jump { margin-top: 0; }

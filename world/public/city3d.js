@@ -538,30 +538,37 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
   }
 
   function renderPicker(city) {
-    // One list: the college, every district, and each district's departments beneath it.
-    const jump = h('select', {
-      'aria-label': 'Jump to the college, a district or a department',
+    const act = actions();
+    const pickDistrict = h('select', {
+      'aria-label': 'Jump to district',
       onchange: (ev) => {
         const v = ev.target.value;
-        if (!v) return;
-        if (v === 'college') return onSelectDistrict('college');
-        const d = city.districts.find((x) => x.id === v);
-        if (d) return onSelectDistrict(d.id);
-        const owner = city.districts.find((x) => x.departments.some((dp) => dp.id === v));
-        if (owner) onSelectDistrict(owner.id, v);
+        if (v === '+new') {
+          ev.target.value = '';
+          act?.newDistrict(city);
+        } else if (v) onSelectDistrict(v);
       },
     },
-    h('option', { value: '' }, 'Jump to…'),
+    h('option', { value: '' }, `Jump to district… (${city.districts.length})`),
     h('option', { value: 'college', selected: current.districtId === 'college' }, 'College'),
-    city.districts.map((d) => [
-      h('option', { value: d.id, selected: current.districtId === d.id && !current.deptId }, `District: ${d.name}`),
-      d.departments.map((dp) => h('option', { value: dp.id, selected: current.deptId === dp.id }, `\u00a0\u00a0\u00a0\u00a0${dp.name}`)),
-    ]));
+    city.districts.map((d) => h('option', { value: d.id, selected: current.districtId === d.id }, d.name)),
+    act && h('option', { value: '+new' }, '+ New district…'));
+    const withDepts = city.districts.filter((d) => d.departments.length);
+    const pickDept = h('select', {
+      'aria-label': 'Jump to department',
+      disabled: !withDepts.length,
+      onchange: (ev) => {
+        const owner = city.districts.find((x) => x.departments.some((dp) => dp.id === ev.target.value));
+        if (owner) onSelectDistrict(owner.id, ev.target.value);
+      },
+    },
+    h('option', { value: '' }, withDepts.length ? 'Jump to department…' : 'No departments yet'),
+    withDepts.map((d) => h('optgroup', { label: d.name }, d.departments.map((dp) => h('option', { value: dp.id, selected: current.deptId === dp.id }, dp.name)))));
     picker.replaceChildren(
       h('button', { type: 'button', 'aria-pressed': String(!current.districtId), onclick: () => onSelectDistrict(null) }, 'Whole city'),
       h('button', { type: 'button', 'aria-pressed': String(current.districtId === 'college'), onclick: () => onSelectDistrict('college') }, 'College'),
-      ...city.districts.map((d) => h('button', { type: 'button', 'aria-pressed': String(current.districtId === d.id && !current.deptId), onclick: () => onSelectDistrict(d.id) }, d.name)),
-      jump,
+      pickDistrict,
+      pickDept,
     );
   }
 

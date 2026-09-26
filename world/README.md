@@ -141,10 +141,10 @@ but `data/demo.db`: the real world is never auto-executed.
   (Ratify / Decline, owner only), and the version history.
 - **Security**: the jail, recent task strikes, and notes the shared-surface guard rejected or quarantined.
 - **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
-- **Jump to…**: on a city's Details page and in its 3D view, one picker lists the college, every district
-  and each district's departments: the page scrolls there, or the 3D camera flies there (the 3D view also
-  has a College button). It is part of the address (`#/city/<id>/at/<college|district|dept>`,
-  `#/city/<id>/3d/<college|district>/<dept>`), so Back works.
+- **Jump to district / Jump to department**: in a city (Details and 3D) one dropdown lists the college and
+  every district (plus "+ New district…"), another every department; the page scrolls there or the 3D camera
+  flies there. On the World map and the 3D globe, "Jump to district…" lists every city's districts and takes
+  you to that city at that district (the 3D city from the globe). Jumps are part of the address, so Back works.
 - **Marc never waits (A19)**: everything Marc does from the dashboard is applied the moment he submits it:
   creating cities, districts, departments, agents (at the college), professors and deans, assigning and
   moving agents, promotions, settings, deployments, credits and rewards, the Constitution, and messages to
