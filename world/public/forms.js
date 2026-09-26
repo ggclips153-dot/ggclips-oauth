@@ -244,10 +244,11 @@ export function formsFor(ctx) {
       });
     },
 
+    /** New agents are created only here, at the city's college (A11). A department then takes an existing one. */
     createAgent(city) {
       openForm(ctx, {
         title: `New agent at ${city.name}'s college`,
-        intro: 'A beginner agent, enrolled at the college. A department then takes it. Its ID is permanent and never reused.',
+        intro: 'A beginner agent, enrolled at the college. A department then takes it with "Assign agent". Its ID is permanent and never reused.',
         repeat: true,
         fields: [{ name: 'name', label: 'Display name', type: 'name', help: 'Leave blank and one is generated for you.' }, ...personaFields],
         onSubmit: async (v) => {
@@ -315,9 +316,13 @@ export function formsFor(ctx) {
         .flatMap((d) => d.departments)
         .filter((dp) => dp.id !== dept.id)
         .flatMap((dp) => dp.agents.map((a) => [`move:${a.id}`, `${a.name} (${a.id}) · ${a.state} in ${dp.name}`]));
+      if (!waiting.length && !movable.length) {
+        ctx.toast(`No agent in ${city.name} to assign yet. Create one at the college first ("+ Create agent" in the College section), then assign it here.`);
+        return;
+      }
       openForm(ctx, {
         title: `Assign an agent to ${dept.name}`,
-        intro: 'Assigns an EXISTING agent of this city. To make a new one, create it at the college first.',
+        intro: 'Assigns an EXISTING agent of this city: one waiting at the college, or one moved from another department. New agents are created only at the college.',
         repeat: true,
         fields: [{ name: 'agent', label: 'Agent', type: 'select', required: true, options: [...waiting, ...movable] }],
         onSubmit: async (v) => {

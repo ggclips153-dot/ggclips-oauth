@@ -141,6 +141,11 @@ but `data/demo.db`: the real world is never auto-executed.
   (Ratify / Decline, owner only), and the version history.
 - **Security**: the jail, recent task strikes, and notes the shared-surface guard rejected or quarantined.
 - **Inbox** (dean reports Security escalated to Marc) and **Activity** (the live ledger feed).
+- **Jump to department**: on a city's Details page and in its 3D view, a picker (grouped by district)
+  goes straight to a department: the page scrolls to it, or the 3D camera flies to its tower. It is part of
+  the address (`#/city/<id>/dept/<dept>`, `#/city/<id>/3d/<district>/<dept>`), so Back works.
+- **Traffic means work**: cars appear only while agents are working, two per working agent on their
+  district's roads and one on the beltway and superhighways; a city with nobody working has empty roads.
 - **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
   New District, New Department (caps, basic tasks, bot token stored as a server secret), department
   settings, college: Create agent / Create professor / Create or Replace dean, Assign an existing agent to a

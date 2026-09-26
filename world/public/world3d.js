@@ -448,6 +448,12 @@ export function mount3D(container, { onOpenCity }) {
     return target.setLength(R + lift);
   }
 
+  const workingIn = (cityId) => {
+    const c = dataRef?.cities.find((x) => x.id === cityId);
+    if (!c) return 0;
+    return c.districts.reduce((n, d) => n + d.departments.reduce((m, dp) => m + dp.agents.filter((ag) => ag.status?.status === 'working').length, 0), 0);
+  };
+
   function superhighways(places, pal) {
     const links = highwayLinks(places);
     const deckMat = solid('#1a1c2a', { metal: 0.6, rough: 0.4 });
@@ -487,7 +493,8 @@ export function mount3D(container, { onOpenCity }) {
         if (p.length() - R > 0.5) pylons.push({ dir: p.clone().normalize(), len: p.length() - R });
       }
       // Traffic: head lights one way, tail lights the other.
-      const cars = 6 + Math.round(degs / 5);
+      // Cars stand for agents at work: as many as are working in the two cities (none if nobody is).
+      const cars = Math.min(workingIn(ia) + workingIn(ib), 14);
       for (let k = 0; k < cars; k++) traffic.push({ a, b, omega, arch, t: k / cars, speed: (0.9 / Math.max(6, degs)) * (0.8 + (k % 3) * 0.15), back: k % 2 === 1 });
     }
     if (pylons.length) {

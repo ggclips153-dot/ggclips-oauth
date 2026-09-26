@@ -83,6 +83,8 @@ async function ensureCity3D(city, districtId, deptId = null) {
       onSelectDistrict: (id, dept = null) =>
         (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}${dept ? `/${encodeURIComponent(dept)}` : ''}` : ''}`),
       onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}/3d`),
+      // Owner-only forms, opened from the 3D panel (the server re-checks every request anyway).
+      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp) } : null),
     });
     return city3d;
   });
@@ -245,8 +247,9 @@ function setLive(v) {
 }
 
 window.addEventListener('hashchange', () => {
+  // A department jump scrolls to its department (in render); everything else starts at the top.
+  if (!/\/dept\//.test(location.hash)) window.scrollTo(0, 0);
   render();
-  window.scrollTo(0, 0);
 });
 
 // ---------- login ----------
@@ -470,7 +473,7 @@ function render() {
   let view;
   if (route.startsWith('/city/')) {
     const [id, mode, districtId, deptId] = route.slice(6).split('/').map(decodeURIComponent);
-    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null, deptId: deptId || null } : { mode: 'details' });
+    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null, deptId: deptId || null } : { mode: 'details', deptId: mode === 'dept' ? districtId : null });
   }
   else if (route === '/jail') view = jailView(ix);
   else if (route === '/inbox') view = inboxView(ix);
@@ -484,7 +487,8 @@ function render() {
   const focusKey = document.activeElement?.getAttribute?.('aria-label') ?? document.activeElement?.name;
   app.replaceChildren(topbar(), h('main', {}, view));
   for (const sm of app.querySelectorAll('details > summary')) if (open.has(sm.textContent)) sm.parentElement.open = true;
-  if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus();
+  if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
+  jumpToDepartment();
   if (w3dContainer.isConnected) ensure3D();
   if (c3dContainer.isConnected && pending3DCity) ensureCity3D(pending3DCity.city, pending3DCity.districtId, pending3DCity.deptId);
 }
@@ -590,12 +594,12 @@ function cityView(ix, id, sub = { mode: 'details' }) {
     h('div', { class: 'city-head' }, h('h1', {}, c.name), familyMark(c.family), h('span', { class: 'secondary' }, `Mayor ${c.mayorName}`),
       c.jailedCount ? statusChip('critical', `${c.jailedCount} in jail`) : null, h('span', { class: 'spacer' }), switcher),
     deptJump(c, (dp) => {
-      const el = document.getElementById(`dept-${dp.id}`);
-      if (!el) return;
-      el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-      el.classList.remove('flash');
-      void el.offsetWidth; // restart the highlight animation
-      el.classList.add('flash');
+      // The jump is part of the address, so it survives live redraws and the back button works.
+      const target = `${base}/dept/${encodeURIComponent(dp.id)}`;
+      if (location.hash === target) {
+        jumpedTo = null; // same department again: scroll again
+        jumpToDepartment();
+      } else location.hash = target; // the redraw after the hash change does the scrolling
     }),
     isOwner() && h('div', { class: 'toolbar' },
       act('+ New district', () => forms.newDistrict(c)),
@@ -696,6 +700,22 @@ function agentActions(c, a) {
     a.state === 'senior' && act('Retire to professor', () => forms.retire(c, a)),
     (data.economy.accounts[a.id]?.balanceCents ?? 0) > 0 && act('Grant reward', () => forms.grantReward(c, a, data.economy.accounts[a.id], REWARDS)),
     a.jail?.status === 'awaiting_deletion' && act('Delete', () => forms.remove(c, a), 'danger'));
+}
+
+/** Scroll to the department named in the address (#/city/<id>/dept/<dept>), once per jump. */
+let jumpedTo = null;
+function jumpToDepartment() {
+  const m = /^#\/city\/[^/]+\/dept\/([^/]+)$/.exec(location.hash);
+  if (!m || jumpedTo === location.hash) return;
+  const el = document.getElementById(`dept-${decodeURIComponent(m[1])}`);
+  if (!el) return;
+  jumpedTo = location.hash;
+  requestAnimationFrame(() => {
+    // Look it up again: a live redraw may have replaced the element in the meantime.
+    const target = document.getElementById(el.id);
+    target?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    target?.classList.add('flash');
+  });
 }
 
 /** "Jump to department" picker, grouped by district; null when the city has no departments yet. */

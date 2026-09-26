@@ -89,3 +89,17 @@ describe('dashboard money input', () => {
     assert.ok(Number.isNaN(parseMoney('abc')));
   });
 });
+
+describe('a department only assigns an existing agent (A11)', () => {
+  it('a create request cannot name a department, and placement needs a place_agent request for an existing agent', () => {
+    const w = new TestWorld();
+    const city = w.city();
+    const dept = w.department(city, w.district(city));
+    assert.throws(() => w.intent('create_agent', city, { persona: { voice: 'v', temperament: 't' }, domainFocus: 'x', departmentId: dept }), /departmentId is not a known field/);
+    const i = w.intent('create_agent', city, { persona: { voice: 'v', temperament: 't' }, domainFocus: 'x' });
+    const a = w.fact(mayorOf(city), { type: 'agent.enrolled', city, payload: i.payload, authorizedBy: i.seq }).subject!;
+    assert.throws(() => w.fact(mayorOf(city), { type: 'agent.placed', city, subject: a, payload: { departmentId: dept }, authorizedBy: i.seq }), /cannot authorize agent.placed/);
+    w.place(city, a, dept);
+    assert.equal(w.state.agents.get(a)!.departmentId, dept);
+  });
+});

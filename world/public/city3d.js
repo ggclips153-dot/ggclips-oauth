@@ -23,7 +23,7 @@ const CELL = 8; // spacing between department towers in a district
 const HIGHWAY_Y = 7;
 const WORLD_EDGE = 250;
 
-export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) {
+export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, actions = () => null }) {
   const canvasHost = h('div', { class: 'w3d-canvas', role: 'img', 'aria-label': 'Three-dimensional view of this city. The Details view has everything as text.' });
   const labels = h('div', { class: 'w3d-labels', 'aria-hidden': 'true' });
   const tip = h('div', { class: 'w3d-tip', role: 'status' });
@@ -68,6 +68,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   scene.add(world);
   let movers = [];
   let cars = [];
+  let lanes = [];
   let cars3d = null;
   let anchors = [];
   const pickables = [];
@@ -99,6 +100,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     scene.add(world);
     movers = [];
     cars = [];
+    lanes = [];
     cars3d = null;
     anchors = [];
     pickables.length = 0;
@@ -125,14 +127,39 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   }
 
   /** Traffic along a straight road: cars in both directions, one lane each. */
-  function traffic(a, b, count, rand, { y = 0, lane = 0.8 } = {}) {
-    const dir = b.clone().sub(a);
-    const len = dir.length();
-    dir.normalize();
-    const side = new THREE.Vector3(dir.z, 0, -dir.x);
-    for (let k = 0; k < count; k++) {
-      const forward = k % 2 === 0;
-      cars.push({ kind: 'car', a: forward ? a : b, b: forward ? b : a, off: side.clone().multiplyScalar(forward ? -lane : lane), len, t: rand(), speed: (7 + rand() * 6) / len, y });
+  /** A road cars can use: belongs to a district (its avenue, spokes, links) or to the whole city. */
+  function traffic(a, b, district, { y = 0, lane = 0.8 } = {}) {
+    lanes.push({ a, b, district, y, lane });
+  }
+
+  /**
+   * Cars stand for agents at work: none when nobody is working. Each working agent puts two cars on its
+   * district's roads and one on the city's beltway and highways; every two put a flying car overhead.
+   */
+  function fillTraffic(city, rand, beltR) {
+    const working = new Map();
+    let total = 0;
+    for (const d of city.districts) {
+      const n = d.departments.reduce((s, dp) => s + dp.agents.filter((a) => a.status?.status === 'working').length, 0);
+      working.set(d.id, n);
+      total += n;
+    }
+    const drive = (lanesFor, count) => {
+      if (!lanesFor.length) return;
+      for (let k = 0; k < count; k++) {
+        const l = lanesFor[k % lanesFor.length];
+        const forward = k % 2 === 0;
+        const dir = l.b.clone().sub(l.a);
+        const len = dir.length();
+        dir.normalize();
+        const side = new THREE.Vector3(dir.z, 0, -dir.x);
+        cars.push({ kind: 'car', a: forward ? l.a : l.b, b: forward ? l.b : l.a, off: side.multiplyScalar(forward ? -l.lane : l.lane), len, t: rand(), speed: (7 + rand() * 6) / len, y: l.y });
+      }
+    };
+    for (const [id, n] of working) drive(lanes.filter((l) => l.district === id), Math.min(2 * n, 24));
+    drive(lanes.filter((l) => l.district === null), Math.min(total, 40));
+    for (let k = 0; k < Math.min(Math.ceil(total / 2), 16); k++) {
+      cars.push({ kind: 'fly', r: 20 + rand() * (beltR + 30), y: 14 + rand() * 22, phase: rand() * Math.PI * 2, speed: (0.04 + rand() * 0.06) * (k % 2 ? 1 : -1) });
     }
   }
 
@@ -241,13 +268,13 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
       const center = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
       const hue = NEON_SET[i % NEON_SET.length];
       const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
-      placed.push({ center, radius, a, hue });
+      placed.push({ id: d.id, center, radius, a, hue });
 
       // Avenue from City Hall to the district, lit along the way.
       const from = out.clone().multiplyScalar(7);
       const to = center.clone().sub(out.clone().multiplyScalar(radius - 0.5));
       world.add(road(from, to, { width: 4, kerb: hue }));
-      traffic(from, to, 4, rand);
+      traffic(from, to, d.id);
       const len = from.distanceTo(to);
       for (let k = 1; k * 9 < len; k++) {
         const at = from.clone().lerp(to, (k * 9) / len);
@@ -348,7 +375,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
         const b = q.center.clone().sub(dir.clone().multiplyScalar(q.radius - 0.5));
         if (a.distanceTo(b) < 2) return;
         world.add(road(a, b, { width: 3.2, kerb: NEON.violet }));
-        traffic(a, b, 2, rand, { lane: 0.7 });
+        traffic(a, b, p.id, { lane: 0.7 });
       });
     }
     const beltR = Math.max(ringR + 30, ...placed.map((p) => p.center.length() + p.radius + 9));
@@ -359,7 +386,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
       const a = new THREE.Vector3(Math.cos(a0) * beltR, 0, Math.sin(a0) * beltR);
       const b = new THREE.Vector3(Math.cos(a1) * beltR, 0, Math.sin(a1) * beltR);
       world.add(road(a, b, { width: 5, kerb: NEON.magenta }));
-      if (k % 4 === 0) traffic(a, b, 2, rand, { lane: 1.1 });
+      if (k % 2 === 0) traffic(a, b, null, { lane: 1.1 });
     }
     // Spokes from each district out to the beltway.
     for (const p of placed) {
@@ -368,7 +395,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
       const b = out.clone().multiplyScalar(beltR - 2.5);
       if (b.length() - a.length() > 2) {
         world.add(road(a, b, { width: 3.2, kerb: p.hue }));
-        traffic(a, b, 2, rand, { lane: 0.7 });
+        traffic(a, b, p.id, { lane: 0.7 });
       }
     }
 
@@ -435,7 +462,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
         const deck = road(a, b, { width: 6, kerb: NEON.cyan, deck: 0.6 });
         world.add(deck);
         pick(deck.children[0], { tip: `Superhighway to ${names} · click the green sign to go there` });
-        traffic(a.clone().setY(a.y + 0.03), b.clone().setY(b.y + 0.03), a === rampStart ? 2 : 6, rand, { lane: 1.3 });
+        traffic(a.clone().setY(a.y + 0.03), b.clone().setY(b.y + 0.03), null, { lane: 1.3 });
       }
       // Pillars under the elevated span.
       const pillarLen = rampTop.distanceTo(end);
@@ -454,9 +481,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     }
 
     // ---- Flying cars overhead ----
-    for (let k = 0; k < 16; k++) {
-      cars.push({ kind: 'fly', r: 20 + rand() * (beltR + 30), y: 14 + rand() * 22, phase: rand() * Math.PI * 2, speed: (0.04 + rand() * 0.06) * (k % 2 ? 1 : -1) });
-    }
+    fillTraffic(city, rand, beltR);
 
     // ---- The skyline filling the land beyond the beltway, clear of the superhighways ----
     const spots = [];
@@ -502,8 +527,10 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     }
 
     // All the traffic in three draw calls, then merge the static scenery by material.
-    cars3d = fleet(cars.length, city.id);
-    world.add(cars3d.group);
+    if (cars.length) {
+      cars3d = fleet(cars.length, city.id);
+      world.add(cars3d.group);
+    }
     bakeStatic(world, new Set(pickables));
     renderPicker(city);
   }
@@ -529,6 +556,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   }
 
   function renderPanel(city) {
+    const act = actions();
+    const btn = (label, onclick, cls = '') => h('button', { type: 'button', class: `small-btn ${cls}`.trim(), onclick }, label);
     const d = city.districts.find((x) => x.id === current.districtId);
     if (!d) {
       const counts = city.agentCounts;
@@ -536,7 +565,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
         h('h3', {}, city.name),
         h('p', { class: 'small secondary' }, `Mayor ${city.mayorName} · ${city.districts.length} district(s)`),
         h('p', { class: 'small' }, STATES.map((s) => `${cap(s)} ${counts[s] ?? 0}`).join(' · ')),
-        h('p', { class: 'small secondary' }, 'Choose a district above, or click its ground, to go there.'),
+        h('p', { class: 'small secondary' }, 'Choose a district or jump to a department above, or click a district\'s ground.'),
+        act && h('div', { class: 'toolbar' }, btn('+ Create agent at the college', () => act.createAgent(city), 'primary')),
       );
       return;
     }
@@ -548,6 +578,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
           h('button', { type: 'button', class: 'c3d-dept-name', title: 'Fly to this department', onclick: () => onSelectDistrict(d.id, dp.id) }, dp.name),
           h('span', { class: 'small secondary' }, ` · ${dp.graduatedCount} working, ${dp.shadowCount} shadow(s)`),
           h('ul', {}, dp.agents.map((a) => h('li', { class: 'small' }, `${a.name} · ${a.state}${a.status ? ` · ${a.status.status}${a.status.activity ? `: ${a.status.activity}` : ''}` : ''}`))),
+          act && h('div', { class: 'toolbar c3d-dept-actions' }, btn('+ Assign agent', () => act.assignAgent(city, dp))),
         )),
       ...(d.departments.length ? [] : [h('p', { class: 'small muted' }, 'No departments yet.')]),
     );

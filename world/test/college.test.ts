@@ -23,7 +23,7 @@ describe('the college (A11): agents are created here, departments take existing 
     assert.deepEqual(college(w, city).enrolled.map((e) => e.id), [id]);
   });
 
-  it('New Agent no longer takes a department', () => {
+  it('New Agent no longer takes a department: agents are created only at the college', () => {
     const { w, city, dept } = setup();
     assert.throws(
       () => w.ledger.append(owner, { type: 'intent.create_agent', city, payload: { persona, domainFocus: 'x', departmentId: dept } }),
