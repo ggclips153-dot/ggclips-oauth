@@ -77,10 +77,11 @@ const c3dContainer = h('div', { class: 'w3d' });
 let city3d = null;
 let city3dStarting = null;
 let city3dShown = null;
-async function ensureCity3D(city, districtId) {
+async function ensureCity3D(city, districtId, deptId = null) {
   city3dStarting ??= import('./city3d.js').then(({ mountCity3D }) => {
     city3d = mountCity3D(c3dContainer, {
-      onSelectDistrict: (id) => (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}` : ''}`),
+      onSelectDistrict: (id, dept = null) =>
+        (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}${dept ? `/${encodeURIComponent(dept)}` : ''}` : ''}`),
       onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}/3d`),
     });
     return city3d;
@@ -89,13 +90,14 @@ async function ensureCity3D(city, districtId) {
   try {
     scene = await city3dStarting;
   } catch (err) {
-    c3dContainer.replaceChildren(h('p', { class: 'empty' }, `The 3D city could not start on this device (${err.message}). The Details view has everything.`));
+    city3dStarting = null; // allow another try after the browser is restarted
+    c3dContainer.replaceChildren(h('div', { class: 'w3d-lost' }, h('p', {}, `The 3D city could not start (${err.message}). The Details view has everything. If this keeps happening, fully quit the browser (Cmd+Q on a Mac) and open it again: browsers switch 3D off for a page after repeated graphics resets.`)));
     return;
   }
-  const key = { cityId: city.id, districtId, seq: data.lastSeq };
-  if (city3dShown && city3dShown.cityId === key.cityId && city3dShown.districtId === key.districtId && city3dShown.seq === key.seq) return;
+  const key = { cityId: city.id, districtId, deptId, seq: data.lastSeq };
+  if (city3dShown && city3dShown.cityId === key.cityId && city3dShown.districtId === key.districtId && city3dShown.deptId === key.deptId && city3dShown.seq === key.seq) return;
   try {
-    scene.show(city, data, districtId);
+    scene.show(city, data, districtId, deptId);
     city3dShown = key;
   } catch (err) {
     console.error(err);
@@ -114,7 +116,8 @@ async function ensure3D() {
   try {
     globe = await world3dStarting;
   } catch (err) {
-    w3dContainer.replaceChildren(h('p', { class: 'empty' }, `The 3D view could not start on this device (${err.message}). The map view has everything.`));
+    world3dStarting = null;
+    w3dContainer.replaceChildren(h('div', { class: 'w3d-lost' }, h('p', {}, `The 3D view could not start (${err.message}). The Map view has everything. If this keeps happening, fully quit the browser (Cmd+Q on a Mac) and open it again: browsers switch 3D off for a page after repeated graphics resets.`)));
     return;
   }
   // Rebuild only when the ledger has moved on; a refresh with no new events changes nothing.
@@ -466,8 +469,8 @@ function render() {
   const ix = index();
   let view;
   if (route.startsWith('/city/')) {
-    const [id, mode, districtId] = route.slice(6).split('/').map(decodeURIComponent);
-    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null } : { mode: 'details' });
+    const [id, mode, districtId, deptId] = route.slice(6).split('/').map(decodeURIComponent);
+    view = cityView(ix, id, mode === '3d' ? { mode: '3d', districtId: districtId || null, deptId: deptId || null } : { mode: 'details' });
   }
   else if (route === '/jail') view = jailView(ix);
   else if (route === '/inbox') view = inboxView(ix);
@@ -483,7 +486,7 @@ function render() {
   for (const sm of app.querySelectorAll('details > summary')) if (open.has(sm.textContent)) sm.parentElement.open = true;
   if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus();
   if (w3dContainer.isConnected) ensure3D();
-  if (c3dContainer.isConnected && pending3DCity) ensureCity3D(pending3DCity.city, pending3DCity.districtId);
+  if (c3dContainer.isConnected && pending3DCity) ensureCity3D(pending3DCity.city, pending3DCity.districtId, pending3DCity.deptId);
 }
 
 // ---------- views ----------
@@ -567,7 +570,8 @@ function cityView(ix, id, sub = { mode: 'details' }) {
     h('a', { class: 'seg-link', href: base, 'aria-current': sub.mode === 'details' ? 'page' : null }, 'Details'),
     h('a', { class: 'seg-link', href: `${base}/3d`, 'aria-current': sub.mode === '3d' ? 'page' : null }, '3D city'));
   if (sub.mode === '3d') {
-    pending3DCity = { city: c, districtId: sub.districtId && c.districts.some((d) => d.id === sub.districtId) ? sub.districtId : null };
+    const district = sub.districtId ? c.districts.find((d) => d.id === sub.districtId) : null;
+    pending3DCity = { city: c, districtId: district?.id ?? null, deptId: district && district.departments.some((dp) => dp.id === sub.deptId) ? sub.deptId : null };
     return [
       h('div', { class: 'section' },
         h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', h('a', { href: base }, c.name), ' / 3D city'),
@@ -585,6 +589,14 @@ function cityView(ix, id, sub = { mode: 'details' }) {
     h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'World map'), ' / ', c.name),
     h('div', { class: 'city-head' }, h('h1', {}, c.name), familyMark(c.family), h('span', { class: 'secondary' }, `Mayor ${c.mayorName}`),
       c.jailedCount ? statusChip('critical', `${c.jailedCount} in jail`) : null, h('span', { class: 'spacer' }), switcher),
+    deptJump(c, (dp) => {
+      const el = document.getElementById(`dept-${dp.id}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+      el.classList.remove('flash');
+      void el.offsetWidth; // restart the highlight animation
+      el.classList.add('flash');
+    }),
     isOwner() && h('div', { class: 'toolbar' },
       act('+ New district', () => forms.newDistrict(c)),
       act('Message Mayor', () => forms.messageMayor(c)),
@@ -686,6 +698,25 @@ function agentActions(c, a) {
     a.jail?.status === 'awaiting_deletion' && act('Delete', () => forms.remove(c, a), 'danger'));
 }
 
+/** "Jump to department" picker, grouped by district; null when the city has no departments yet. */
+function deptJump(c, onPick) {
+  if (!c.districts.some((d) => d.departments.length)) return null;
+  const select = h('select', {
+    class: 'dept-jump',
+    'aria-label': 'Jump to department',
+    onchange: (ev) => {
+      const [dId, dpId] = ev.target.value.split('|');
+      const dp = c.districts.find((d) => d.id === dId)?.departments.find((x) => x.id === dpId);
+      ev.target.value = '';
+      if (dp) onPick(dp, dId);
+    },
+  },
+  h('option', { value: '' }, 'Jump to department…'),
+  c.districts.filter((d) => d.departments.length).map((d) =>
+    h('optgroup', { label: d.name }, d.departments.map((dp) => h('option', { value: `${d.id}|${dp.id}` }, `${dp.name} · ${dp.agents.length} agent(s)`)))));
+  return select;
+}
+
 function departmentCard(ix, c, dp) {
   const capText = (n, max) => (max == null ? `${n}` : `${n} / ${max}`);
   const rows = dp.agents.map((a) => [
@@ -698,7 +729,7 @@ function departmentCard(ix, c, dp) {
     lifecycleStrip(a),
     agentActions(c, a),
   ]);
-  return h('div', { class: 'dept' },
+  return h('div', { class: 'dept', id: `dept-${dp.id}` },
     h('div', { class: 'row-head' },
       h('div', {}, h('h3', {}, dp.name), h('p', { class: 'small secondary' }, dp.scope)),
       h('div', { class: 'toolbar' }, act('+ Assign agent', () => forms.assignAgent(c, dp)), act('Settings', () => forms.departmentSettings(c, dp)))),

@@ -33,7 +33,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   container.classList.add('c3d');
   container.replaceChildren(canvasHost, labels, tip, picker, panel, reset);
 
-  const { renderer, isLost, tick } = makeRenderer(container, { onResize: () => resize(), onRestore: () => current.city && build(current.city, current.data) });
+  const { renderer, isLost, tick, fail } = makeRenderer(container, { onResize: () => resize(), onRestore: () => current.city && build(current.city, current.data) });
   canvasHost.append(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -72,7 +72,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   let anchors = [];
   const pickables = [];
   let districtSpots = new Map(); // districtId -> { center, radius, plot }
-  let current = { city: null, districtId: null };
+  let deptSpots = new Map(); // departmentId -> { pos, top, districtId }
+  let current = { city: null, districtId: null, deptId: null };
 
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -102,6 +103,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     anchors = [];
     pickables.length = 0;
     districtSpots = new Map();
+    deptSpots = new Map();
     labels.replaceChildren();
   }
 
@@ -300,6 +302,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
         const t = tower({ w: 4.2, d: 4.2, h: height, accent: hue, seed: dp.id, label: dp.name, blade: d.name });
         t.group.position.copy(pos);
         world.add(t.group);
+        deptSpots.set(dp.id, { pos, top: t.top, districtId: d.id });
         pick(t.hit, {
           tip: `${dp.name} · ${dp.graduatedCount} working${dp.maxGraduated != null ? ` of ${dp.maxGraduated}` : ''} · ${dp.shadowCount} shadow(s) · ${dp.agents.length} total`,
           districtId: d.id,
@@ -506,9 +509,22 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   }
 
   function renderPicker(city) {
+    const withDepts = city.districts.filter((d) => d.departments.length);
+    const jump = withDepts.length
+      ? h('select', {
+          'aria-label': 'Jump to department',
+          onchange: (ev) => {
+            const [dId, dpId] = ev.target.value.split('|');
+            if (dpId) onSelectDistrict(dId, dpId);
+          },
+        },
+        h('option', { value: '' }, 'Jump to department…'),
+        withDepts.map((d) => h('optgroup', { label: d.name }, d.departments.map((dp) => h('option', { value: `${d.id}|${dp.id}`, selected: current.deptId === dp.id }, dp.name)))))
+      : null;
     picker.replaceChildren(
       h('button', { type: 'button', 'aria-pressed': String(!current.districtId), onclick: () => onSelectDistrict(null) }, 'Whole city'),
-      ...city.districts.map((d) => h('button', { type: 'button', 'aria-pressed': String(current.districtId === d.id), onclick: () => onSelectDistrict(d.id) }, d.name)),
+      ...city.districts.map((d) => h('button', { type: 'button', 'aria-pressed': String(current.districtId === d.id && !current.deptId), onclick: () => onSelectDistrict(d.id) }, d.name)),
+      jump,
     );
   }
 
@@ -528,8 +544,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
       h('h3', {}, d.name),
       h('p', { class: 'small secondary' }, `District supervisor ${d.supervisor}`),
       ...d.departments.map((dp) =>
-        h('div', { class: 'c3d-dept' },
-          h('b', {}, dp.name),
+        h('div', { class: `c3d-dept${current.deptId === dp.id ? ' current' : ''}` },
+          h('button', { type: 'button', class: 'c3d-dept-name', title: 'Fly to this department', onclick: () => onSelectDistrict(d.id, dp.id) }, dp.name),
           h('span', { class: 'small secondary' }, ` · ${dp.graduatedCount} working, ${dp.shadowCount} shadow(s)`),
           h('ul', {}, dp.agents.map((a) => h('li', { class: 'small' }, `${a.name} · ${a.state}${a.status ? ` · ${a.status.status}${a.status.activity ? `: ${a.status.activity}` : ''}` : ''}`))),
         )),
@@ -559,8 +575,10 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
     if (k >= 1) anim = null;
   }
   function focus(first) {
+    const dept = current.deptId && deptSpots.get(current.deptId);
     const spot = current.districtId && districtSpots.get(current.districtId);
-    if (spot) flyTo(spot.center, spot.radius * 2.6 + 12, first ? 0 : 900);
+    if (dept) flyTo(dept.pos.clone().setY(Math.min(dept.top * 0.35, 6)), Math.max(16, dept.top * 1.5), first ? 0 : 900);
+    else if (spot) flyTo(spot.center, spot.radius * 2.6 + 12, first ? 0 : 900);
     else {
       let far = 30;
       for (const s of districtSpots.values()) far = Math.max(far, s.center.length() + s.radius);
@@ -627,6 +645,14 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
   function loop(t) {
     frame = requestAnimationFrame(loop);
     if (document.hidden || !container.isConnected || isLost()) return;
+    try {
+      step(t);
+    } catch (err) {
+      cancelAnimationFrame(frame);
+      fail(err);
+    }
+  }
+  function step(t) {
     timer.update();
     const elapsed = timer.getElapsed();
     stepAnim(t ?? performance.now());
@@ -691,14 +717,21 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null }) 
 
   return {
     /** Show a city (rebuilt from fresh data) and focus a district, or the whole city when null. */
-    show(city, data, districtId) {
+    show(city, data, districtId, deptId = null) {
       const first = current.city?.id !== city.id;
-      const districtChanged = current.districtId !== (districtId ?? null);
+      const districtChanged = current.districtId !== (districtId ?? null) || current.deptId !== (deptId ?? null);
       // Rebuild only for a new city or fresh ledger data; choosing a district just moves the camera.
       // A refresh that brings no new ledger events (the same lastSeq) changes nothing on screen.
       const rebuild = first || current.data?.lastSeq !== data.lastSeq;
-      current = { city, districtId: districtId ?? null, data };
-      if (rebuild) build(city, data);
+      current = { city, districtId: districtId ?? null, deptId: deptId ?? null, data };
+      if (rebuild) {
+        try {
+          build(city, data);
+        } catch (err) {
+          fail(err);
+          return;
+        }
+      }
       else renderPicker(city);
       renderPanel(city);
       // A live refresh keeps the camera where you left it; only a new city or district moves it.

@@ -200,7 +200,7 @@ export function mount3D(container, { onOpenCity }) {
     h('div', { class: 'w3d-zoom' }, zoomIn, zoomOut, home),
   );
 
-  const { renderer, isLost, tick } = makeRenderer(container, { onResize: () => resize(), onRestore: () => dataRef && build(dataRef) });
+  const { renderer, isLost, tick, fail } = makeRenderer(container, { onResize: () => resize(), onRestore: () => dataRef && build(dataRef) });
   canvasHost.append(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -767,6 +767,14 @@ export function mount3D(container, { onOpenCity }) {
   function loop(t) {
     frame = requestAnimationFrame(loop);
     if (document.hidden || !container.isConnected || isLost()) return;
+    try {
+      step(t);
+    } catch (err) {
+      cancelAnimationFrame(frame);
+      fail(err);
+    }
+  }
+  function step(t) {
     timer.update();
     const elapsed = timer.getElapsed();
     stepAnim(t ?? performance.now());
@@ -846,7 +854,11 @@ export function mount3D(container, { onOpenCity }) {
 
   return {
     update(data) {
-      build(data);
+      try {
+        build(data);
+      } catch (err) {
+        fail(err);
+      }
     },
     dispose() {
       cancelAnimationFrame(frame);

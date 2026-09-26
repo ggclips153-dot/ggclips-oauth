@@ -709,6 +709,7 @@ export function makeRenderer(container, { onResize = () => {}, onRestore = () =>
   retry.addEventListener('click', () => location.reload());
   notice.append(text, retry);
   container.append(notice);
+  const RESTART = 'Fully quit the browser (Cmd+Q on a Mac) and open it again; browsers switch 3D off for a page after repeated graphics resets. The Map and Details views have everything meanwhile.';
   const lower = () => {
     if (ratio <= 1) return;
     ratio = 1;
@@ -723,7 +724,7 @@ export function makeRenderer(container, { onResize = () => {}, onRestore = () =>
     givenUp = losses.length >= 3;
     if (!givenUp) ev.preventDefault(); // lets the browser restore the context
     text.textContent = givenUp
-      ? 'The graphics card keeps resetting, so the 3D view has stopped to protect your computer. The Map and Details views have everything; reload the page to try 3D again.'
+      ? `The graphics card keeps resetting, so the 3D view has stopped to protect your computer. ${RESTART}`
       : 'The graphics card reset, so the 3D view paused. It will come back by itself in a moment, at a lighter setting.';
     notice.hidden = false;
   });
@@ -738,8 +739,20 @@ export function makeRenderer(container, { onResize = () => {}, onRestore = () =>
   let last = 0;
   let slow = 0;
   let frames = 0;
+  /** Stop and say why, instead of leaving a blank canvas. */
+  const fail = (message) => {
+    lost = true;
+    givenUp = true;
+    text.textContent = message;
+    notice.hidden = false;
+  };
+  if (renderer.getContext().isContextLost()) fail(`The browser has 3D graphics switched off for this page. ${RESTART}`);
   return {
     renderer,
+    fail: (err) => {
+      console.error(err);
+      fail(`The 3D view hit an error and stopped: ${err?.message ?? err}. Reload the page to try again. ${RESTART}`);
+    },
     isLost: () => lost,
     tick(now) {
       if (last) {
