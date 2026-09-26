@@ -40,8 +40,6 @@ const feed = [];
 let refreshTimer = null;
 let build = null;
 let runtime = null; // /api/health: { mode: 'demo' | 'live', dmSeenAt }
-/** Is anyone routing requests? In the real world only a connected DM bot does (nothing auto-executes). */
-const noDm = () => runtime?.mode === 'live' && (!runtime.dmSeenAt || serverNow() - Date.parse(runtime.dmSeenAt) > 15 * 60_000);
 const timers = [];
 
 const serverNow = () => Date.now() + clockSkew;
@@ -53,12 +51,9 @@ function toast(message) {
   document.body.append(el);
   setTimeout(() => el.remove(), Math.max(4000, String(message).length * 60));
 }
-/** Creation requests Marc may apply himself (the server enforces the same list). */
-const CREATE_NOW = new Set(['intent.create_city', 'intent.create_district', 'intent.create_department', 'intent.create_agent', 'intent.create_professor', 'intent.create_dean', 'intent.place_agent', 'intent.move_agent']);
 const forms = formsFor({
   api: (...a) => api(...a),
   toast,
-  noDm: () => noDm(),
 });
 
 // ---------- 3D world (loaded only when chosen) ----------
@@ -475,7 +470,7 @@ function topbar() {
       link('#/inbox', 'Inbox', data.escalations.length, true),
       link('#/economy', 'Economy', awaitingCredit(index()).length || null, false),
       link('#/constitution', 'Constitution', openProposals().length || null, false),
-      link('#/activity', 'Activity')),
+      link('#/activity', 'Activity', data.pendingIntents.length || null, true)),
     h('span', { class: 'spacer' }),
     h('span', { class: `live ${live}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), live === 'on' ? 'Live' : 'Reconnecting…'),
     h('span', { class: 'user' }, `${me.label ?? me.id} · ${me.role === 'owner' ? 'Owner' : cap(me.role)}`),
@@ -503,7 +498,7 @@ function render() {
   // Live updates redraw the page: keep open panels open and the focused control focused.
   const open = new Set([...app.querySelectorAll('details[open] > summary')].map((x) => x.textContent));
   const focusKey = document.activeElement?.getAttribute?.('aria-label') ?? document.activeElement?.name;
-  app.replaceChildren(topbar(), h('main', {}, dmBanner(), view));
+  app.replaceChildren(topbar(), h('main', {}, view));
   for (const sm of app.querySelectorAll('details > summary')) if (open.has(sm.textContent)) sm.parentElement.open = true;
   if (focusKey) app.querySelector(`[aria-label="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
   jumpToPlace();
@@ -520,7 +515,6 @@ function mapView(ix) {
     stat('Agents working', whole.format(working), 'probationer, active or senior'),
     stat('In school', whole.format(totals.enrolled + totals.student), 'enrolled or student'),
     stat('In jail', whole.format(data.jail.length)),
-    stat('Awaiting the DM', whole.format(data.pendingIntents.length), 'your requests not yet routed'),
     stat('Inbox', whole.format(data.escalations.length), 'escalated by Security'));
 
   // Revenue gets a full-width home; Essentials, Claude and Gemini (one city each) share the row below.
@@ -542,7 +536,6 @@ function mapView(ix) {
   return [
     h('div', { class: 'page-head' }, h('h1', {}, 'World'), h('div', { class: 'toolbar' }, switcher, act('+ New city', () => forms.newCity(), 'primary'))),
     kpis,
-    pendingCard(ix),
     mode === '3d'
       ? h('section', { class: 'section' },
           w3dContainer,
@@ -554,23 +547,22 @@ function mapView(ix) {
   ];
 }
 
-/** Marc's requests the DM hasn't routed yet. */
-function pendingCard(ix, cityId) {
-  const list = data.pendingIntents.filter((i) => !cityId || i.city === cityId);
+/** Requests that didn't finish: refused by the rules when made, or made before requests applied at once (A19). */
+function unfinishedCard(ix) {
+  const list = data.pendingIntents;
   if (!list.length) return null;
-  const creatable = list.filter((i) => CREATE_NOW.has(i.type));
   return h('section', { class: 'card section' },
     h('div', { class: 'row-head' },
-      h('h3', {}, `Waiting on the DM (${list.length})`),
-      creatable.length > 1 ? act(`Create all ${creatable.length} now`, () => carryOutRequests(creatable.map((i) => i.seq)), 'primary') : null),
-    isOwner() && creatable.length ? h('p', { class: 'small secondary' }, 'New things you create are made at once. These were sent before that, or the rules held them back: press "Create now" to try again.') : null,
+      h('h3', {}, `Unfinished requests (${list.length})`),
+      list.length > 1 ? act(`Apply all ${list.length}`, () => carryOutRequests(list.map((i) => i.seq)), 'primary') : null),
+    h('p', { class: 'small secondary' }, 'Requests that were not applied: made before everything applied at once, or refused by the rules at the time. Apply them now, or leave them.'),
     h('ul', { class: 'pending' }, list.map((i) =>
       h('li', {}, h('b', {}, plainIntent(i.type)), ' · ', ix.cities.get(i.city)?.name ?? (i.city === 'WORLD' ? 'World' : i.city),
         i.payload.name ? ` · ${i.payload.name}` : '', h('span', { class: 'muted' }, ` · ${ago(i.ts)} `),
-        CREATE_NOW.has(i.type) ? act('Create now', () => carryOutRequests([i.seq])) : null))));
+        act('Apply', () => carryOutRequests([i.seq]))))));
 }
 
-/** Apply creation requests as DM + Mayor, oldest first (a district before the department that needs it). */
+/** Apply requests as DM + Mayor, oldest first (a district before the department that needs it). */
 async function carryOutRequests(seqs) {
   let done = 0;
   const failures = [];
@@ -582,7 +574,7 @@ async function carryOutRequests(seqs) {
       failures.push(`#${seq}: ${err.message}`);
     }
   }
-  toast(failures.length ? `Created ${done}; not created: ${failures.join('; ')}` : `Created ${done}.`);
+  toast(failures.length ? `Applied ${done}; not applied: ${failures.join('; ')}` : `Applied ${done}.`);
   scheduleRefresh();
 }
 
@@ -667,7 +659,7 @@ function cityView(ix, id, sub = { mode: 'details' }) {
   const agentsCard = h('div', { class: 'card section' }, h('h3', {}, 'Agents by state'), stateBar(c.agentCounts),
     c.lastHealthReport && h('div', { class: 'small' }, h('h4', {}, `Health report · week of ${c.lastHealthReport.weekOf}`), h('p', { class: 'secondary' }, c.lastHealthReport.summary)));
 
-  return [head, pendingCard(ix, c.id), h('div', { class: 'two-col' }, kpiCard, agentsCard), collegeSection(ix, c, deptName), ...c.districts.map((d) => districtSection(ix, c, d)),
+  return [head, h('div', { class: 'two-col' }, kpiCard, agentsCard), collegeSection(ix, c, deptName), ...c.districts.map((d) => districtSection(ix, c, d)),
     reportsSection(ix, c), retiredSection(c)];
 }
 
@@ -759,16 +751,6 @@ function jumpToPlace() {
     target?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     target?.classList.add('flash');
   });
-}
-
-/** Real world, no DM bot connected: say plainly why requests aren't being carried out. */
-function dmBanner() {
-  const waiting = data.pendingIntents.length;
-  if (!noDm() || !waiting) return null;
-  return h('div', { class: 'card section dm-banner', role: 'status' },
-    h('h3', {}, 'No District Messenger is connected'),
-    h('p', { class: 'small' }, `No DM bot has connected${runtime.dmSeenAt ? ' in the last 15 minutes' : ' yet'}${waiting ? `, so ${waiting} request(s) are waiting under "Waiting on the DM"` : ''}.`),
-    h('p', { class: 'small secondary' }, 'Anything you create (cities, districts, departments, agents, professors, deans, assignments) is made at once and never waits. Only other requests, like promotions and messages to Mayors, wait for the DM and Mayor bots.'));
 }
 
 /**
@@ -1087,6 +1069,7 @@ function activityView(ix) {
   return [
     h('h1', {}, 'Live activity'),
     h('p', { class: 'secondary' }, 'The latest events from the world ledger, newest first.'),
+    unfinishedCard(index()),
     h('div', { class: 'card' },
       feed.length
         ? h('div', { class: 'feed' }, feed.map((e) => h('div', {}, h('span', { class: 'mono muted' }, `#${e.seq}`), h('span', {}, describe(ix, e), h('span', { class: 'muted' }, ` · ${ago(e.ts)}`)))))

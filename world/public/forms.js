@@ -1,5 +1,5 @@
-// Marc's forms. Every form writes an INTENT to the ledger; nothing changes until the DM routes it and
-// the Mayor carries it out. The server's write-guard re-checks everything, so these forms only help.
+// Marc's forms. Every form writes an INTENT to the ledger and the server applies it at once, acting as DM and
+// Mayor (A19). The server's write-guard re-checks everything, so these forms only help.
 import { h } from './dom.js';
 
 const FAMILY_OPTIONS = [
@@ -52,8 +52,8 @@ export function parseMoney(text) {
  * onSubmit(values) sends the request; `repeat` adds "Send and add another".
  */
 function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = false, createNow = false, onSubmit }) {
-  // Creation forms apply at once (the server carries Marc's creation requests out immediately); others go to the DM.
-  const submitLabel = label ?? (createNow ? 'Create' : 'Send to the DM');
+  // Every form applies at once (A19): the server carries Marc's requests out immediately, under the ledger's rules.
+  const submitLabel = label ?? (createNow ? 'Create' : 'Save');
   const dialog = h('dialog', { class: 'modal', 'aria-labelledby': 'form-title' });
   const error = h('p', { class: 'error', role: 'alert' });
   const controls = {};
@@ -127,11 +127,7 @@ function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = fals
     for (const b of dialog.querySelectorAll('button')) b.disabled = true;
     try {
       const msg = await onSubmit(values);
-      if (createNow) ctx.toast(`${(msg ?? 'Done').replace(/ sent to the DM\.?$/, '')}: done.`);
-      else {
-        const pendingNote = ctx.noDm?.() ? ' It waits under "Waiting on the DM" until a DM bot routes it.' : '';
-        ctx.toast(`${msg ?? 'Sent to the DM for routing.'}${pendingNote}`);
-      }
+      ctx.toast(msg ?? 'Done.');
       if (again) {
         for (const { f, control } of Object.values(controls)) if (!f.keep) control.value = f.type === 'select' ? control.value : '';
         Object.values(controls)[0]?.control.focus();
@@ -184,7 +180,7 @@ export function formsFor(ctx) {
       openForm(ctx, {
         createNow: true,
         title: 'New city',
-        intro: 'One business endeavor, with its own Mayor. The DM creates it once routed.',
+        intro: 'One business endeavor, with its own Mayor.',
         repeat: true,
         fields: [
           { name: 'name', label: 'City name', type: 'text', required: true },
@@ -199,7 +195,7 @@ export function formsFor(ctx) {
             return { name, supervisor };
           });
           await intent('intent.create_city', 'WORLD', { name: v.name, family: v.family, mayorName: v.mayorName, ...(initialDistricts.length ? { initialDistricts } : {}) });
-          return `New city "${v.name}" sent to the DM.`;
+          return `New city "${v.name}": done.`;
         },
       });
     },
@@ -215,7 +211,7 @@ export function formsFor(ctx) {
         ],
         onSubmit: async (v) => {
           await intent('intent.create_district', city.id, v);
-          return `District "${v.name}" sent to the DM.`;
+          return `District "${v.name}": done.`;
         },
       });
     },
@@ -237,7 +233,7 @@ export function formsFor(ctx) {
         onSubmit: async ({ botToken, ...v }) => {
           const botTokenRef = botToken ? (await ctx.api('/api/secrets', { method: 'POST', body: { purpose: `${v.name}-bot`, value: botToken } })).ref : undefined;
           await intent('intent.create_department', city.id, { districtId: district.id, ...v, ...(botTokenRef ? { botTokenRef } : {}) });
-          return `Department "${v.name}" sent to the DM.`;
+          return `Department "${v.name}": done.`;
         },
       });
     },
@@ -253,7 +249,7 @@ export function formsFor(ctx) {
         ],
         onSubmit: async (v) => {
           await intent('intent.configure_department', city.id, { departmentId: dept.id, ...v });
-          return `New settings for ${dept.name} sent to the DM.`;
+          return `New settings for ${dept.name}: done.`;
         },
       });
     },
@@ -268,7 +264,7 @@ export function formsFor(ctx) {
         fields: [{ name: 'name', label: 'Display name', type: 'name', help: 'Leave blank and one is generated for you.' }, ...personaFields],
         onSubmit: async (v) => {
           await intent('intent.create_agent', city.id, personaPayload(v));
-          return `New agent${v.name ? ` "${v.name}"` : ''} sent to the DM.`;
+          return `New agent${v.name ? ` "${v.name}"` : ''}: done.`;
         },
       });
     },
@@ -286,7 +282,7 @@ export function formsFor(ctx) {
         ],
         onSubmit: async (v) => {
           await intent('intent.create_professor', city.id, { ...personaPayload(v), ...(v.departmentId ? { departmentId: v.departmentId } : {}) });
-          return 'New professor sent to the DM.';
+          return 'New professor: done.';
         },
       });
     },
@@ -299,7 +295,7 @@ export function formsFor(ctx) {
         fields: [{ name: 'name', label: 'Display name', type: 'name', help: 'Leave blank and one is generated for you.' }, ...personaFields],
         onSubmit: async (v) => {
           await intent('intent.create_dean', city.id, personaPayload(v));
-          return 'New dean sent to the DM.';
+          return 'New dean: done.';
         },
       });
     },
@@ -311,7 +307,7 @@ export function formsFor(ctx) {
         fields: [{ name: 'professorId', label: 'Professor', type: 'select', required: true, options: city.college.professors.map((p) => [p.id, `${p.name} (${p.id})`]) }],
         onSubmit: async (v) => {
           await intent('intent.replace_dean', city.id, v);
-          return 'Dean replacement sent to the DM.';
+          return 'Dean replacement: done.';
         },
       });
     },
@@ -322,7 +318,7 @@ export function formsFor(ctx) {
         fields: [{ name: 'departmentId', label: 'Specialty department', type: 'select', required: true, options: departmentsOf(city), value: prof.specialtyDepartmentId }],
         onSubmit: async (v) => {
           await intent('intent.specialize_professor', city.id, { professorId: prof.id, departmentId: v.departmentId });
-          return 'Specialty change sent to the DM.';
+          return 'Specialty change: done.';
         },
       });
     },
@@ -346,7 +342,7 @@ export function formsFor(ctx) {
         onSubmit: async (v) => {
           if (v.agent.startsWith('move:')) await intent('intent.move_agent', city.id, { agentId: v.agent.slice(5), toDepartmentId: dept.id });
           else await intent('intent.place_agent', city.id, { agentId: v.agent, departmentId: dept.id });
-          return `Assignment to ${dept.name} sent to the DM.`;
+          return `Assignment to ${dept.name}: done.`;
         },
       });
     },
@@ -359,7 +355,7 @@ export function formsFor(ctx) {
         submitLabel: `Promote to ${to}`,
         onSubmit: async () => {
           await intent('intent.promote_agent', city.id, { agentId: agent.id, to });
-          return `Promotion of ${agent.name} sent to the DM.`;
+          return `Promotion of ${agent.name}: done.`;
         },
       });
     },
@@ -372,7 +368,7 @@ export function formsFor(ctx) {
         submitLabel: 'Retire into professor',
         onSubmit: async (v) => {
           await intent('intent.retire_to_professor', city.id, { agentId: agent.id, ...(v.departmentId ? { departmentId: v.departmentId } : {}) });
-          return `Retirement of ${agent.name} sent to the DM.`;
+          return `Retirement of ${agent.name}: done.`;
         },
       });
     },
@@ -385,7 +381,7 @@ export function formsFor(ctx) {
         submitLabel: 'Delete agent',
         onSubmit: async () => {
           await intent('intent.delete_agent', city.id, { agentId: agent.id });
-          return `Deletion of ${agent.name} sent to the DM.`;
+          return `Deletion of ${agent.name}: done.`;
         },
       });
     },
@@ -403,7 +399,7 @@ export function formsFor(ctx) {
         ],
         onSubmit: async (v) => {
           await intent('intent.deploy_agent', city.id, v);
-          return 'Deployment sent to the DM.';
+          return 'Deployment: done.';
         },
       });
     },
@@ -418,7 +414,7 @@ export function formsFor(ctx) {
         onSubmit: async (v) => {
           if (!Number.isFinite(v.amountCents) || v.amountCents <= 0) throw new Error('Enter an amount above $0.');
           await intent('intent.grant_earning', city.id, { agentId: agent.id, deliverableSeq: deliverable.seq, amountCents: v.amountCents });
-          return `Credit for ${agent.name} sent to the DM.`;
+          return `Credit for ${agent.name}: done.`;
         },
       });
     },
@@ -436,7 +432,7 @@ export function formsFor(ctx) {
         onSubmit: async (v) => {
           if (!Number.isFinite(v.amountCents) || v.amountCents < 0) throw new Error('Enter a cost of $0 or more.');
           await intent('intent.grant_reward', city.id, { agentId: agent.id, ...v });
-          return `Reward for ${agent.name} sent to the DM.`;
+          return `Reward for ${agent.name}: done.`;
         },
       });
     },
@@ -462,7 +458,7 @@ export function formsFor(ctx) {
             summary: v.summary,
             proposalSeq: proposal?.seq,
           });
-          return `Constitution ${v.version} sent to the DM.`;
+          return `Constitution ${v.version}: done.`;
         },
       });
     },
@@ -475,7 +471,7 @@ export function formsFor(ctx) {
         submitLabel: 'Decline',
         onSubmit: async (v) => {
           await intent('intent.decline_proposal', 'WORLD', { proposalSeq: proposal.seq, reason: v.reason });
-          return 'Decline sent to the DM.';
+          return 'Decline: done.';
         },
       });
     },
@@ -483,12 +479,12 @@ export function formsFor(ctx) {
     messageMayor(city) {
       openForm(ctx, {
         title: `Message Mayor ${city.mayorName}`,
-        intro: 'Goes to the DM, who relays it to the Mayor\'s bot.',
+        intro: 'Delivered to the Mayor\'s bot.',
         fields: [{ name: 'text', label: 'Message', type: 'textarea', required: true }],
         submitLabel: 'Send',
         onSubmit: async (v) => {
           await intent('intent.message_mayor', city.id, v);
-          return `Message for Mayor ${city.mayorName} sent to the DM.`;
+          return `Message sent to Mayor ${city.mayorName}.`;
         },
       });
     },

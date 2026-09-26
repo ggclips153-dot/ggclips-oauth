@@ -44,3 +44,16 @@ everything not listed here.
   strikes.
 - **Visibility.** The jail roster (`GET /api/state → jail`) lists agents currently inside, from every
   city. Security, Innovations, Marc, the DM and Bob see all of them; a revenue Mayor sees only its own.
+
+## A19 — Marc never waits on the bots
+
+Marc (2026-09-26): "I should not have to wait on an agent" and "remove the waiting on DM".
+
+- Every request Marc makes from the dashboard is applied at once. The server routes it and carries it out, acting as the DM and the Mayor, through the same write-guard as the bots.
+- The ledger records it as him: actors `marc-as-dm` and `marc-as-mayor`. The intent → routed → fact trail is unchanged.
+- A message to a Mayor is routed at once, and the Mayor's bot reads it.
+- If the rules refuse a request, the form says why, and the request stays under Activity → "Unfinished requests" (with Apply). Requests made before A19 are listed there too.
+- The DM and Mayor bots still act on their own: the city's own work, exams, KPI pulses, strikes, statuses and deliverables.
+- The bots can also still route and carry out any request that is waiting.
+- Agents do the work. Marc builds and decides.
+

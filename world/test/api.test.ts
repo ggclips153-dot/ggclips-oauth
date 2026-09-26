@@ -63,10 +63,16 @@ describe('HTTP API', () => {
     assert.equal(res.status, 403);
   });
 
-  it('Marc -> intent -> DM routes -> visible as routed', async () => {
+  it("Marc's request from the dashboard is routed at once (A19): nothing waits on the DM", async () => {
     const res = await call('/api/events', tokens.marc, { type: 'intent.message_mayor', city: a, payload: { text: 'weekly report please' } });
     assert.equal(res.status, 201);
     const intent = await res.json();
+    const state = await (await call('/api/state', tokens.marc)).json();
+    assert.ok(!state.pendingIntents.some((i: { seq: number }) => i.seq === intent.seq));
+  });
+
+  it('the DM bot can still route a waiting request', async () => {
+    const intent = w.ledger.append({ id: 'marc', role: 'owner', writeScope: ['*'] }, { type: 'intent.message_mayor', city: a, payload: { text: 'from before A19' } });
     let state = await (await call('/api/state', tokens.marc)).json();
     assert.ok(state.pendingIntents.some((i: { seq: number }) => i.seq === intent.seq));
     const routed = await call('/api/events', tokens.dm, { type: 'dm.routed', city: a, payload: { intentSeq: intent.seq, to: 'mayor:a-city' } });

@@ -47,12 +47,10 @@ describe('Marc can create structure and agents himself (as DM and Mayor), or lea
     assert.deepEqual(events.map((e: { type: string }) => e.type), ['agent.enrolled']);
   });
 
-  it('only creation requests: promotions and other work stay with the DM and the Mayors', async () => {
+  it('the rules still hold: a promotion the ledger forbids is refused, even for Marc', async () => {
     const rookie = w.collegeAgent(city, 'Rookie');
     const promote = ask('intent.promote_agent', { agentId: rookie, to: 'active' });
-    const res = await carry(promote.seq);
-    assert.equal(res.status, 403);
-    assert.match((await res.json()).message, /not a creation request/);
+    assert.equal((await carry(promote.seq)).status, 409);
     assert.equal(w.state.agents.get(rookie)!.state, 'enrolled');
   });
 
@@ -81,14 +79,26 @@ describe('Marc can create structure and agents himself (as DM and Mayor), or lea
     assert.ok(w.state.routed.has(body.seq), 'not left waiting on the DM');
   });
 
-  it('other requests from Marc still go to the DM and Mayor', async () => {
+  it('every request from Marc is applied at once (A19); a message to a Mayor is routed to them at once', async () => {
     const res = await fetch(`${base}/api/events`, {
       method: 'POST',
       headers: { authorization: 'Bearer t-marc', 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'intent.message_mayor', city, payload: { text: 'hello' } }),
     });
     const body = await res.json();
-    assert.equal(body.applied, undefined);
-    assert.ok(!w.state.routed.has(body.seq));
+    assert.equal(body.applied, true);
+    assert.ok(w.state.routed.has(body.seq), 'nothing waits on the DM');
+  });
+
+  it('a request the rules refuse is kept unfinished and Marc is told why', async () => {
+    const rookie = w.collegeAgent(city, 'Rookie Two');
+    const res = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer t-marc', 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'intent.promote_agent', city, payload: { agentId: rookie, to: 'active' } }),
+    });
+    const body = await res.json();
+    assert.equal(body.applied, false);
+    assert.match(body.reason, /./);
   });
 });

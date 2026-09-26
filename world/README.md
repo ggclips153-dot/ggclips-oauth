@@ -145,12 +145,12 @@ but `data/demo.db`: the real world is never auto-executed.
   and each district's departments: the page scrolls there, or the 3D camera flies there (the 3D view also
   has a College button). It is part of the address (`#/city/<id>/at/<college|district|dept>`,
   `#/city/<id>/3d/<college|district>/<dept>`), so Back works.
-- **Marc never waits to create**: new cities, districts, departments, agents (at the college), professors
-  and deans, and assigning or moving an agent into a department, are applied the moment Marc submits the
-  form. The server routes and carries them out as him (`marc-as-dm`, `marc-as-mayor` in the ledger) through
-  the same write-guard; if the rules refuse one, the form says why and it stays waiting with a "Create now"
-  button to retry. Everything else (promotions, strikes, the economy, messages, work) goes to the DM and
-  Mayor bots as before.
+- **Marc never waits (A19)**: everything Marc does from the dashboard is applied the moment he submits it:
+  creating cities, districts, departments, agents (at the college), professors and deans, assigning and
+  moving agents, promotions, settings, deployments, credits and rewards, the Constitution, and messages to
+  Mayors. The server routes and carries it out as him (`marc-as-dm`, `marc-as-mayor` in the ledger)
+  through the same write-guard; if the rules refuse something, the form says why and it is kept under
+  Activity → Unfinished requests. The bots still do the city's own work (exams, KPI pulses, strikes, statuses).
 - **Traffic means work**: cars appear only while agents are working, two per working agent on their
   district's roads and one on the beltway and superhighways; a city with nobody working has empty roads.
 - **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
@@ -180,7 +180,7 @@ Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie
 | POST | `/api/events` | append `{type, city, subject?, payload, authorizedBy?}` |
 | GET | `/api/names?count=5` | owner only: suggested agent names (never retired, in use or reserved) |
 | GET | `/api/verify` | owner only: verify the hash chain |
-| POST | `/api/intents/<seq>/create-now` | owner only: retry a waiting creation request now, as DM and Mayor (Marc's new creation requests are applied on submit) |
+| POST | `/api/intents/<seq>/create-now` | owner only: apply an unfinished request now, as DM and Mayor (Marc's new requests are applied on submit) |
 | GET | `/api/constitution` | the Constitution file, its fingerprint, the ratified record, in-force status and the SOUL pointer line |
 | POST | `/api/surface/check` | gateway (Hermes): may this agent write this note to the shared surface? See `docs/SURFACE-GUARD.md` |
 

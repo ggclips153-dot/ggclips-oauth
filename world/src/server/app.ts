@@ -31,17 +31,11 @@ const ownerActors = (profile: Profile) => ({
   mayor: (city: string) => ({ id: `${profile.id}-as-mayor`, role: 'mayor' as const, writeScope: [city] }),
 });
 
-/** Requests Marc may apply himself: creating the world's structure and agents, and assigning an existing agent. */
-export const CREATE_NOW = new Set([
-  'intent.create_city',
-  'intent.create_district',
-  'intent.create_department',
-  'intent.create_agent',
-  'intent.create_professor',
-  'intent.create_dean',
-  'intent.place_agent',
-  'intent.move_agent',
-]);
+/**
+ * Marc never waits on the bots (A19): every request he makes from the dashboard is applied at once, as DM and
+ * Mayor, through the same write-guard. A message to a Mayor is routed at once and read by the Mayor's bot.
+ */
+const appliesAtOnce = (type: string) => type.startsWith('intent.');
 const STATIC_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -244,11 +238,11 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
           payload: input.payload,
           authorizedBy: (input.authorizedBy as number | undefined) ?? null,
         });
-        // Marc never waits on an agent to create things: his creation requests are applied at once, as DM and
-        // Mayor, through the same write-guard. If the rules refuse it, the request stays waiting and he's told why.
-        if (profile.role === 'owner' && CREATE_NOW.has(event.type)) {
+        // Marc never waits on an agent (A19): his requests are applied at once, as DM and Mayor, through the same
+        // write-guard. If the rules refuse one, it is kept (unfinished) and he's told why.
+        if (profile.role === 'owner' && appliesAtOnce(event.type)) {
           try {
-            const applied = carryOut(ledger, event, ownerActors(profile), `created by ${profile.id}`);
+            const applied = carryOut(ledger, event, ownerActors(profile), `applied by ${profile.id}`);
             return send(res, 201, { ...event, applied: true, created: applied.map((e) => ({ type: e.type, subject: e.subject })) });
           } catch (err) {
             if (!(err instanceof LedgerError)) throw err;
@@ -257,15 +251,13 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         }
         return send(res, 201, event);
       }
-      // Marc can create his world's structure and agents himself, without waiting for the bots: he acts as the
-      // DM and the Mayor for CREATION requests only (work and everything else stays with the DM and Mayors).
+      // Retry an unfinished request (one the rules refused earlier, or one from before A19), as DM and Mayor.
       // Recorded as him (actor "<id>-as-dm" / "<id>-as-mayor"); the write-guard checks it exactly as for a bot.
       const carry = /^\/api\/intents\/(\d+)\/create-now$/.exec(url.pathname);
       if (req.method === 'POST' && carry) {
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');
         const intent = ledger.state.intents.get(Number(carry[1])) ?? (() => { throw new LedgerError('NOT_FOUND', `intent #${carry[1]} not found`); })();
-        if (!CREATE_NOW.has(intent.type)) throw new LedgerError('FORBIDDEN', `${intent.type} is not a creation request; the DM and the Mayor carry it out`);
-        const written = carryOut(ledger, intent, ownerActors(profile), `created by ${profile.id}`);
+        const written = carryOut(ledger, intent, ownerActors(profile), `applied by ${profile.id}`);
         return send(res, 201, { events: written });
       }
       if (req.method === 'GET' && url.pathname === '/api/names') {
