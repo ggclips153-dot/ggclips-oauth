@@ -416,3 +416,4 @@ pre.pointer, pre.proposal-text { white-space: pre-wrap; word-break: break-word; 
 .demo-chip { margin-right: 4px; }
 .jumps { display: flex; flex-wrap: wrap; gap: 8px; }
 .page-head .dept-jump { margin-top: 0; }
+button.primary.danger { background: var(--critical); border-color: var(--critical); color: #fff; }

@@ -607,12 +607,13 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
     panel.replaceChildren(
       h('h3', {}, d.name),
       h('p', { class: 'small secondary' }, `District supervisor ${d.supervisor}`),
+      act && h('div', { class: 'toolbar' }, btn('+ New department', () => act.newDepartment(city, d)), btn('Rename', () => act.renameDistrict(city, d)), btn('Delete', () => act.deleteDistrict(city, d), 'danger')),
       ...d.departments.map((dp) =>
         h('div', { class: `c3d-dept${current.deptId === dp.id ? ' current' : ''}` },
           h('button', { type: 'button', class: 'c3d-dept-name', title: 'Fly to this department', onclick: () => onSelectDistrict(d.id, dp.id) }, dp.name),
           h('span', { class: 'small secondary' }, ` · ${dp.graduatedCount} working, ${dp.shadowCount} shadow(s)`),
           h('ul', {}, dp.agents.map((a) => h('li', { class: 'small' }, `${a.name} · ${a.state}${a.status ? ` · ${a.status.status}${a.status.activity ? `: ${a.status.activity}` : ''}` : ''}`))),
-          act && h('div', { class: 'toolbar c3d-dept-actions' }, btn('+ Assign agent', () => act.assignAgent(city, dp))),
+          act && h('div', { class: 'toolbar c3d-dept-actions' }, btn('+ Assign agent', () => act.assignAgent(city, dp)), btn('Rename', () => act.renameDepartment(city, dp)), btn('Delete', () => act.deleteDepartment(city, dp), 'danger')),
         )),
       ...(d.departments.length ? [] : [h('p', { class: 'small muted' }, 'No departments yet.')]),
     );

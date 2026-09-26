@@ -62,6 +62,17 @@ const constitutionFields: Schema = {
   proposalSeq: { t: 'int', min: 1, opt: true },
 };
 
+const renameDistrict: Schema = {
+  districtId: { t: 'str', max: 20 },
+  name: { t: 'str', max: 120 },
+  supervisor: { t: 'str', max: 120, opt: true },
+};
+const renameDepartment: Schema = {
+  departmentId: { t: 'str', max: 20 },
+  name: { t: 'str', max: 120 },
+  scope: { t: 'str', max: 2000, opt: true },
+};
+
 const departmentFields: Schema = {
   districtId: { t: 'str', max: 20 },
   name: { t: 'str', max: 120 },
@@ -115,6 +126,12 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { departmentId: { t: 'str', max: 20 }, ...departmentSettings },
   },
+  // Rename, or delete, a district or department. Deleting needs it empty (no departments / no agents), so
+  // nobody is left without a place; its ID is retired like every other ID.
+  'intent.rename_district': { kind: 'intent', writers: OWNER, scope: 'city', schema: renameDistrict },
+  'intent.rename_department': { kind: 'intent', writers: OWNER, scope: 'city', schema: renameDepartment },
+  'intent.delete_district': { kind: 'intent', writers: OWNER, scope: 'city', schema: { districtId: { t: 'str', max: 20 } } },
+  'intent.delete_department': { kind: 'intent', writers: OWNER, scope: 'city', schema: { departmentId: { t: 'str', max: 20 } } },
   // Leave `name` out and the ledger generates one.
   // Retire a senior (tier 5) agent into a professor at the college.
   'intent.retire_to_professor': {
@@ -311,6 +328,10 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { departmentId: { t: 'str', max: 20 }, ...departmentSettings },
     authorizedBy: ['intent.configure_department'],
   },
+  'district.renamed': { kind: 'fact', writers: MAYOR, scope: 'city', schema: renameDistrict, authorizedBy: ['intent.rename_district'] },
+  'department.renamed': { kind: 'fact', writers: MAYOR, scope: 'city', schema: renameDepartment, authorizedBy: ['intent.rename_department'] },
+  'district.deleted': { kind: 'fact', writers: MAYOR, scope: 'city', schema: { districtId: { t: 'str', max: 20 } }, authorizedBy: ['intent.delete_district'] },
+  'department.deleted': { kind: 'fact', writers: MAYOR, scope: 'city', schema: { departmentId: { t: 'str', max: 20 } }, authorizedBy: ['intent.delete_department'] },
 
   // ---- Professors (A10): teach, examine, judge fitness to graduate; may step in for a while ----
   'professor.enrolled': {

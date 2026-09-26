@@ -213,6 +213,11 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (prop.status !== 'open') conflict(`proposal #${prop.seq} is already ${prop.status}`);
     return prop;
   };
+  const districtIn = (id: unknown, city: string) => {
+    const dist = state.districts.get(String(id)) ?? notFound(`unknown district: ${id}`);
+    if (dist.cityId !== city) forbid(`district ${dist.id} is not in ${city}`);
+    return dist;
+  };
   const agentIn = (id: unknown, city: string) => {
     const a = state.agents.get(String(id)) ?? notFound(`unknown agent: ${id}`);
     if (a.cityId !== city) forbid(`agent ${a.id} is not in ${city}`);
@@ -436,6 +441,32 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     }
 
+    case 'intent.rename_district':
+    case 'district.renamed':
+      if (d.type === 'district.renamed') match(['districtId', 'name', 'supervisor']);
+      districtIn(p.districtId, d.city);
+      break;
+    case 'intent.rename_department':
+    case 'department.renamed':
+      if (d.type === 'department.renamed') match(['departmentId', 'name', 'scope']);
+      departmentIn(p.departmentId, d.city);
+      break;
+    case 'intent.delete_district':
+    case 'district.deleted': {
+      if (d.type === 'district.deleted') match(['districtId']);
+      districtIn(p.districtId, d.city);
+      const left = [...state.departments.values()].filter((x) => x.districtId === p.districtId);
+      if (left.length) conflict(`district ${p.districtId} still has ${left.length} department(s): ${left.map((x) => x.name).join(', ')}. Delete or empty them first.`);
+      break;
+    }
+    case 'intent.delete_department':
+    case 'department.deleted': {
+      if (d.type === 'department.deleted') match(['departmentId']);
+      departmentIn(p.departmentId, d.city);
+      const people = state.departmentAgents(p.departmentId);
+      if (people.length) conflict(`department ${p.departmentId} still has ${people.length} agent(s): ${people.map((a) => a.name).join(', ')}. Assign them elsewhere first.`);
+      break;
+    }
     case 'department.configured':
       match(['departmentId', 'maxGraduated', 'maxShadows', 'basicTasks']);
       departmentIn(p.departmentId, d.city);

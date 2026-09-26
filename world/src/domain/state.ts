@@ -434,6 +434,31 @@ export class WorldState {
           basicTasks: p.basicTasks ?? [],
         });
         break;
+      case 'district.renamed': {
+        const dist = this.districts.get(p.districtId);
+        if (!dist) break;
+        dist.name = p.name;
+        if (p.supervisor) dist.supervisor = p.supervisor;
+        break;
+      }
+      case 'department.renamed': {
+        const dept = this.departments.get(p.departmentId);
+        if (!dept) break;
+        dept.name = p.name;
+        if (p.scope) dept.scope = p.scope;
+        break;
+      }
+      case 'district.deleted':
+        this.districts.delete(p.districtId);
+        break;
+      case 'department.deleted':
+        this.departments.delete(p.departmentId);
+        // Professors who specialised in it keep teaching at the college, with no specialty for now.
+        for (const a of this.agents.values()) {
+          if (a.specialtyDepartmentId === p.departmentId) a.specialtyDepartmentId = null;
+          if (a.steppedIn?.departmentId === p.departmentId) a.steppedIn = null;
+        }
+        break;
       case 'department.configured': {
         const dept = this.departments.get(p.departmentId);
         if (!dept) break;

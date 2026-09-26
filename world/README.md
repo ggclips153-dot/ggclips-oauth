@@ -145,6 +145,10 @@ but `data/demo.db`: the real world is never auto-executed.
   every district (plus "+ New district…"), another every department; the page scrolls there or the 3D camera
   flies there. On the World map and the 3D globe, "Jump to district…" lists every city's districts and takes
   you to that city at that district (the 3D city from the globe). Jumps are part of the address, so Back works.
+- **Rename and delete districts and departments**: "Rename" (name and supervisor / scope) and "Delete" on each
+  district and department, in Details and in the 3D panel. Deleting asks twice: first "Yes, continue", then
+  typing the exact name. Only empty ones can be deleted (a department without agents, a district without
+  departments), so no agent is left without a place; IDs are retired and never reused.
 - **Marc never waits (A19)**: everything Marc does from the dashboard is applied the moment he submits it:
   creating cities, districts, departments, agents (at the college), professors and deans, assigning and
   moving agents, promotions, settings, deployments, credits and rewards, the Constitution, and messages to

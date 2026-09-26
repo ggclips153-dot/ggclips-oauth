@@ -30,6 +30,14 @@ function facts(i: LedgerEvent, { dm: DM, mayor }: Actors): [Profile, AppendInput
       return [by('department.created', p)];
     case 'intent.configure_department':
       return [by('department.configured', p)];
+    case 'intent.rename_district':
+      return [by('district.renamed', p)];
+    case 'intent.rename_department':
+      return [by('department.renamed', p)];
+    case 'intent.delete_district':
+      return [by('district.deleted', p)];
+    case 'intent.delete_department':
+      return [by('department.deleted', p)];
     case 'intent.create_agent':
       return [by('agent.enrolled', p)];
     case 'intent.place_agent':

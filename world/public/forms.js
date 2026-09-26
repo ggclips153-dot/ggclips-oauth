@@ -14,6 +14,10 @@ const PLAIN = {
   'intent.create_district': 'New district',
   'intent.create_department': 'New department',
   'intent.configure_department': 'Department settings',
+  'intent.rename_district': 'Rename district',
+  'intent.rename_department': 'Rename department',
+  'intent.delete_district': 'Delete district',
+  'intent.delete_department': 'Delete department',
   'intent.create_agent': 'New agent',
   'intent.place_agent': 'Assign agent to department',
   'intent.promote_agent': 'Promotion',
@@ -51,7 +55,7 @@ export function parseMoney(text) {
  * types: text | textarea | select | number | lines | secret | name (text + "Suggest" button).
  * onSubmit(values) sends the request; `repeat` adds "Send and add another".
  */
-function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = false, createNow = false, onSubmit }) {
+function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = false, createNow = false, danger = false, onSubmit }) {
   // Every form applies at once (A19): the server carries Marc's requests out immediately, under the ledger's rules.
   const submitLabel = label ?? (createNow ? 'Create' : 'Save');
   const dialog = h('dialog', { class: 'modal', 'aria-labelledby': 'form-title' });
@@ -151,12 +155,42 @@ function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = fals
       h('div', { class: 'actions' },
         h('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'),
         repeat && h('button', { type: 'button', onclick: () => send(true) }, createNow ? 'Create and add another' : 'Send and add another'),
-        h('button', { type: 'submit', class: 'primary' }, submitLabel))),
+        h('button', { type: 'submit', class: danger ? 'primary danger' : 'primary' }, submitLabel))),
   );
   dialog.addEventListener('close', () => dialog.remove());
   document.body.append(dialog);
   dialog.showModal();
   dialog.querySelector('input, select, textarea')?.focus();
+}
+
+/** Deletion's double confirmation: step 1 explains and asks "Yes, continue"; step 2 needs the exact name typed. */
+function confirmTwice(ctx, { what, name, blocker, consequences, run }) {
+  if (blocker) {
+    ctx.toast(`Can't delete ${what} "${name}" yet. ${blocker}`);
+    return;
+  }
+  openForm(ctx, {
+    title: `Delete ${what} "${name}"?`,
+    intro: `${consequences} This cannot be undone.`,
+    fields: [],
+    submitLabel: 'Yes, continue',
+    onSubmit: async () => {
+      // Step 2 opens once step 1 has closed.
+      setTimeout(() => openForm(ctx, {
+        title: `Confirm: delete "${name}"`,
+        intro: `Type the ${what}'s name, ${name}, to delete it permanently.`,
+        fields: [{ name: 'confirm', label: `Type ${name}`, type: 'text', required: true, placeholder: name }],
+        submitLabel: 'Delete permanently',
+        danger: true,
+        onSubmit: async (v) => {
+          if (v.confirm !== name) throw new Error(`That doesn't match "${name}". Nothing was deleted.`);
+          await run();
+          return `${what[0].toUpperCase()}${what.slice(1)} "${name}" deleted.`;
+        },
+      }), 0);
+      return `Step 2 of 2: type the name to delete "${name}".`;
+    },
+  });
 }
 
 /** Form openers bound to the dashboard context: { api, toast, data() }. */
@@ -235,6 +269,55 @@ export function formsFor(ctx) {
           await intent('intent.create_department', city.id, { districtId: district.id, ...v, ...(botTokenRef ? { botTokenRef } : {}) });
           return `Department "${v.name}": done.`;
         },
+      });
+    },
+
+    renameDistrict(city, dist) {
+      openForm(ctx, {
+        title: `Rename ${dist.name}`,
+        fields: [
+          { name: 'name', label: 'District name', type: 'text', required: true, value: dist.name },
+          { name: 'supervisor', label: 'Supervisor', type: 'text', required: true, value: dist.supervisor },
+        ],
+        onSubmit: async (v) => {
+          await intent('intent.rename_district', city.id, { districtId: dist.id, name: v.name, supervisor: v.supervisor });
+          return `District renamed to "${v.name}".`;
+        },
+      });
+    },
+
+    renameDepartment(city, dept) {
+      openForm(ctx, {
+        title: `Rename ${dept.name}`,
+        fields: [
+          { name: 'name', label: 'Department name', type: 'text', required: true, value: dept.name },
+          { name: 'scope', label: 'Scope', type: 'textarea', required: true, value: dept.scope },
+        ],
+        onSubmit: async (v) => {
+          await intent('intent.rename_department', city.id, { departmentId: dept.id, name: v.name, scope: v.scope });
+          return `Department renamed to "${v.name}".`;
+        },
+      });
+    },
+
+    /** Delete a district or department, with two confirmations: "Yes, continue", then typing its name. */
+    deleteDistrict(city, dist) {
+      confirmTwice(ctx, {
+        what: 'district',
+        name: dist.name,
+        blocker: dist.departments.length ? `It still has ${dist.departments.length} department(s) (${dist.departments.map((d) => d.name).join(', ')}). Delete or empty those first.` : null,
+        consequences: `The district "${dist.name}" is removed from ${city.name}. Its ID (${dist.id}) is retired and never reused; its history stays in the ledger.`,
+        run: () => intent('intent.delete_district', city.id, { districtId: dist.id }),
+      });
+    },
+
+    deleteDepartment(city, dept) {
+      confirmTwice(ctx, {
+        what: 'department',
+        name: dept.name,
+        blocker: dept.agents.length ? `It still has ${dept.agents.length} agent(s) (${dept.agents.map((a) => a.name).join(', ')}). Assign them to another department first.` : null,
+        consequences: `The department "${dept.name}" is removed. Professors who specialised in it keep teaching, without a specialty. Its ID (${dept.id}) is retired and never reused; its history stays in the ledger.`,
+        run: () => intent('intent.delete_department', city.id, { departmentId: dept.id }),
       });
     },
 

@@ -88,7 +88,7 @@ async function ensureCity3D(city, districtId, deptId = null) {
         (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}${dept ? `/${encodeURIComponent(dept)}` : ''}` : ''}`),
       onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}/3d`),
       // Owner-only forms, opened from the 3D panel (the server re-checks every request anyway).
-      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp), newDistrict: (c) => forms.newDistrict(c) } : null),
+      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp), newDistrict: (c) => forms.newDistrict(c), renameDistrict: (c, d) => forms.renameDistrict(c, d), deleteDistrict: (c, d) => forms.deleteDistrict(c, d), renameDepartment: (c, dp) => forms.renameDepartment(c, dp), deleteDepartment: (c, dp) => forms.deleteDepartment(c, dp), newDepartment: (c, d) => forms.newDepartment(c, d) } : null),
     });
     return city3d;
   });
@@ -728,7 +728,10 @@ function districtSection(ix, c, d) {
   return h('section', { class: 'card section', id: `at-${d.id}`, 'aria-labelledby': `d-${d.id}` },
     h('div', { class: 'row-head' },
       h('div', {}, h('h2', { id: `d-${d.id}` }, d.name), h('span', { class: 'small secondary' }, `District · supervisor ${d.supervisor} · `), h('span', { class: 'mono muted' }, d.id)),
-      act('+ New department', () => forms.newDepartment(c, d))),
+      h('div', { class: 'toolbar' },
+        act('+ New department', () => forms.newDepartment(c, d)),
+        act('Rename', () => forms.renameDistrict(c, d)),
+        act('Delete', () => forms.deleteDistrict(c, d), 'danger'))),
     d.departments.length ? d.departments.map((dp) => departmentCard(ix, c, dp)) : h('p', { class: 'muted small' }, 'No departments yet.'));
 }
 
@@ -820,7 +823,11 @@ function departmentCard(ix, c, dp) {
   return h('div', { class: 'dept', id: `at-${dp.id}` },
     h('div', { class: 'row-head' },
       h('div', {}, h('h3', {}, dp.name), h('p', { class: 'small secondary' }, dp.scope)),
-      h('div', { class: 'toolbar' }, act('+ Assign agent', () => forms.assignAgent(c, dp)), act('Settings', () => forms.departmentSettings(c, dp)))),
+      h('div', { class: 'toolbar' },
+        act('+ Assign agent', () => forms.assignAgent(c, dp)),
+        act('Settings', () => forms.departmentSettings(c, dp)),
+        act('Rename', () => forms.renameDepartment(c, dp)),
+        act('Delete', () => forms.deleteDepartment(c, dp), 'danger'))),
     h('div', { class: 'dept-meta' },
       badge(`Graduated ${capText(dp.graduatedCount, dp.maxGraduated)}`),
       badge(`Shadows ${capText(dp.shadowCount, dp.maxShadows)}`),
