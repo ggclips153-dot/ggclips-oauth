@@ -88,7 +88,7 @@ async function ensureCity3D(city, districtId, deptId = null) {
         (location.hash = `#/city/${encodeURIComponent(city3dShown?.cityId ?? city.id)}/3d${id ? `/${encodeURIComponent(id)}${dept ? `/${encodeURIComponent(dept)}` : ''}` : ''}`),
       onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}/3d`),
       // Owner-only forms, opened from the 3D panel (the server re-checks every request anyway).
-      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp), newDistrict: (c) => forms.newDistrict(c), renameDistrict: (c, d) => forms.renameDistrict(c, d), deleteDistrict: (c, d) => forms.deleteDistrict(c, d), renameDepartment: (c, dp) => forms.renameDepartment(c, dp), deleteDepartment: (c, dp) => forms.deleteDepartment(c, dp), newDepartment: (c, d) => forms.newDepartment(c, d) } : null),
+      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp), newDistrict: (c) => forms.newDistrict(c), renameDistrict: (c, d) => forms.renameDistrict(c, d), deleteDistrict: (c, d) => forms.deleteDistrict(c, d), renameDepartment: (c, dp) => forms.renameDepartment(c, dp), deleteDepartment: (c, dp) => forms.deleteDepartment(c, dp), newDepartment: (c, d) => forms.newDepartment(c, d), createProfessor: (c, dp) => forms.createProfessor(c, dp), createDean: (c) => forms.createDean(c) } : null),
     });
     return city3d;
   });
@@ -825,6 +825,7 @@ function departmentCard(ix, c, dp) {
       h('div', {}, h('h3', {}, dp.name), h('p', { class: 'small secondary' }, dp.scope)),
       h('div', { class: 'toolbar' },
         act('+ Assign agent', () => forms.assignAgent(c, dp)),
+        act('+ Professor', () => forms.createProfessor(c, dp)),
         act('Settings', () => forms.departmentSettings(c, dp)),
         act('Rename', () => forms.renameDepartment(c, dp)),
         act('Delete', () => forms.deleteDepartment(c, dp), 'danger'))),

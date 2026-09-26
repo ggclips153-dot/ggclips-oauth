@@ -57,3 +57,17 @@ describe('renaming and deleting districts and departments', () => {
     assert.throws(() => w.intent('rename_district', b, { districtId: dist, name: 'x' }), /not in/);
   });
 });
+
+describe('creating an agent at the college with just its focus', () => {
+  it('needs only the focus; the persona is optional', () => {
+    const w = new TestWorld();
+    const city = w.city();
+    const i = w.intent('create_agent', city, { domainFocus: 'dental bookings' });
+    const a = w.fact(mayorOf(city), { type: 'agent.enrolled', city, payload: i.payload, authorizedBy: i.seq }).subject!;
+    const agent = w.state.agents.get(a)!;
+    assert.equal(agent.domainFocus, 'dental bookings');
+    assert.equal(agent.persona, null);
+    assert.ok(agent.name, 'a name is generated');
+    assert.throws(() => w.intent('create_agent', city, {}), /domainFocus is required/);
+  });
+});

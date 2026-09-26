@@ -42,7 +42,8 @@ const persona: Schema = {
 /** New agents are created at the city's college, unplaced (A11). A department then takes an existing agent. */
 const agentFields: Schema = {
   name: { t: 'str', max: 80 },
-  persona: { t: 'obj', fields: persona },
+  // Optional: Marc can create an agent with just its focus; the persona can come later.
+  persona: { t: 'obj', fields: persona, opt: true },
   domainFocus: { t: 'str', max: 500 },
 };
 

@@ -127,7 +127,7 @@ export interface Agent {
   /** Own memory bank scope, separable from the department's. */
   memoryScope: string;
   // ---- profile ----
-  persona: { voice: string; temperament: string };
+  persona: { voice: string; temperament: string } | null;
   domainFocus: string;
   enrolledBy: number;
   strikes: number;
@@ -785,7 +785,7 @@ function newAgent(e: LedgerEvent, p: Record<string, any>): Agent {
     graduated: false,
     ledgerPointer: agentLedgerPointer(id),
     memoryScope: agentMemoryScope(id),
-    persona: p.persona,
+    persona: p.persona ?? null,
     domainFocus: p.domainFocus,
     enrolledBy: e.authorizedBy!,
     strikes: 0,

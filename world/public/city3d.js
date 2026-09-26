@@ -588,7 +588,10 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
         col.enrolled.length
           ? h('ul', {}, col.enrolled.map((a) => h('li', { class: 'small' }, `${a.name} · ${a.domainFocus}`)))
           : h('p', { class: 'small muted' }, 'None waiting.'),
-        act && h('div', { class: 'toolbar' }, btn('+ Create agent', () => act.createAgent(city), 'primary')),
+        act && h('div', { class: 'toolbar' },
+          btn('+ Create agent', () => act.createAgent(city), 'primary'),
+          btn('+ Create professor', () => act.createProfessor(city, null)),
+          !col.dean && btn('+ Create dean', () => act.createDean(city))),
       );
       return;
     }
@@ -613,7 +616,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, ac
           h('button', { type: 'button', class: 'c3d-dept-name', title: 'Fly to this department', onclick: () => onSelectDistrict(d.id, dp.id) }, dp.name),
           h('span', { class: 'small secondary' }, ` · ${dp.graduatedCount} working, ${dp.shadowCount} shadow(s)`),
           h('ul', {}, dp.agents.map((a) => h('li', { class: 'small' }, `${a.name} · ${a.state}${a.status ? ` · ${a.status.status}${a.status.activity ? `: ${a.status.activity}` : ''}` : ''}`))),
-          act && h('div', { class: 'toolbar c3d-dept-actions' }, btn('+ Assign agent', () => act.assignAgent(city, dp)), btn('Rename', () => act.renameDepartment(city, dp)), btn('Delete', () => act.deleteDepartment(city, dp), 'danger')),
+          act && h('div', { class: 'toolbar c3d-dept-actions' }, btn('+ Assign agent', () => act.assignAgent(city, dp)), btn('+ Professor', () => act.createProfessor(city, dp)), btn('Rename', () => act.renameDepartment(city, dp)), btn('Delete', () => act.deleteDepartment(city, dp), 'danger')),
         )),
       ...(d.departments.length ? [] : [h('p', { class: 'small muted' }, 'No departments yet.')]),
     );

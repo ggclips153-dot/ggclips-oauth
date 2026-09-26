@@ -207,7 +207,12 @@ export function formsFor(ctx) {
     { name: 'temperament', label: 'Temperament', type: 'text', required: true, placeholder: 'e.g. patient, steady under pressure', keep: true },
     { name: 'domainFocus', label: 'Domain focus', type: 'textarea', required: true, placeholder: 'What this agent specialises in', keep: true },
   ];
-  const personaPayload = (v) => ({ ...(v.name ? { name: v.name } : {}), persona: { voice: v.voice, temperament: v.temperament }, domainFocus: v.domainFocus });
+  const personaPayload = (v) => ({
+    ...(v.name ? { name: v.name } : {}),
+    ...(v.voice && v.temperament ? { persona: { voice: v.voice, temperament: v.temperament } } : {}),
+    domainFocus: v.domainFocus,
+  });
+  const focusField = { name: 'domainFocus', label: 'Focus', type: 'textarea', required: true, placeholder: 'What this agent will focus on, e.g. dental bookings', keep: true };
 
   return {
     newCity() {
@@ -344,7 +349,7 @@ export function formsFor(ctx) {
         title: `New agent at ${city.name}'s college`,
         intro: 'A beginner agent, enrolled at the college. A department then takes it with "Assign agent". Its ID is permanent and never reused.',
         repeat: true,
-        fields: [{ name: 'name', label: 'Display name', type: 'name', help: 'Leave blank and one is generated for you.' }, ...personaFields],
+        fields: [{ name: 'name', label: 'Display name', type: 'name', help: 'Leave blank and one is generated for you.' }, focusField],
         onSubmit: async (v) => {
           await intent('intent.create_agent', city.id, personaPayload(v));
           return `New agent${v.name ? ` "${v.name}"` : ''}: done.`;
@@ -352,15 +357,16 @@ export function formsFor(ctx) {
       });
     },
 
-    createProfessor(city) {
+    /** A professor, created at the college; `dept` presets its specialty (e.g. from a department's "+ Professor"). */
+    createProfessor(city, dept = null) {
       openForm(ctx, {
         createNow: true,
-        title: `New professor at ${city.name}'s college`,
-        intro: 'Teaches, gives exams and judges fitness to graduate. Steps in only at its specialty department when needed.',
+        title: dept ? `New professor for ${dept.name}` : `New professor at ${city.name}'s college`,
+        intro: 'Teaches at the college, gives exams and judges fitness to graduate. Steps in only at its specialty department when needed.',
         repeat: true,
         fields: [
           { name: 'name', label: 'Display name', type: 'name', help: 'Leave blank and one is generated for you.' },
-          { name: 'departmentId', label: 'Specialty department', type: 'select', options: departmentsOf(city), keep: true },
+          { name: 'departmentId', label: 'Specialty department', type: 'select', options: departmentsOf(city), value: dept?.id, keep: true },
           ...personaFields,
         ],
         onSubmit: async (v) => {
