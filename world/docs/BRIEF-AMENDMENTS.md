@@ -78,3 +78,30 @@ Marc (2026-09-26): "when you click on the city it shows the integration of this 
   approvals, no auto-publish) are unchanged.
 - StarNet's desktop download is separate. It picks a new private port each time and can't be shown
   inside the dashboard, so the stations run from StarNet's source code.
+
+## A21 — Agents are Marc's Hermes agents; one shared memory surface (schema pending)
+
+Marc (2026-09-26): "if it copies it's not going to work, my hermes agents have Mnemosyne. We need to make a
+direct copy of starnet but it creates agents from my set up." Hermes runs on the VPS. Creating an agent at a
+college creates a Hermes agent. Our copy of StarNet lives inside this project.
+
+- **No copies.** A world agent *is* a Hermes agent (on the VPS), with its own Mnemosyne memory. StarNet (our
+  copy) is where it works and is seen, not a second agent with copied memory.
+- **Memory, in Marc's words:**
+  - ONE shared surface (a single database), not one per city, so cross-city vision stays coherent. Every entry
+    is tagged `city`, `dept`, `agent`, `kind` (roster / kpi / status / dispatch / lesson / policy / note / lifecycle).
+  - Three layers: WORLD (cross-city: constitution, manifests, DM routing; only the DM, Marc and the Architect
+    touch it), CITY (rosters, KPI pulses, Mayor notices; the Mayor and city agents read their own, supervisors
+    and the DM read across), DEPARTMENT/AGENT (dispatch, per-agent lifecycle, lessons, status; owned by the
+    department and its supervisor, visible up the chain). WORLD is the zero-th city layer.
+  - Every agent also has a PRIVATE bank for its identity, full memory and daily ledger. The daily ledger is
+    always recorded (inviolable). The shared surface carries only what others must see: status, KPIs,
+    lifecycle, hand-offs, lessons, policy. Small, frequent, coordination only.
+  - Read/write is enforced physically, not by trust: the DM and the World Architect read all four layers
+    across all cities (the only cross-city readers); a Mayor reads/writes its own city only and never writes
+    cross-city; a supervisor owns its city + department and reads the agent layer within; each agent owns its
+    department/agent layer and reads upward only.
+- **The dashboard never writes the surface.** It reads it through a read-only API or export view, never by
+  opening the database as a second writer (SQLite is one writer at a time), so it never contends with agents.
+- **Pending:** the World Architect is formalizing the exact schema and will send it as a Markdown file. The
+  surface view and the Hermes link are built against that schema, not guessed.
