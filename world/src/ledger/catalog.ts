@@ -13,6 +13,7 @@ import {
 } from '../domain/model.ts';
 import { SHA256_RE, VERSION_RE } from '../domain/constitution.ts';
 import type { Schema } from './validate.ts';
+import { SOCIAL_CATALOG } from '../social/catalog.ts';
 
 export type EventKind = 'fact' | 'intent';
 /**
@@ -29,7 +30,7 @@ export interface EventSpec {
   /** Owner intents that may authorize this fact. Absent = no authorization required. */
   authorizedBy?: readonly string[];
   /** Id kind allocated as this event's subject. */
-  allocates?: 'CITY' | 'DST' | 'DPT' | 'AGT';
+  allocates?: 'CITY' | 'DST' | 'DPT' | 'AGT' | 'CHN' | 'PST' | 'MSG';
   /** Event acts on an existing entity named by `subject`. */
   subject?: 'agent';
 }
@@ -639,6 +640,9 @@ export const CATALOG: Record<string, EventSpec> = {
     },
   },
 };
+
+// Social media (channels, posts, inbox, metrics): see src/social/.
+Object.assign(CATALOG, SOCIAL_CATALOG);
 
 export const specFor = (type: string): EventSpec | undefined =>
   Object.hasOwn(CATALOG, type) ? CATALOG[type] : undefined;

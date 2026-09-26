@@ -7,6 +7,8 @@ export type Field =
   | { t: 'int'; min?: number; max?: number; opt?: boolean }
   | { t: 'num'; min?: number; opt?: boolean }
   | { t: 'date'; opt?: boolean }
+  | { t: 'datetime'; opt?: boolean }
+  | { t: 'bool'; opt?: boolean }
   | { t: 'obj'; fields: Schema; opt?: boolean }
   | { t: 'json'; maxBytes: number; opt?: boolean };
 
@@ -58,6 +60,15 @@ function checkField(field: Field, v: unknown, p: string): unknown {
     case 'num':
       if (typeof v !== 'number' || !Number.isFinite(v)) return invalid(`${p} must be a number`);
       if (field.min !== undefined && v < field.min) invalid(`${p} must be >= ${field.min}`);
+      return v;
+    case 'datetime': {
+      // A moment in time with a zone (e.g. 2026-09-27T14:30:00.000Z); stored normalised to UTC.
+      const ok = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(v) && !Number.isNaN(Date.parse(v));
+      if (!ok) return invalid(`${p} must be a date and time with a zone, like 2026-09-27T14:30:00Z`);
+      return new Date(v as string).toISOString();
+    }
+    case 'bool':
+      if (typeof v !== 'boolean') return invalid(`${p} must be true or false`);
       return v;
     case 'date':
       // Round-trip, so an impossible date like 2026-02-30 (which Date would roll over) is rejected.

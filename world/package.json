@@ -13,6 +13,7 @@
     "profile": "node --disable-warning=ExperimentalWarning scripts/profile.ts",
     "user": "node --disable-warning=ExperimentalWarning scripts/user.ts",
     "demo": "node --disable-warning=ExperimentalWarning scripts/demo.ts",
+    "demo:social": "node --disable-warning=ExperimentalWarning scripts/demoSocial.ts",
     "demo:start": "node --disable-warning=ExperimentalWarning src/server/main.ts --demo",
     "constitution": "node --disable-warning=ExperimentalWarning scripts/constitution.ts",
     "redteam": "node --disable-warning=ExperimentalWarning scripts/redteam.ts",

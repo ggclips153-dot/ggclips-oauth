@@ -6,6 +6,8 @@ import { Users } from '../auth/users.ts';
 import { Ledger } from '../ledger/ledger.ts';
 import { createApp } from './app.ts';
 import { buildId } from './build.ts';
+import { MediaStore } from '../social/media.ts';
+import { attachPublisher } from '../social/publisher.ts';
 import { attachDemoAutopilot } from './demoAutopilot.ts';
 import { attachDmWebhook } from './dmWebhook.ts';
 
@@ -39,6 +41,11 @@ const users = Users.load(resolve(root, process.env.WORLD_USERS ?? 'config/users.
 if (users.size === 0) console.warn('No dashboard logins yet. Create one with: npm run user -- add --username marc --profile marc');
 
 if (demo) attachDemoAutopilot(ledger, dbPath);
+// Photos and videos for posts, and the publisher that posts approved, scheduled posts when their time comes
+// (through a platform connector once one is connected; until then they wait, ready to post by hand).
+const media = new MediaStore(resolve(root, 'data/media'));
+attachPublisher(ledger, [], { mediaPath: (ref) => media.path(ref.replace(/^media\//, '')) });
+
 // Pick up events written by other processes (e.g. `npm run seed` while the server is running).
 setInterval(() => {
   try {
@@ -54,6 +61,7 @@ createApp(ledger, profiles, {
   cookieSecure: !demo && process.env.WORLD_COOKIE_SECURE !== '0',
   trustProxy: process.env.WORLD_TRUST_PROXY === '1',
   demo,
+  media,
 }).listen(port, host, () => {
   console.log(`World ledger: ${integrity.count} events verified. Listening on http://${host}:${port}`);
   console.log(`Build ${buildId(root)} · serving ${root}`);

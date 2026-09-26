@@ -4,6 +4,7 @@
 import { h, s } from './dom.js';
 import { formsFor, plainIntent } from './forms.js';
 import { renderMarkdown } from './markdown.js';
+import { openSocialFor, socialPage } from './social.js';
 
 // ---------- constants ----------
 const FAMILIES = [
@@ -455,6 +456,15 @@ function table(headers, rows, empty = 'Nothing here yet.') {
       h('tbody', {}, rows.map((r) => h('tr', {}, r.map((c, i) => h('td', { class: headers[i]?.num ? 'num' : null }, c)))))));
 }
 
+// ---------- social ----------
+/** Posts waiting for Marc's approval plus posts due to go out by hand. */
+function socialAttention() {
+  return (data.social?.posts ?? []).filter((p) => p.status === 'pending' || p.due).length;
+}
+function socialCtx(ix) {
+  return { data, render, isOwner, api, toast, scheduleRefresh, statusChip, table, stat, ago, index: () => ix, serverNow };
+}
+
 // ---------- chrome ----------
 function topbar() {
   const route = location.hash || '#/';
@@ -470,6 +480,7 @@ function topbar() {
       link('#/inbox', 'Inbox', data.escalations.length, true),
       link('#/economy', 'Economy', awaitingCredit(index()).length || null, false),
       link('#/constitution', 'Constitution', openProposals().length || null, false),
+      link('#/social', 'Social', socialAttention() || null, true),
       link('#/activity', 'Activity', data.pendingIntents.length || null, true)),
     h('span', { class: 'spacer' }),
     h('span', { class: `live ${live}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), live === 'on' ? 'Live' : 'Reconnecting…'),
@@ -494,6 +505,7 @@ function render() {
   else if (route.startsWith('/live')) view = liveView(ix);
   else if (route === '/economy') view = economyView(ix);
   else if (route === '/constitution') view = constitutionView(ix);
+  else if (route === '/social' || route.startsWith('/social/')) view = socialPage(socialCtx(ix), route.split('/')[2]);
   else view = mapView(ix);
   // Live updates redraw the page: keep open panels open and the focused control focused.
   const open = new Set([...app.querySelectorAll('details[open] > summary')].map((x) => x.textContent));
@@ -644,10 +656,14 @@ function cityView(ix, id, sub = { mode: 'details' }) {
       };
       return h('div', { class: 'jumps' }, districtJump(c, go), departmentJump(c, go));
     })(),
-    isOwner() && h('div', { class: 'toolbar' },
-      act('+ New district', () => forms.newDistrict(c)),
-      act('Message Mayor', () => forms.messageMayor(c)),
-      c.id === 'security-city' && act('Deploy an agent', () => forms.deploy(c, data.cities))));
+    h('div', { class: 'toolbar' },
+      (() => {
+        const chans = (data.social?.channels ?? []).filter((ch) => ch.cityId === c.id).length;
+        return h('button', { class: 'small-btn', type: 'button', onclick: () => openSocialFor(c.id) }, chans ? `Social (${chans} channel${chans === 1 ? '' : 's'})` : 'Social');
+      })(),
+      isOwner() && act('+ New district', () => forms.newDistrict(c)),
+      isOwner() && act('Message Mayor', () => forms.messageMayor(c)),
+      isOwner() && c.id === 'security-city' && act('Deploy an agent', () => forms.deploy(c, data.cities))));
 
   const kpiCard = h('div', { class: 'card section' }, h('h3', {}, 'KPI pulse'),
     c.kpi

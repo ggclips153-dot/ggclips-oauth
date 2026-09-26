@@ -2,6 +2,7 @@
 // Marc, the DM and Bob read across cities. Mayors of Essentials cities (Innovations, Security)
 // also read every city but still write only their own. Any other Mayor reads only its own city.
 import { CROSS_CITY_READ_FAMILIES } from './model.ts';
+import { socialView } from '../social/view.ts';
 import type { Profile } from '../ledger/guard.ts';
 import { isJailed, type Agent, type LedgerEvent, type WorldState } from './state.ts';
 
@@ -154,6 +155,7 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
       proposals: scope === '*' ? [...state.proposals.values()] : [],
     },
     worldRollup: scope === '*' ? state.worldRollup : null,
+    social: socialView(state, scope, now),
     cities,
     pendingIntents,
   };

@@ -11,6 +11,7 @@ import { Secrets } from '../auth/secrets.ts';
 import { Users } from '../auth/users.ts';
 import { SurfaceGuard, type SurfaceNote } from '../security/surfaceGuard.ts';
 import { buildId } from './build.ts';
+import { MediaStore } from '../social/media.ts';
 import { carryOut } from './executor.ts';
 import { CONSTITUTION_DOC_REF, pointerLine, readConstitution } from '../domain/constitution.ts';
 import { readScope } from '../domain/view.ts';
@@ -20,7 +21,7 @@ import { LedgerError } from '../ledger/errors.ts';
 import type { Profile } from '../ledger/guard.ts';
 import type { Ledger } from '../ledger/ledger.ts';
 
-const MAX_BODY = 64 * 1024;
+const MAX_BODY = 256 * 1024;
 const HEARTBEAT_MS = 25_000;
 // A real filesystem path (not a URL pathname), so folders with spaces and Windows drives work.
 const PUBLIC_DIR = resolve(import.meta.dirname, '../../public') + sep;
@@ -66,6 +67,8 @@ export interface AppOptions {
   constitutionPath?: string;
   /** Demo mode: the autopilot plays the DM and the Mayors (data/demo.db only). */
   demo?: boolean;
+  /** Where uploaded photos and videos live (default data/media). */
+  media?: MediaStore;
 }
 
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -146,6 +149,7 @@ const intParam = (url: URL, name: string, fallback: number, max = Number.MAX_SAF
 
 export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions = {}): Server {
   const users = opts.users ?? new Users([]);
+  const media = opts.media ?? new MediaStore(resolve(WORLD_DIR, 'data/media'));
   const secrets = opts.secrets ?? new Secrets(null);
   const surface = opts.surface ?? new SurfaceGuard(ledger.db, ledger.state, () => ledger.clock());
   const sessions = opts.sessions ?? new Sessions();
@@ -162,7 +166,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     try {
-      if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
+      if (req.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/media/')) {
         if (await serveStatic(req, res, url.pathname)) return;
         return send(res, 404, { error: 'NOT_FOUND', message: 'no such page' });
       }
@@ -259,6 +263,19 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         const intent = ledger.state.intents.get(Number(carry[1])) ?? (() => { throw new LedgerError('NOT_FOUND', `intent #${carry[1]} not found`); })();
         const written = carryOut(ledger, intent, ownerActors(profile), `applied by ${profile.id}`);
         return send(res, 201, { events: written });
+      }
+      // Photos and videos for posts: Marc and the Mayors upload; anyone signed in may view.
+      if (req.method === 'POST' && url.pathname === '/api/media') {
+        if (profile.role !== 'owner' && profile.role !== 'mayor') throw new LedgerError('FORBIDDEN', 'only Marc and the Mayors upload media');
+        try {
+          return send(res, 201, await media.save(req, String(req.headers['content-type'] ?? '')));
+        } catch (err) {
+          throw new LedgerError('INVALID', (err as Error).message);
+        }
+      }
+      if (req.method === 'GET' && url.pathname.startsWith('/media/')) {
+        if (media.serve(req, res, url.pathname.slice('/media/'.length))) return;
+        return send(res, 404, { error: 'NOT_FOUND', message: 'no such file' });
       }
       if (req.method === 'GET' && url.pathname === '/api/names') {
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');

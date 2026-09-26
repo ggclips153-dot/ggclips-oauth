@@ -1,5 +1,6 @@
 // World state PROJECTION. Rebuilt purely from the event ledger; the dashboard never owns state.
 import type { EventKind } from '../ledger/catalog.ts';
+import { SocialState } from '../social/state.ts';
 import type { Payload } from '../ledger/validate.ts';
 import {
   AGENT_STATES,
@@ -290,6 +291,8 @@ export class WorldState {
   /** Task strikes recorded by Security City, oldest first. */
   readonly taskStrikes: TaskStrike[] = [];
   constitution: Constitution = { current: null, history: [] };
+  /** Social media: channels, posts, inbox, metrics (src/social). */
+  readonly social = new SocialState();
   readonly proposals = new Map<number, ConstitutionProposal>();
   worldRollup: { seq: number; period: string; periodStart: string; rollup: unknown } | null = null;
 
@@ -767,6 +770,7 @@ export class WorldState {
       }
     }
 
+    if (e.type.startsWith('social.')) this.social.apply(e);
     if (e.authorizedBy !== null) this.consumed.add(consumeKey(e));
   }
 }

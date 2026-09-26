@@ -7,6 +7,7 @@ import { dirname, resolve } from 'node:path';
 import type { AppendInput, Profile } from '../src/ledger/guard.ts';
 import { Ledger } from '../src/ledger/ledger.ts';
 import { CONSTITUTION_DOC_REF, readConstitution } from '../src/domain/constitution.ts';
+import { seedSocial } from './demoSocial.ts';
 
 const path = resolve(import.meta.dirname, '..', process.env.WORLD_DEMO_DB ?? 'data/demo.db');
 if (resolve(path) === resolve(import.meta.dirname, '..', 'data/world.db')) throw new Error('refusing to write demo data into the real ledger');
@@ -15,7 +16,9 @@ if (existsSync(path)) {
   process.exit(1);
 }
 mkdirSync(dirname(path), { recursive: true });
-const ledger = new Ledger({ path });
+// The clock only moves for the Social sample, so its past posts and metrics carry past dates.
+let shift: number | null = null;
+const ledger = new Ledger({ path, now: () => new Date(shift ?? Date.now()) });
 
 const marc: Profile = { id: 'marc', role: 'owner', writeScope: ['*'] };
 const dm: Profile = { id: 'dm', role: 'dm', writeScope: ['*'] };
@@ -233,6 +236,9 @@ fact(dm, {
     text: 'Article I diagram: label COLLEGE as "one per city, run by a dean".',
   },
 });
+
+// ---- Social: channels, posts, inbox and analytics for GGClutchPlays and AI Receptionist City ----
+seedSocial(ledger, resolve(import.meta.dirname, '..', 'data/media'), (ms) => (shift = ms));
 
 ledger.close();
 console.log(`Demo world written to ${path} (${ledger.state.lastSeq} events).`);

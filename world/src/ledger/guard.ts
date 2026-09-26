@@ -6,6 +6,8 @@ import { conflict, forbid, invalid, notFound } from './errors.ts';
 import { validate, type Payload } from './validate.ts';
 import { consumeKey, isJailed, type Agent, type LedgerEvent, type WorldState } from '../domain/state.ts';
 import { softeningIn } from '../domain/constitution.ts';
+import { isSocial } from '../social/catalog.ts';
+import { checkSocial } from '../social/rules.ts';
 import {
   CROSS_CITY_READ_FAMILIES,
   DEPT_LEAD_BADGE,
@@ -283,6 +285,8 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (!dean || dean.id !== String(id)) notFound(`${id} is not the dean of ${city}`);
     return dean!;
   };
+
+  if (isSocial(d.type)) return checkSocial(state, d, intent, now, match);
 
   switch (d.type) {
     // ---- intents: early checks so Marc sees mistakes before the DM routes them ----

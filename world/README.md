@@ -88,6 +88,11 @@ Demo mode also turns on a **demo stand-in for the DM and the Mayors**, so the da
 effect within a second, through the same write-guard as the real bots. It refuses to run on anything
 but `data/demo.db`: the real world is never auto-executed.
 
+The demo includes a **Social** sample: channels for GGClutchPlays (YouTube, TikTok, Instagram) and AI
+Receptionist City (Facebook, Instagram), posts in every state, inbox items and 60 days of metrics. To add
+it to a demo world built before Social existed, stop the demo server and run `npm run demo:social` once
+(or delete `data/demo.db` and run `npm run demo` again).
+
 ### Settings
 
 | Env var | Default | |
@@ -164,6 +169,28 @@ but `data/demo.db`: the real world is never auto-executed.
   professor, Delete (only when awaiting deletion), professor specialty, Security deployment, Message
   Mayor. Names can be left blank or suggested by the name generator. "Waiting on the DM" lists
   requests not yet routed.
+- **Social** (a Vista Social-style manager for the channels each city posts to). Each city is a brand;
+  pick one or "All brands" at the top. "+ Create post" picks channels (one brand per post), shows a
+  character count per platform, takes photos and videos (uploaded to `data/media/`, or a link), a YouTube
+  title and an Instagram/Facebook first comment, previews it per platform, and saves it as a draft,
+  approves it, or approves and schedules it. Platform rules are checked before approval (Instagram needs
+  media; TikTok and YouTube need one video; YouTube needs a title; text limits).
+  - **Calendar**: the month's posts by day; drag an approved post to another day to reschedule it (same time).
+  - **Posts**: every post, filtered (due, drafts, needs approval, scheduled, published, failed or rejected).
+  - **Approvals**: drafts agents wrote through their Mayor (`social.agent_drafted`, graduated agents only)
+    and your own drafts; Approve, Reject with a reason, Edit. **Nothing is published without your approval.**
+  - **Inbox**: comments, messages and mentions from every channel; reply, assign to one of the city's
+    agents, close or reopen.
+  - **Analytics**: 7 / 30 / 90 days: followers, impressions, engagements and engagement rate, a followers
+    line and impressions bars (hover for values, table view), each channel, top posts, and a CSV export.
+  - **Channels**: add or remove (asks twice) a city's Instagram, Facebook, TikTok or YouTube account.
+  - **Posting today**: no platform is connected yet, so when a scheduled post is due the page says so;
+    post it on the platform yourself, then "Mark as posted" (with the link). Replies are saved and copied
+    to paste on the platform. Each platform connects for real posting once its developer keys are added:
+    Instagram and Facebook through a Meta developer app (Graph API: `instagram_content_publish`,
+    `pages_manage_posts`), TikTok through the Content Posting API, YouTube through the YouTube Data API v3.
+    The publisher (`src/social/publisher.ts`) then posts approved, due posts (it checks every 30 seconds),
+    and never anything else.
 - Everything updates live from the ledger. Mayors see only their own city; Marc, the DM, Bob and the
   Essentials Mayors see every city.
 - Security: strict Content-Security-Policy (no inline code), HttpOnly SameSite=Strict cookies, a
@@ -186,6 +213,8 @@ Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie
 | GET | `/api/verify` | owner only: verify the hash chain |
 | POST | `/api/intents/<seq>/create-now` | owner only: apply an unfinished request now, as DM and Mayor (Marc's new requests are applied on submit) |
 | GET | `/api/constitution` | the Constitution file, its fingerprint, the ratified record, in-force status and the SOUL pointer line |
+| POST | `/api/media` | owner or Mayor: upload a photo or video (raw body, its content-type; up to 512 MB); returns `{ref, kind}` for a post's `media` |
+| GET | `/media/<file>` | signed in: an uploaded file (Range supported) |
 | POST | `/api/surface/check` | gateway (Hermes): may this agent write this note to the shared surface? See `docs/SURFACE-GUARD.md` |
 
 Example: the Mayor places an agent the DM routed to it:
@@ -195,6 +224,13 @@ POST /api/events
 { "type": "agent.placed", "city": "ai-receptionist-city", "subject": "AGT-000001",
   "payload": { "departmentId": "DPT-000001" }, "authorizedBy": 42 }
 ```
+
+Social, for bots: a Mayor writes an agent's draft as `social.agent_drafted` (`channelIds`, `text`, `title?`,
+`media?`, `firstComment?`, `authorAgentId` of a graduated agent of that city, `note?`); it waits for Marc's
+approval. The DM (or a platform bot) reports `social.inbox_received` (`channelId`, `kind`: comment / dm /
+mention, `from`, `text`, `postId?`) and `social.metrics` (`channelId`, `date`, `postId?`, and any of
+`followers`, `impressions`, `reach`, `views`, `likes`, `comments`, `shares`, `saves`). Only an approved post
+can be reported `social.post_published` or `social.post_failed`.
 
 ## Seed cities
 

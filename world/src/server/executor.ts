@@ -30,6 +30,32 @@ function facts(i: LedgerEvent, { dm: DM, mayor }: Actors): [Profile, AppendInput
       return [by('department.created', p)];
     case 'intent.configure_department':
       return [by('department.configured', p)];
+    // ---- social ----
+    case 'intent.social_add_channel':
+      return [by('social.channel_added', p)];
+    case 'intent.social_remove_channel':
+      return [by('social.channel_removed', p)];
+    case 'intent.social_draft_post':
+      return [by('social.post_drafted', p)];
+    case 'intent.social_edit_post':
+      return [by('social.post_edited', p)];
+    case 'intent.social_approve_post':
+      return [by('social.post_approved', p)];
+    case 'intent.social_reject_post':
+      return [by('social.post_rejected', p)];
+    case 'intent.social_schedule_post':
+      return [by('social.post_scheduled', p)];
+    case 'intent.social_delete_post':
+      return [by('social.post_deleted', p)];
+    case 'intent.social_reply':
+      return [by('social.inbox_replied', p)];
+    case 'intent.social_assign':
+      return [by('social.inbox_assigned', p)];
+    case 'intent.social_close':
+      return [by('social.inbox_closed', p)];
+    case 'intent.social_mark_posted':
+      // Posted by hand: the DM records it (no authorization link, like a connector's report).
+      return [[DM, { type: 'social.post_published', city: c, payload: { postId: p.postId, channelId: p.channelId, ...(p.url ? { url: p.url } : {}), manual: true } }]];
     case 'intent.rename_district':
       return [by('district.renamed', p)];
     case 'intent.rename_department':

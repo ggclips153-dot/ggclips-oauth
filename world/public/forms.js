@@ -55,7 +55,7 @@ export function parseMoney(text) {
  * types: text | textarea | select | number | lines | secret | name (text + "Suggest" button).
  * onSubmit(values) sends the request; `repeat` adds "Send and add another".
  */
-function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = false, createNow = false, danger = false, onSubmit }) {
+export function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = false, createNow = false, danger = false, onSubmit }) {
   // Every form applies at once (A19): the server carries Marc's requests out immediately, under the ledger's rules.
   const submitLabel = label ?? (createNow ? 'Create' : 'Save');
   const dialog = h('dialog', { class: 'modal', 'aria-labelledby': 'form-title' });
@@ -164,7 +164,7 @@ function openForm(ctx, { title, intro, fields, submitLabel: label, repeat = fals
 }
 
 /** Deletion's double confirmation: step 1 explains and asks "Yes, continue"; step 2 needs the exact name typed. */
-function confirmTwice(ctx, { what, name, blocker, consequences, run }) {
+export function confirmTwice(ctx, { what, name, blocker, consequences, run }) {
   if (blocker) {
     ctx.toast(`Can't delete ${what} "${name}" yet. ${blocker}`);
     return;
