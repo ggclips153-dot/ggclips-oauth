@@ -3,13 +3,13 @@ import type { AppendInput, Profile } from '../src/ledger/guard.ts';
 import type { LedgerEvent } from '../src/domain/state.ts';
 
 export const owner: Profile = { id: 'marc', role: 'owner', writeScope: ['*'] };
-export const dm: Profile = { id: 'dm', role: 'dm', writeScope: ['*'] };
+export const messenger: Profile = { id: 'messenger', role: 'messenger', writeScope: ['*'] };
 export const bob: Profile = { id: 'bob', role: 'architect', writeScope: [] };
 export const mayorOf = (city: string): Profile => ({ id: `mayor-${city}`, role: 'mayor', writeScope: [city] });
 
 export const persona = { voice: 'warm, concise', temperament: 'patient' };
 
-/** A world with helpers that follow the real path: Marc intent -> DM routes -> Mayor/DM fact. */
+/** A world with helpers that follow the real path: Marc intent -> World Messenger routes -> Mayor/Messenger fact. */
 export class TestWorld {
   readonly ledger: Ledger;
   /** Controllable clock: advance with `w.advanceHours(n)`. */
@@ -29,7 +29,7 @@ export class TestWorld {
 
   intent(type: string, city: string, payload: unknown): LedgerEvent {
     const e = this.ledger.append(owner, { type: `intent.${type}`, city, payload });
-    this.ledger.append(dm, { type: 'dm.routed', city, payload: { intentSeq: e.seq, to: `mayor:${city}` } });
+    this.ledger.append(messenger, { type: 'messenger.routed', city, payload: { intentSeq: e.seq, to: `mayor:${city}` } });
     return e;
   }
 
@@ -39,7 +39,7 @@ export class TestWorld {
 
   city(name = 'AI Receptionist City', family = 'revenue', initialDistricts?: unknown[]): string {
     const i = this.intent('create_city', 'WORLD', { name, family, mayorName: 'Mayor Ada', ...(initialDistricts ? { initialDistricts } : {}) });
-    return this.fact(dm, { type: 'city.created', city: 'WORLD', payload: { name, family, mayorName: 'Mayor Ada' }, authorizedBy: i.seq }).subject!;
+    return this.fact(messenger, { type: 'city.created', city: 'WORLD', payload: { name, family, mayorName: 'Mayor Ada' }, authorizedBy: i.seq }).subject!;
   }
 
   district(city: string, name = 'Front Desk'): string {

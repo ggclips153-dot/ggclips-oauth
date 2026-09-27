@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS events (
   type          TEXT    NOT NULL,
   city          TEXT    NOT NULL,          -- the city= tag (WORLD for world events)
   actor         TEXT    NOT NULL,          -- writer profile id
-  actor_role    TEXT    NOT NULL CHECK (actor_role IN ('owner', 'dm', 'mayor')),
+  actor_role    TEXT    NOT NULL CHECK (actor_role IN ('owner', 'messenger', 'mayor')),
   subject       TEXT,
   payload       TEXT    NOT NULL,
   authorized_by INTEGER REFERENCES events (seq),

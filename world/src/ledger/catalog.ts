@@ -1,10 +1,10 @@
 // Event catalog: every event type the world EVENT LEDGER accepts, who may write it, and its payload.
 //
 // Two kinds of event:
-//   intent - Marc's request, written by the dashboard. Changes nothing by itself. The DM routes it.
-//   fact   - something that happened, written by a Mayor (its own city) or the DM (world events).
+//   intent - Marc's request, written by the dashboard. Changes nothing by itself. The World Messenger routes it.
+//   fact   - something that happened, written by a Mayor (its own city) or the World Messenger (world events).
 // Facts that place, promote, move or delete an agent, or create structure, must cite an owner
-// intent the DM has routed: "mayor + owner executed (via DM)", never self-initiated.
+// intent the World Messenger has routed: "mayor + owner executed (via the Messenger)", never self-initiated.
 import {
   AGENT_STATUSES,
   FAMILIES,
@@ -18,7 +18,7 @@ import { SOCIAL_CATALOG } from '../social/catalog.ts';
 export type EventKind = 'fact' | 'intent';
 /**
  * world: city tag must be WORLD. city: tag must be an existing city. routed: tag of the intent routed.
- * proposal: an Essentials city's own tag (its Mayor) or WORLD (the DM, for Bob).
+ * proposal: an Essentials city's own tag (its Mayor) or WORLD (the World Messenger, for Bob).
  */
 export type EventScope = 'world' | 'city' | 'routed' | 'proposal';
 
@@ -98,7 +98,7 @@ const strikeFields: Schema = {
 };
 
 const OWNER: readonly Role[] = ['owner'];
-const DM: readonly Role[] = ['dm'];
+const MESSENGER: readonly Role[] = ['messenger'];
 const MAYOR: readonly Role[] = ['mayor'];
 
 export const CATALOG: Record<string, EventSpec> = {
@@ -241,7 +241,7 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'world',
     schema: { proposalSeq: { t: 'int', min: 1 }, reason: { t: 'str', max: 2000 } },
   },
-  // Marc -> (DM) -> Mayor. The DM relays it to the Mayor's bot.
+  // Marc -> (World Messenger) -> Mayor. The Messenger relays it to the Mayor's bot.
   'intent.message_mayor': {
     kind: 'intent',
     writers: OWNER,
@@ -257,16 +257,16 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { agentId: { t: 'str', max: 20 }, text: { t: 'str', max: 4000 } },
   },
 
-  // ---- DM (world events + routing) ----
-  'dm.routed': {
+  // ---- World Messenger (world events + routing) ----
+  'messenger.routed': {
     kind: 'fact',
-    writers: DM,
+    writers: MESSENGER,
     scope: 'routed',
     schema: { intentSeq: { t: 'int', min: 1 }, to: { t: 'str', max: 120 } },
   },
   'city.created': {
     kind: 'fact',
-    writers: DM,
+    writers: MESSENGER,
     scope: 'world',
     schema: {
       name: { t: 'str', max: 120 },
@@ -278,23 +278,23 @@ export const CATALOG: Record<string, EventSpec> = {
   },
   'constitution.amended': {
     kind: 'fact',
-    writers: DM,
+    writers: MESSENGER,
     scope: 'world',
     schema: constitutionFields,
     authorizedBy: ['intent.amend_constitution'],
   },
   'constitution.declined': {
     kind: 'fact',
-    writers: DM,
+    writers: MESSENGER,
     scope: 'world',
     schema: { proposalSeq: { t: 'int', min: 1 }, reason: { t: 'str', max: 2000 } },
     authorizedBy: ['intent.decline_proposal'],
   },
-  // Innovations and Security propose under their own city tag; the DM records Bob's proposals under WORLD
-  // (Bob is read-only and never writes). Proposals change nothing: only Marc ratifies.
+  // Innovations and Security propose under their own city tag; the World Messenger records Bob's proposals under
+  // WORLD (Bob is read-only and never writes). Proposals change nothing: only Marc ratifies.
   'constitution.proposed': {
     kind: 'fact',
-    writers: [...MAYOR, ...DM],
+    writers: [...MAYOR, ...MESSENGER],
     scope: 'proposal',
     schema: {
       proposer: { t: 'str', max: 80 },
@@ -305,7 +305,7 @@ export const CATALOG: Record<string, EventSpec> = {
   },
   'world.kpi_rollup': {
     kind: 'fact',
-    writers: DM,
+    writers: MESSENGER,
     scope: 'world',
     schema: {
       period: { t: 'str', oneOf: KPI_PERIODS },

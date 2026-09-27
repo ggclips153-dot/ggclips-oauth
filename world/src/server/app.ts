@@ -27,15 +27,15 @@ const HEARTBEAT_MS = 25_000;
 // A real filesystem path (not a URL pathname), so folders with spaces and Windows drives work.
 const PUBLIC_DIR = resolve(import.meta.dirname, '../../public') + sep;
 const WORLD_DIR = resolve(import.meta.dirname, '../..');
-/** Marc acting as the DM and the Mayor, recorded under his own id. */
+/** Marc acting as the World Messenger and the Mayor, recorded under his own id. */
 const ownerActors = (profile: Profile) => ({
-  dm: { id: `${profile.id}-as-dm`, role: 'dm' as const, writeScope: ['*'] },
+  messenger: { id: `${profile.id}-as-messenger`, role: 'messenger' as const, writeScope: ['*'] },
   mayor: (city: string) => ({ id: `${profile.id}-as-mayor`, role: 'mayor' as const, writeScope: [city] }),
 });
 
 /**
- * Marc never waits on the bots (A19): every request he makes from the dashboard is applied at once, as DM and
- * Mayor, through the same write-guard. A message to a Mayor is routed at once and read by the Mayor's bot.
+ * Marc never waits on the bots (A19): every request he makes from the dashboard is applied at once, as World
+ * Messenger and Mayor, through the same write-guard. A message to a Mayor is routed at once and read by the Mayor's bot.
  */
 const appliesAtOnce = (type: string) => type.startsWith('intent.');
 const STATIC_TYPES: Record<string, string> = {
@@ -66,7 +66,7 @@ export interface AppOptions {
   trustProxy?: boolean;
   /** The World Constitution file (default docs/constitution/WORLD-CONSTITUTION.md). */
   constitutionPath?: string;
-  /** Demo mode: the autopilot plays the DM and the Mayors (data/demo.db only). */
+  /** Demo mode: the autopilot plays the World Messenger and the Mayors (data/demo.db only). */
   demo?: boolean;
   /** Where uploaded photos and videos live (default data/media). */
   media?: MediaStore;
@@ -168,8 +168,8 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
   const secure = opts.cookieSecure ?? true;
   const cookie = (value: string, maxAgeS: number) =>
     `${SESSION_COOKIE}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAgeS}${secure ? '; Secure' : ''}`;
-  // When a DM bot last talked to the server: tells the dashboard whether anyone is routing requests.
-  let dmSeenAt: string | null = null;
+  // When the World Messenger's bot last talked to the server: tells the dashboard whether anyone is routing requests.
+  let messengerSeenAt: string | null = null;
   const clientIp = (req: IncomingMessage) =>
     // Behind a proxy, the address the proxy itself appended (the last one) is the only one to trust.
     (opts.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',').at(-1)!.trim() : '') || req.socket.remoteAddress || 'unknown';
@@ -183,7 +183,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
       }
       if (req.method === 'GET' && url.pathname === '/api/health') {
         // Re-read each time, so a `git pull` shows up without restarting the server.
-        return send(res, 200, { ok: true, lastSeq: ledger.state.lastSeq, build: buildId(WORLD_DIR), mode: opts.demo ? 'demo' : 'live', dmSeenAt });
+        return send(res, 200, { ok: true, lastSeq: ledger.state.lastSeq, build: buildId(WORLD_DIR), mode: opts.demo ? 'demo' : 'live', messengerSeenAt });
       }
       if (req.method === 'POST' && url.pathname === '/api/login') {
         const ip = clientIp(req);
@@ -210,7 +210,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
       }
 
       const { profile, viaCookie } = authenticate(req, profiles, sessions);
-      if (profile.role === 'dm') dmSeenAt = ledger.clock().toISOString();
+      if (profile.role === 'messenger') messengerSeenAt = ledger.clock().toISOString();
       // CSRF: a browser write must carry a custom header, which another site cannot send without CORS.
       if (viaCookie && req.method !== 'GET' && req.headers['x-world-request'] !== '1') {
         throw new LedgerError('FORBIDDEN', 'missing x-world-request header');
@@ -262,8 +262,8 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
           payload: input.payload,
           authorizedBy: (input.authorizedBy as number | undefined) ?? null,
         });
-        // Marc never waits on an agent (A19): his requests are applied at once, as DM and Mayor, through the same
-        // write-guard. If the rules refuse one, it is kept (unfinished) and he's told why.
+        // Marc never waits on an agent (A19): his requests are applied at once, as World Messenger and Mayor, through
+        // the same write-guard. If the rules refuse one, it is kept (unfinished) and he's told why.
         if (profile.role === 'owner' && appliesAtOnce(event.type)) {
           try {
             const applied = carryOut(ledger, event, ownerActors(profile), `applied by ${profile.id}`);
@@ -275,8 +275,8 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         }
         return send(res, 201, event);
       }
-      // Retry an unfinished request (one the rules refused earlier, or one from before A19), as DM and Mayor.
-      // Recorded as him (actor "<id>-as-dm" / "<id>-as-mayor"); the write-guard checks it exactly as for a bot.
+      // Retry an unfinished request (one the rules refused earlier), as World Messenger and Mayor. Recorded as him
+      // (actor "<id>-as-messenger" / "<id>-as-mayor"); the write-guard checks it exactly as for a bot.
       const carry = /^\/api\/intents\/(\d+)\/create-now$/.exec(url.pathname);
       if (req.method === 'POST' && carry) {
         if (profile.role !== 'owner') throw new LedgerError('FORBIDDEN', 'owner only');

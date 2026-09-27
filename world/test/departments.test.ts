@@ -34,7 +34,7 @@ describe('department caps (A9)', () => {
     void d;
   });
 
-  it('Marc can change the caps later (routed through the DM)', () => {
+  it('Marc can change the caps later (routed through the World Messenger)', () => {
     const { w, city, dept } = setup();
     const payload = { departmentId: dept, maxGraduated: 5, maxShadows: 3, basicTasks: BASIC };
     const i = w.intent('configure_department', city, payload);

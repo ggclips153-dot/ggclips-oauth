@@ -39,6 +39,6 @@
 
 ## Decision
 
-- Decided by: <Mayor> and Marc (via the DM)
+- Decided by: <Mayor> and Marc (via the World Messenger)
 - Outcome: <graduate / not yet · credit $<amount> / no credit>
 - Ledger event: `#<seq>`

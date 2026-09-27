@@ -34,7 +34,7 @@ export const SECURITY_CITY_ID = 'security-city';
 /**
  * Task strikes (caught not doing a task) are a SEPARATE counter from KPI strikes.
  * Every 3 task strikes = a jail term; the counter then resets. Terms escalate and never reset:
- * 6h, 24h, 3 days; the 4th time the agent is jailed awaiting deletion (Marc decides via DM).
+ * 6h, 24h, 3 days; the 4th time the agent is jailed awaiting deletion (Marc decides via the World Messenger).
  */
 export const TASK_STRIKES_PER_JAIL = 3;
 export const JAIL_TERMS_HOURS: readonly number[] = [6, 24, 72];
@@ -74,13 +74,13 @@ export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
 /**
  * Ledger writer roles.
- * owner     = Marc (via the dashboard). Writes INTENTS only; the DM routes them.
- * dm        = District Messenger. Writes world events and routes intents.
+ * owner     = Marc (via the dashboard). Writes INTENTS only; the World Messenger routes them.
+ * messenger = the World Messenger (the District Messenger until A22). Writes world events and routes intents.
  * mayor     = one per city. Writes its own city's events only.
  * architect = Bob. Cross-city READ only, never writes.
  * gateway   = Hermes' shared-surface gateway. May only ask the surface guard; never reads or writes the ledger.
  */
-export const ROLES = ['owner', 'dm', 'mayor', 'architect', 'gateway'] as const;
+export const ROLES = ['owner', 'messenger', 'mayor', 'architect', 'gateway'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const AGENT_STATUSES = ['working', 'idle', 'blocked', 'offline'] as const;

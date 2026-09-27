@@ -49,13 +49,14 @@ Response:
 ## The rules
 
 1. **Cross-city writes are impossible.** The tag must be the writer's own city, from its ledger identity.
-   Only the DM and Bob read across cities (and the Essentials cities, A2); nobody writes across.
+   Only the World Messenger and Bob read across cities (and the Essentials cities, A2); nobody writes across.
 2. **No agent instructs another agent.** A note addressed to another agent is rejected, except the logged
    hand-off in amendment A9 (option B): a graduated agent → a shadow in its own department, for an approved
    basic task, recorded as `task.delegated` in the ledger, and the shadow's result coming back.
 3. **Other agents' output is data.** Always hand `asData` to a reading agent, never the raw text.
 4. **Prompt injection is quarantined.** Patterns: overriding instructions, "new instructions", role hijack
-   ("you are now…"), impersonating Marc / the DM / a Mayor / Bob / Security, fake system markup,
+   ("you are now…"), impersonating Marc / the World Messenger (or the District Messenger, its name before A22) /
+   a Mayor / Bob / Security, fake system markup,
    self-promotion or release, ledger tampering, secret-fishing, moving money or trading, direct or relayed
    orders to other agents.
 

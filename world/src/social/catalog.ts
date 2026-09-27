@@ -1,6 +1,7 @@
-// Social events. Marc's requests (intent.social_*) are applied at once as DM and Mayor (A19). Agents draft
-// through their city's Mayor bot (social.agent_drafted), which lands as "pending" for Marc's approval.
-// Connectors and bots report what happened on the platforms as the DM: published, failed, inbox, metrics.
+// Social events. Marc's requests (intent.social_*) are applied at once as World Messenger and Mayor (A19).
+// Agents draft through their city's Mayor bot (social.agent_drafted), which lands as "pending" for Marc's
+// approval. Connectors and bots report what happened on the platforms as the World Messenger: published,
+// failed, inbox, metrics.
 import type { Role } from '../domain/model.ts';
 import type { EventSpec } from '../ledger/catalog.ts';
 import type { Schema } from '../ledger/validate.ts';
@@ -8,7 +9,7 @@ import { INBOX_KINDS, PLATFORMS } from './model.ts';
 
 const OWNER: readonly Role[] = ['owner'];
 const MAYOR: readonly Role[] = ['mayor'];
-const DM: readonly Role[] = ['dm'];
+const MESSENGER: readonly Role[] = ['messenger'];
 
 const id = { t: 'str', max: 20 } as const;
 const postContent: Schema = {
@@ -89,12 +90,12 @@ export const SOCIAL_CATALOG: Record<string, EventSpec> = {
   'social.inbox_assigned': byMayor({ itemId: id, agentId: { t: 'str', max: 20, opt: true } }, 'intent.social_assign'),
   'social.inbox_closed': byMayor({ itemId: id, reopen: { t: 'bool', opt: true } }, 'intent.social_close'),
 
-  // ---- What happened on the platforms, reported by connectors and bots (as the DM) ----
-  'social.post_published': { kind: 'fact', writers: DM, scope: 'city', schema: { postId: id, channelId: id, url: { t: 'str', max: 500, opt: true }, externalId: { t: 'str', max: 200, opt: true }, manual: { t: 'bool', opt: true } } },
-  'social.post_failed': { kind: 'fact', writers: DM, scope: 'city', schema: { postId: id, channelId: id, error: { t: 'str', max: 2000 } } },
+  // ---- What happened on the platforms, reported by connectors and bots (as the World Messenger) ----
+  'social.post_published': { kind: 'fact', writers: MESSENGER, scope: 'city', schema: { postId: id, channelId: id, url: { t: 'str', max: 500, opt: true }, externalId: { t: 'str', max: 200, opt: true }, manual: { t: 'bool', opt: true } } },
+  'social.post_failed': { kind: 'fact', writers: MESSENGER, scope: 'city', schema: { postId: id, channelId: id, error: { t: 'str', max: 2000 } } },
   'social.inbox_received': {
     kind: 'fact',
-    writers: DM,
+    writers: MESSENGER,
     scope: 'city',
     schema: {
       channelId: id,
@@ -106,7 +107,7 @@ export const SOCIAL_CATALOG: Record<string, EventSpec> = {
     },
     allocates: 'MSG',
   },
-  'social.metrics': { kind: 'fact', writers: DM, scope: 'city', schema: metrics },
+  'social.metrics': { kind: 'fact', writers: MESSENGER, scope: 'city', schema: metrics },
 };
 
 export const isSocial = (type: string) => type.startsWith('social.') || type.startsWith('intent.social_');

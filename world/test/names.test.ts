@@ -30,7 +30,7 @@ describe('name generator', () => {
     const intent = w.ledger.append(owner, { type: 'intent.create_agent', city, payload: { persona, domainFocus: 'hvac' } });
     const name = intent.payload.name as string;
     assert.ok(name.length > 0);
-    w.ledger.append({ id: 'dm', role: 'dm', writeScope: ['*'] }, { type: 'dm.routed', city, payload: { intentSeq: intent.seq, to: 'mayor' } });
+    w.ledger.append({ id: 'messenger', role: 'messenger', writeScope: ['*'] }, { type: 'messenger.routed', city, payload: { intentSeq: intent.seq, to: 'mayor' } });
     // The Mayor must enroll exactly the generated name.
     assert.throws(
       () => w.fact(mayorOf(city), { type: 'agent.enrolled', city, payload: { name: 'Other', persona, domainFocus: 'hvac' }, authorizedBy: intent.seq }),

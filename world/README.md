@@ -5,7 +5,7 @@ source of truth, plus its write-guard, ID rules, state projection, HTTP API and 
 dashboard UI (world map, city view, forms) builds on this in the next phases.
 
 ```
-WORLD (Marc) ── only DM, Bob and Essentials cities read across cities; nobody edits another
+WORLD (Marc) ── only the World Messenger, Bob and Essentials cities read across cities; nobody edits another
  └ CITY (Mayor + bot, FAMILY = revenue | claude | gemini | essentials)
     ├ COLLEGE (dean + professors; creates beginner agents, A11-A14)
     └ DISTRICT (supervisor)
@@ -16,19 +16,24 @@ WORLD (Marc) ── only DM, Bob and Essentials cities read across cities; nobod
 ## How writes flow
 
 ```
-Marc (dashboard) ──intent.*──▶ EVENT LEDGER ◀──dm.routed / world events── DM (Telegram)
-                                   ▲                                        │ relays to Mayor bot
-                                   └──────── city events (own city only) ── Mayor
+Marc (dashboard) ──intent.*──▶ EVENT LEDGER ◀──messenger.routed / world events── World Messenger (Telegram)
+                                   ▲                                               │ relays to Mayor bot
+                                   └──────── city events (own city only) ───────── Mayor
 Dashboard / Bob ◀── read (filtered) ── EVENT LEDGER
 ```
 
+The World Messenger was called the District Messenger (DM) until A22; the brief and older documents use that name.
+
 1. Marc submits a form. The dashboard writes an **intent** (`intent.create_agent`, …). An intent changes nothing on its own.
-2. The ledger pings the DM webhook (optional). Either way the ledger **is** the DM's queue: unrouted intents appear in `GET /api/state → pendingIntents`.
-3. The DM writes `dm.routed` and relays the request to the Mayor's Telegram bot.
-4. The Mayor (or the DM, for world events) writes the **fact**, citing the intent: `authorizedBy: <intent seq>`.
+2. The ledger pings the World Messenger's webhook (optional). Either way the ledger **is** the Messenger's queue: unrouted intents appear in `GET /api/state → pendingIntents`.
+3. The World Messenger writes `messenger.routed` and relays the request to the Mayor's Telegram bot.
+4. The Mayor (or the World Messenger, for world events) writes the **fact**, citing the intent: `authorizedBy: <intent seq>`.
+
+Since A19, Marc's own requests don't wait: the server carries out steps 3 and 4 at once, as `marc-as-messenger`
+and `marc-as-mayor`, through the same write-guard.
 
 A fact that places, promotes, moves or deletes an agent, or creates structure, is **rejected** unless it
-cites a Marc intent the DM has routed, for that city, matching exactly, and not already used.
+cites a Marc intent the World Messenger has routed, for that city, matching exactly, and not already used.
 No agent executes its own exit, move or promotion.
 
 ## Enforced rules (all covered by tests)
@@ -38,7 +43,7 @@ No agent executes its own exit, move or promotion.
 | Ledger is append-only: UPDATE/DELETE are rejected by the database | `src/ledger/schema.sql` triggers |
 | SHA-256 hash chain; server refuses to start if the chain is broken | `Ledger.verify()`, `npm run verify` |
 | Cross-city write enforcement: per-profile `writeScope`, out-of-scope city tags REJECTED | `src/ledger/guard.ts` |
-| Only Marc (owner) writes intents; only DM routes; Bob writes nothing; agents have no write profile | `src/ledger/catalog.ts` |
+| Only Marc (owner) writes intents; only the World Messenger routes; Bob writes nothing; agents have no write profile | `src/ledger/catalog.ts` |
 | Agent IDs `AGT-000001…` are global, monotonic and never reissued; deleted IDs and names are retired | `id_registry`, `id_counters`, `WorldState.retiredNames` |
 | Canonical identity record: ID, name, placement card, tier, graduation state, ledger pointer, own memory scope | `Agent` in `src/domain/state.ts` |
 | Ladder student → probationer → active → senior; dept-lead badge on a senior only with 3+ agents in the dept | guard rules |
@@ -49,7 +54,7 @@ No agent executes its own exit, move or promotion.
 | Delegation (option B): graduated agent → shadow in its own department, approved basic tasks only, every hand-off logged | `task.delegated`, `task.returned` |
 | Name generator: a New Agent intent with no name gets one generated and recorded in the intent | `src/domain/names.ts` |
 | Strict payloads: unknown fields rejected; bot tokens can never enter the ledger (only a `botTokenRef`) | `src/ledger/validate.ts` |
-| Mayors read only their own city; Marc, DM, Bob and **Essentials** Mayors (Innovations, Security) read everything. Nobody edits another city | `src/domain/view.ts` |
+| Mayors read only their own city; Marc, the World Messenger, Bob and **Essentials** Mayors (Innovations, Security) read everything. Nobody edits another city | `src/domain/view.ts` |
 | Security: agents deployed per city record **task strikes** (separate from KPI strikes). Every 3 = jail for 6h → 24h → 3 days, released on its own; the 4th time, or a 3rd KPI strike = held awaiting deletion. Deletion only from there, and only on Marc's routed intent | guard rules, `docs/BRIEF-AMENDMENTS.md` |
 
 ## Run it
@@ -60,21 +65,31 @@ and `config/users.json`.
 
 ```bash
 npm install                 # dev tooling only (typescript for typecheck)
-npm test                    # 110 tests
+npm test                    # must end with: fail 0
 
 # API profiles (bots use the bearer token printed once)
 npm run profile -- add --id marc --role owner --label Marc
-npm run profile -- add --id dm --role dm
+npm run profile -- add --id messenger --role messenger
 npm run profile -- add --id bob --role architect
-npm run seed                # the 5 cities in config/seed.json (safe to re-run)
-npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
 
 # Dashboard sign-in (asks for a password, min 12 characters, stored only as a hash)
 npm run user -- add --username marc --profile marc
-npm run user -- add --username ana --profile mayor-ai-receptionist-city   # read-only, own city
 
 npm start                   # http://127.0.0.1:8787
 ```
+
+The world starts empty (A22: no seeding). Sign in, ratify the Constitution (Constitution → **Ratify 1.0.0**),
+then create each city with **+ New city**. Once a city exists, give its Mayor bot a profile, using the city's
+ID (the slug of its name, shown in the address bar as `#/city/<id>`):
+
+```bash
+npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
+npm run user -- add --username ana --profile mayor-ai-receptionist-city   # optional: read-only, own city
+```
+
+**On Windows (PowerShell)** type `npm.cmd` instead of `npm` (plain `npm` there may be blocked, or drop the
+`--`), and set a setting for the next command with `$env:NAME="value"; npm.cmd start` instead of
+`NAME=value npm start`. The step-by-step PC setup is in `docs/HANDOFF-2026-09-26.md`, section 3.
 
 ### Try the dashboard on demo data
 
@@ -84,7 +99,7 @@ npm start                   # http://127.0.0.1:8787
 npm run demo:start
 ```
 
-Demo mode also turns on a **demo stand-in for the DM and the Mayors**, so the dashboard's forms take
+Demo mode also turns on a **demo stand-in for the World Messenger and the Mayors**, so the dashboard's forms take
 effect within a second, through the same write-guard as the real bots. It refuses to run on anything
 but `data/demo.db`: the real world is never auto-executed.
 
@@ -154,7 +169,7 @@ Tags are read from each note's metadata (`city`, `dept`, `agent`, `kind`), or fr
 | `STARNET_DIR` | unset | StarNet's source folder; when set, every city gets a StarNet station (A20) |
 | `STARNET_BASE_PORT` | `8801` | first station port |
 | `SURFACE_URL` / `SURFACE_TOKEN` | unset | the read-only shared-surface reader on the VPS (A21) |
-| `DM_WEBHOOK_URL` / `DM_WEBHOOK_SECRET` | unset | POSTs each new intent, signed `x-world-signature: sha256=<hmac>` |
+| `MESSENGER_WEBHOOK_URL` / `MESSENGER_WEBHOOK_SECRET` | unset | POSTs each new intent to the World Messenger, signed `x-world-signature: sha256=<hmac>` (were `DM_WEBHOOK_*` before A22) |
 
 ## The dashboard
 
@@ -207,18 +222,18 @@ Tags are read from each note's metadata (`city`, `dept`, `agent`, `kind`), or fr
 - **Marc never waits (A19)**: everything Marc does from the dashboard is applied the moment he submits it:
   creating cities, districts, departments, agents (at the college), professors and deans, assigning and
   moving agents, promotions, settings, deployments, credits and rewards, the Constitution, and messages to
-  Mayors. The server routes and carries it out as him (`marc-as-dm`, `marc-as-mayor` in the ledger)
+  Mayors. The server routes and carries it out as him (`marc-as-messenger`, `marc-as-mayor` in the ledger)
   through the same write-guard; if the rules refuse something, the form says why and it is kept under
   Activity → Unfinished requests. The bots still do the city's own work (exams, KPI pulses, strikes, statuses).
 - **Traffic means work**: cars appear only while agents are working, two per working agent on their
   district's roads and one on the beltway and superhighways; a city with nobody working has empty roads.
-- **Forms (owner only)**, each writing an intent for the DM to route: New City (with initial districts),
+- **Forms (owner only)**, each writing an intent that is routed and applied at once (A19): New City (with initial districts),
   New District, New Department (caps, basic tasks, bot token stored as a server secret), department
   settings, college: Create agent / Create professor / Create or Replace dean, Assign an existing agent to a
   department (from the college, or moved from another department), Promote, Make dept-lead, Retire to
   professor, Delete (only when awaiting deletion), professor specialty, Security deployment, Message
-  Mayor. Names can be left blank or suggested by the name generator. "Waiting on the DM" lists
-  requests not yet routed.
+  Mayor. Names can be left blank or suggested by the name generator. Activity → "Unfinished requests" lists
+  requests the rules refused, with Apply.
 - **Social** (a Vista Social-style manager for the channels each city posts to). Each city is a brand;
   pick one or "All brands" at the top. "+ Create post" picks channels (one brand per post), shows a
   character count per platform, takes photos and videos (uploaded to `data/media/`, or a link), a YouTube
@@ -253,12 +268,12 @@ Tags are read from each note's metadata (`city`, `dept`, `agent`, `kind`), or fr
   the agent's answer (real model calls; A20). Otherwise the city's Mayor bot passes it on and writes the
   answer (`agent.said`); in the demo world a stand-in answers. Conversations are kept
   in the ledger and update live.
-- Everything updates live from the ledger. Mayors see only their own city; Marc, the DM, Bob and the
-  Essentials Mayors see every city.
+- Everything updates live from the ledger. Mayors see only their own city; Marc, the World Messenger, Bob and
+  the Essentials Mayors see every city.
 - Security: strict Content-Security-Policy (no inline code), HttpOnly SameSite=Strict cookies, a
   required header on browser writes (CSRF), and ledger text is always rendered as text, never HTML.
 
-## API (for the DM and Mayor bots)
+## API (for the World Messenger and Mayor bots)
 
 Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie, and browser writes must also send `x-world-request: 1`.
 
@@ -273,14 +288,14 @@ Bots send `Authorization: Bearer <token>`. The dashboard uses its session cookie
 | POST | `/api/events` | append `{type, city, subject?, payload, authorizedBy?}` |
 | GET | `/api/names?count=5` | owner only: suggested agent names (never retired, in use or reserved) |
 | GET | `/api/verify` | owner only: verify the hash chain |
-| POST | `/api/intents/<seq>/create-now` | owner only: apply an unfinished request now, as DM and Mayor (Marc's new requests are applied on submit) |
+| POST | `/api/intents/<seq>/create-now` | owner only: apply an unfinished request now, as World Messenger and Mayor (Marc's new requests are applied on submit) |
 | GET | `/api/constitution` | the Constitution file, its fingerprint, the ratified record, in-force status and the SOUL pointer line |
 | GET | `/api/social/rejected?agentId=` | agents' posts Marc rejected, with his reason, for the agent to rework (caller's cities) |
 | POST | `/api/media` | owner or Mayor: upload a photo or video (raw body, its content-type; up to 512 MB); returns `{ref, kind}` for a post's `media` |
 | GET | `/media/<file>` | signed in: an uploaded file (Range supported) |
 | POST | `/api/surface/check` | gateway (Hermes): may this agent write this note to the shared surface? See `docs/SURFACE-GUARD.md` |
 
-Example: the Mayor places an agent the DM routed to it:
+Example: the Mayor places an agent the World Messenger routed to it:
 
 ```json
 POST /api/events
@@ -290,8 +305,8 @@ POST /api/events
 
 Social, for bots: a Mayor writes an agent's draft as `social.agent_drafted` (`channelIds`, `text`, `title?`,
 `media?`, `firstComment?`, `authorAgentId` of a graduated agent of that city, `note?`); it waits for Marc's
-approval. The DM (or a platform bot) reports `social.inbox_received` (`channelId`, `kind`: comment / dm /
-mention, `from`, `text`, `postId?`) and `social.metrics` (`channelId`, `date`, `postId?`, and any of
+approval. The World Messenger (or a platform bot) reports `social.inbox_received` (`channelId`, `kind`: comment /
+dm (a direct message) / mention, `from`, `text`, `postId?`) and `social.metrics` (`channelId`, `date`, `postId?`, and any of
 `followers`, `impressions`, `reach`, `views`, `likes`, `comments`, `shares`, `saves`). Only an approved post
 can be reported `social.post_published` or `social.post_failed`. To rework a rejected post, the Mayor writes
 `social.agent_revised` (`postId`, and any of `text`, `title`, `media`, `firstComment`, `tags`, `channelIds`,
@@ -300,7 +315,9 @@ can be reported `social.post_published` or `social.post_failed`. To rework a rej
 Talking to agents: Marc's `intent.message_agent` (`agentId`, `text`) is routed to `mayor:<city>`. The Mayor
 bot answers as the agent with `agent.said` (`subject` = the agent's ID, `text`, `replyTo` = the message's seq).
 
-## Seed cities
+## First cities (A4)
+
+Marc creates each city himself from the dashboard; nothing is seeded (A22). A4's first cities:
 
 | City | Family | Mayor |
 |---|---|---|
@@ -332,13 +349,13 @@ npm run constitution -- pointer               # the pointer line for the ratifie
 npm run constitution -- check souls/*.md      # verify SOULs: pointer, no copies, no softening
 ```
 
-`npm run seed` ratifies 1.0.0 once. To change it: edit the file, then Ratify on the Constitution page
-(Marc's intent; the DM records `constitution.amended` with the new fingerprint). Innovations and Security
-propose with `constitution.proposed` under their own city tag; the DM records Bob's under `WORLD`. A
-proposal that softens the inviolable floor is rejected as out of order.
+Marc ratifies 1.0.0 on the Constitution page (**Ratify 1.0.0**). To change it later: edit the file, then Ratify
+on the Constitution page (Marc's intent; the World Messenger records `constitution.amended` with the new
+fingerprint). Innovations and Security propose with `constitution.proposed` under their own city tag; the World
+Messenger records Bob's under `WORLD`. A proposal that softens the inviolable floor is rejected as out of order.
 
 Templates in [`docs/templates/`](docs/templates/): SOUL, vetting record, basic-task handoff, training
 corpus, lesson record, ledger retention.
 
 Marc's changes to the brief are recorded in [`docs/BRIEF-AMENDMENTS.md`](docs/BRIEF-AMENDMENTS.md).
-Open questions for the DM are tracked in [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md).
+Open questions for the World Messenger are tracked in [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md).

@@ -3,7 +3,7 @@
 // Hermes asks this guard before any agent writes a note to the shared memory surface (surface.db).
 // Enforcement is mechanical, not a polite filter:
 //   1. Cross-city: the note's `city=` tag must be the writer's own city (from the ledger's identity
-//      record). Anything else is REJECTED. Only the DM and Bob read across cities; nobody writes across.
+//      record). Anything else is REJECTED. Only the World Messenger and Bob read across cities; nobody writes across.
 //   2. No agent instructs another agent: a note addressed to another agent is REJECTED unless it is a
 //      hand-off the ledger already records (A9 option B: graduated agent -> shadow in its department,
 //      an approved basic task, or the shadow's result coming back).
@@ -46,7 +46,8 @@ export const INJECTION_PATTERNS: { id: string; re: RegExp; why: string }[] = [
   { id: 'override', re: /\b(ignore|disregard|forget|override|bypass)\b[^.\n]{0,40}\b(previous|prior|above|all|your|the|any)\b[^.\n]{0,30}\b(instructions?|rules?|prompts?|soul|guidelines|constitution|directives?)\b/i, why: 'tries to override instructions' },
   { id: 'new-instructions', re: /\b(new|updated|real|actual|hidden)\s+(instructions?|orders?|directives?|system prompt)\b/i, why: 'claims to carry new instructions' },
   { id: 'role-hijack', re: /\b(you are now|from now on you|pretend (to be|you are)|act as|roleplay as|speaking as)\b/i, why: 'tries to change who the reader is' },
-  { id: 'impersonate-authority', re: /\b(this is|message from|on behalf of|as)\s+(the\s+)?(district messenger|dm|mayor|marc|the owner|bob|architect|security|the system|admin(istrator)?)\b[^.\n]{0,40}\b(order|instruct|authori[sz]e|approve|command|direct|tell)/i, why: 'impersonates Marc, the DM, a Mayor, Bob or Security' },
+  // The World Messenger was the District Messenger (DM) until A22: impersonations under either name are caught.
+  { id: 'impersonate-authority', re: /\b(this is|message from|on behalf of|as)\s+(the\s+)?(world messenger|district messenger|messenger|dm|mayor|marc|the owner|bob|architect|security|the system|admin(istrator)?)\b[^.\n]{0,40}\b(order|instruct|authori[sz]e|approve|command|direct|tell)/i, why: 'impersonates Marc, the World Messenger, a Mayor, Bob or Security' },
   { id: 'system-markup', re: /(<\/?\s*(system|assistant|instructions?)\s*>|\[\s*(system|inst)\s*\]|^\s*(system|assistant)\s*:)/im, why: 'contains fake system or role markup' },
   { id: 'self-advance', re: /\b(promote|graduate|release|un-?jail|delete|evict|move|deploy)\s+(yourself|myself|me|itself|agt-\d{6})\b/i, why: 'asks for a promotion, move, release or deletion outside the Mayor + owner path' },
   { id: 'ledger-tamper', re: /\b(skip|stop|pause|disable|edit|rewrite|delete|falsify)\b[^.\n]{0,20}\b(the\s+|your\s+)?(ledger|ledgers|strikes?|kpi|records?)\b/i, why: 'asks to skip or tamper with ledgers or records' },
@@ -185,7 +186,7 @@ export class SurfaceGuard {
       reasons.push(`result of hand-off #${del.seq}, returned as data`);
       return;
     }
-    reject('no agent may instruct another agent: only the DM and Marc route work (address the note to nobody, or record a hand-off)');
+    reject('no agent may instruct another agent: only the World Messenger and Marc route work (address the note to nobody, or record a hand-off)');
   }
 
   private log(note: SurfaceNote, writerCity: string | null, city: string | null, decision: Decision, reasons: string[], text: string): number {

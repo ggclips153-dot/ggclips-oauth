@@ -1,7 +1,7 @@
 // The publisher: when an approved post's scheduled time comes, hand it to the platform's connector and record
-// what happened (social.post_published / social.post_failed) as the DM. With no connector for a platform the
-// post simply stays "due" and the dashboard shows it ready to post by hand. It never publishes anything Marc
-// has not approved: the write-guard refuses that.
+// what happened (social.post_published / social.post_failed) as the World Messenger. With no connector for a
+// platform the post simply stays "due" and the dashboard shows it ready to post by hand. It never publishes
+// anything Marc has not approved: the write-guard refuses that.
 import type { Ledger } from '../ledger/ledger.ts';
 import type { Profile } from '../ledger/guard.ts';
 import type { Platform } from './model.ts';
@@ -20,7 +20,7 @@ export interface Connector {
   publish(post: Post, channel: Channel, mediaPath: (ref: string) => string | null): Promise<PublishResult>;
 }
 
-const PUBLISHER: Profile = { id: 'publisher', role: 'dm', writeScope: ['*'] };
+const PUBLISHER: Profile = { id: 'publisher', role: 'messenger', writeScope: ['*'] };
 
 export function attachPublisher(ledger: Ledger, connectors: Connector[], { everyMs = 30_000, mediaPath = (_: string) => null as string | null, log = (m: string) => console.log(m) } = {}) {
   const byPlatform = new Map(connectors.map((c) => [c.platform, c]));

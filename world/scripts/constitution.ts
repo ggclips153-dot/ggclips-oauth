@@ -3,7 +3,7 @@
 //   npm run constitution -- pointer              the pointer line every SOUL carries (ratified version)
 //   npm run constitution -- check <SOUL files>   verify each SOUL's pointer; flag copies and softening
 // Reads the ratified version from the ledger (WORLD_DB, default data/world.db). Never writes it:
-// ratifying is Marc's intent, routed by the DM.
+// ratifying is Marc's intent, routed by the World Messenger.
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { checkSoul, pointerLine, readConstitution } from '../src/domain/constitution.ts';
@@ -34,7 +34,7 @@ switch (cmd) {
   case 'pointer': {
     const r = ratified();
     if (!r) {
-      console.error('No Constitution version is ratified in the ledger yet. Run npm run seed (ratifies 1.0.0) or ratify from the dashboard.');
+      console.error('No Constitution version is ratified in the ledger yet. Ratify it on the dashboard\'s Constitution page (Ratify 1.0.0).');
       process.exit(1);
     }
     if (r.sha256 !== file.sha256) console.error(`warning: the file on disk does not match ratified ${r.version}; it is not in force`);

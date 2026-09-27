@@ -1,5 +1,5 @@
-// Marc's forms. Every form writes an INTENT to the ledger and the server applies it at once, acting as DM and
-// Mayor (A19). The server's write-guard re-checks everything, so these forms only help.
+// Marc's forms. Every form writes an INTENT to the ledger and the server applies it at once, acting as World
+// Messenger and Mayor (A19). The server's write-guard re-checks everything, so these forms only help.
 import { h } from './dom.js';
 
 const FAMILY_OPTIONS = [

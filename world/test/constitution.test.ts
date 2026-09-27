@@ -7,7 +7,7 @@ import { describe, it } from 'node:test';
 import { Profiles, hashToken } from '../src/auth/profiles.ts';
 import { CONSTITUTION_DOC_REF, checkSoul, fingerprint, pointerLine, readConstitution } from '../src/domain/constitution.ts';
 import { createApp } from '../src/server/app.ts';
-import { TestWorld, dm, mayorOf, owner } from './helpers.ts';
+import { TestWorld, mayorOf, messenger, owner } from './helpers.ts';
 
 const SHA_A = 'a'.repeat(64);
 const SHA_B = 'b'.repeat(64);
@@ -15,7 +15,7 @@ const version = (v: string, sha: string, extra: Record<string, unknown> = {}) =>
 
 function ratify(w: TestWorld, v: string, sha: string, extra: Record<string, unknown> = {}) {
   const i = w.intent('amend_constitution', 'WORLD', version(v, sha, extra));
-  return w.fact(dm, { type: 'constitution.amended', city: 'WORLD', payload: i.payload, authorizedBy: i.seq });
+  return w.fact(messenger,{ type: 'constitution.amended', city: 'WORLD', payload: i.payload, authorizedBy: i.seq });
 }
 
 function world() {
@@ -28,7 +28,7 @@ function world() {
 const proposal = { proposer: 'Soren', title: 'Weekly cost review', rationale: 'Cadence is unstated.', text: 'Innovations reviews token cost vs quality weekly.' };
 
 describe('World Constitution in the ledger', () => {
-  it('Marc ratifies a version with the file fingerprint; the DM records it; history accumulates', () => {
+  it('Marc ratifies a version with the file fingerprint; the World Messenger records it; history accumulates', () => {
     const { w } = world();
     ratify(w, '1.0.0', SHA_A);
     ratify(w, '1.1.0', SHA_B);
@@ -45,11 +45,11 @@ describe('World Constitution in the ledger', () => {
     assert.throws(() => w.intent('amend_constitution', 'WORLD', version('1.1.0', SHA_A)), /unchanged/);
   });
 
-  it('the DM cannot ratify without Marc, nor record a different fingerprint than Marc sent', () => {
+  it('the World Messenger cannot ratify without Marc, nor record a different fingerprint than Marc sent', () => {
     const { w } = world();
-    assert.throws(() => w.fact(dm, { type: 'constitution.amended', city: 'WORLD', payload: version('1.0.0', SHA_A) }), /authorizedBy/);
+    assert.throws(() => w.fact(messenger,{ type: 'constitution.amended', city: 'WORLD', payload: version('1.0.0', SHA_A) }), /authorizedBy/);
     const i = w.intent('amend_constitution', 'WORLD', version('1.0.0', SHA_A));
-    assert.throws(() => w.fact(dm, { type: 'constitution.amended', city: 'WORLD', payload: version('1.0.0', SHA_B), authorizedBy: i.seq }), /sha256 does not match/);
+    assert.throws(() => w.fact(messenger,{ type: 'constitution.amended', city: 'WORLD', payload: version('1.0.0', SHA_B), authorizedBy: i.seq }), /sha256 does not match/);
   });
 
   it('Innovations and Security may propose under their own tag; revenue Mayors may not', () => {
@@ -60,11 +60,11 @@ describe('World Constitution in the ledger', () => {
     assert.throws(() => w.fact(mayorOf(innovations), { type: 'constitution.proposed', city: 'WORLD', payload: proposal }), /write scope/);
   });
 
-  it('the DM records only Bob\'s proposals, under WORLD', () => {
+  it('the World Messenger records only Bob\'s proposals, under WORLD', () => {
     const { w, innovations } = world();
-    w.fact(dm, { type: 'constitution.proposed', city: 'WORLD', payload: { ...proposal, proposer: 'Bob' } });
-    assert.throws(() => w.fact(dm, { type: 'constitution.proposed', city: 'WORLD', payload: proposal }), /only Bob/);
-    assert.throws(() => w.fact(dm, { type: 'constitution.proposed', city: innovations, payload: { ...proposal, proposer: 'Bob' } }), /under WORLD/);
+    w.fact(messenger,{ type: 'constitution.proposed', city: 'WORLD', payload: { ...proposal, proposer: 'Bob' } });
+    assert.throws(() => w.fact(messenger,{ type: 'constitution.proposed', city: 'WORLD', payload: proposal }), /only Bob/);
+    assert.throws(() => w.fact(messenger,{ type: 'constitution.proposed', city: innovations, payload: { ...proposal, proposer: 'Bob' } }), /under WORLD/);
   });
 
   it('a proposal that softens the inviolable floor is out of order', () => {
@@ -83,7 +83,7 @@ describe('World Constitution in the ledger', () => {
     assert.equal(w.state.proposals.get(p1.seq)?.status, 'ratified');
     assert.equal(w.state.proposals.get(p1.seq)?.ratifiedAs, '1.1.0');
     const d = w.intent('decline_proposal', 'WORLD', { proposalSeq: p2.seq, reason: 'Not needed' });
-    w.fact(dm, { type: 'constitution.declined', city: 'WORLD', payload: d.payload, authorizedBy: d.seq });
+    w.fact(messenger,{ type: 'constitution.declined', city: 'WORLD', payload: d.payload, authorizedBy: d.seq });
     assert.equal(w.state.proposals.get(p2.seq)?.declineReason, 'Not needed');
     assert.throws(() => w.intent('decline_proposal', 'WORLD', { proposalSeq: p1.seq, reason: 'x' }), /already ratified/);
     assert.throws(() => ratify(w, '1.2.0', 'c'.repeat(64), { proposalSeq: p2.seq }), /already declined/);
@@ -101,9 +101,12 @@ describe('SOUL pointer check', () => {
   const ratified = { version: '1.0.0', sha256: doc.sha256 };
   const soul = (extra = '') => `# SOUL: Mayor Ana\n\n${pointerLine('1.0.0', doc.sha256)}\n\nYou run AI Receptionist City.\n${extra}`;
 
-  it('the Constitution file exists and fingerprints the same with CRLF line endings', () => {
+  it('the Constitution file exists and fingerprints the same with LF or CRLF line endings', () => {
     assert.ok(doc.text.includes('Article IV'));
-    assert.equal(fingerprint(doc.text.replace(/\n/g, '\r\n')), doc.sha256);
+    // The checkout itself may be either (Windows usually converts to CRLF), so build both from the LF text.
+    const lf = doc.text.replace(/\r\n/g, '\n');
+    assert.equal(fingerprint(lf), doc.sha256);
+    assert.equal(fingerprint(lf.replace(/\n/g, '\r\n')), doc.sha256);
   });
 
   it('accepts a SOUL with exactly one current pointer line', () => {

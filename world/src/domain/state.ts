@@ -246,7 +246,7 @@ export interface Constitution {
 export interface ConstitutionProposal {
   seq: number;
   ts: string;
-  /** Proposing city tag (Innovations / Security) or WORLD for Bob via the DM. */
+  /** Proposing city tag (Innovations / Security) or WORLD for Bob via the World Messenger. */
   city: string;
   proposer: string;
   title: string;
@@ -290,7 +290,7 @@ export class WorldState {
     list.push(m);
     if (list.length > CHAT_KEEP) list.shift();
   }
-  /** intent seq -> dm.routed seq */
+  /** intent seq -> messenger.routed seq */
   readonly routed = new Map<number, number>();
   /** `${intentSeq}|${factType}|${key}` once an intent has been fulfilled by that fact. */
   readonly consumed = new Set<string>();
@@ -375,7 +375,7 @@ export class WorldState {
       agent?.lifecycle.push({ stage, seq: e.seq, ts: e.ts, ...(detail ? { detail } : {}) });
 
     switch (e.type) {
-      case 'dm.routed':
+      case 'messenger.routed':
         this.routed.set(p.intentSeq, e.seq);
         break;
       case 'city.created':

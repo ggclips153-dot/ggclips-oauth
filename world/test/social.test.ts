@@ -10,11 +10,11 @@ import { createApp } from '../src/server/app.ts';
 import { carryOut } from '../src/server/executor.ts';
 import { MediaStore } from '../src/social/media.ts';
 import { attachPublisher, type Connector } from '../src/social/publisher.ts';
-import { TestWorld, dm, mayorOf, owner } from './helpers.ts';
+import { TestWorld, mayorOf, messenger, owner } from './helpers.ts';
 
 const IMG = { ref: `media/${'a'.repeat(64)}.jpg`, kind: 'image' };
 const VID = { ref: `media/${'b'.repeat(64)}.mp4`, kind: 'video' };
-const marc = { dm: { id: 'marc-as-dm', role: 'dm' as const, writeScope: ['*'] }, mayor: (c: string) => ({ id: 'marc-as-mayor', role: 'mayor' as const, writeScope: [c] }) };
+const marc = { messenger: { id: 'marc-as-messenger', role: 'messenger' as const, writeScope: ['*'] }, mayor: (c: string) => ({ id: 'marc-as-mayor', role: 'mayor' as const, writeScope: [c] }) };
 
 /** Marc's request, applied at once like the dashboard does (A19). */
 function ask(w: TestWorld, city: string, type: string, payload: Record<string, unknown>) {
@@ -72,10 +72,10 @@ describe('social: posts and approval (no auto-publish)', () => {
     w.promote(city, writer, 'probationer');
     const post = w.fact(mayorOf(city), { type: 'social.agent_drafted', city, payload: { ...draft, authorAgentId: writer } }).subject!;
     assert.equal(w.state.social.posts.get(post)!.status, 'pending');
-    assert.throws(() => w.fact(dm, { type: 'social.post_published', city, payload: { postId: post, channelId: ig } }), /only a post Marc approved/);
+    assert.throws(() => w.fact(messenger,{ type: 'social.post_published', city, payload: { postId: post, channelId: ig } }), /only a post Marc approved/);
     assert.throws(() => w.fact(mayorOf(city), { type: 'social.post_approved', city, payload: { postId: post } }), /authorizedBy/);
     ask(w, city, 'social_approve_post', { postId: post });
-    w.fact(dm, { type: 'social.post_published', city, payload: { postId: post, channelId: ig, url: 'https://instagram.com/p/x' } });
+    w.fact(messenger,{ type: 'social.post_published', city, payload: { postId: post, channelId: ig, url: 'https://instagram.com/p/x' } });
     assert.equal(w.state.social.posts.get(post)!.status, 'published');
   });
 
@@ -122,7 +122,7 @@ describe('social: posts and approval (no auto-publish)', () => {
 describe('social: inbox and metrics', () => {
   it('receives, replies, assigns to an agent of the city, closes; metrics are kept per channel and post', () => {
     const { w, city, other, ig } = setup();
-    const item = w.fact(dm, { type: 'social.inbox_received', city, payload: { channelId: ig, kind: 'comment', from: '@fan', text: 'what settings?' } }).subject!;
+    const item = w.fact(messenger,{ type: 'social.inbox_received', city, payload: { channelId: ig, kind: 'comment', from: '@fan', text: 'what settings?' } }).subject!;
     ask(w, city, 'social_reply', { itemId: item, text: 'Pinned in bio!' });
     const helper = w.collegeAgent(city, 'Rio');
     ask(w, city, 'social_assign', { itemId: item, agentId: helper });
@@ -130,7 +130,7 @@ describe('social: inbox and metrics', () => {
     ask(w, city, 'social_close', { itemId: item });
     const it = w.state.social.inbox.get(item)!;
     assert.deepEqual([it.replies.length, it.assignedTo, it.open], [1, helper, false]);
-    w.fact(dm, { type: 'social.metrics', city, payload: { channelId: ig, date: '2026-09-25', followers: 1200, impressions: 5400 } });
+    w.fact(messenger,{ type: 'social.metrics', city, payload: { channelId: ig, date: '2026-09-25', followers: 1200, impressions: 5400 } });
     const view = worldView(w.state, owner, w.time).social;
     assert.equal(view.channels.find((c) => c.id === ig)!.series[0]!.followers, 1200);
     assert.equal(worldView(w.state, mayorOf(other), w.time).social.inbox.length, 0, "another city's Mayor sees none of it");

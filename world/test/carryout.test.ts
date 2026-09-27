@@ -3,9 +3,9 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import { Profiles, hashToken } from '../src/auth/profiles.ts';
 import { createApp } from '../src/server/app.ts';
-import { TestWorld, dm, owner } from './helpers.ts';
+import { TestWorld, messenger, owner } from './helpers.ts';
 
-describe('Marc can create structure and agents himself (as DM and Mayor), or leave it to the bots', () => {
+describe('Marc can create structure and agents himself (as World Messenger and Mayor), or leave it to the bots', () => {
   const w = new TestWorld();
   const city = w.city();
   const profiles = new Profiles([
@@ -27,8 +27,8 @@ describe('Marc can create structure and agents himself (as DM and Mayor), or lea
     const res = await carry(i.seq);
     assert.equal(res.status, 201);
     const { events } = await res.json();
-    assert.deepEqual(events.map((e: { type: string }) => e.type), ['dm.routed', 'district.created']);
-    assert.deepEqual(events.map((e: { actor: string }) => e.actor), ['marc-as-dm', 'marc-as-mayor']);
+    assert.deepEqual(events.map((e: { type: string }) => e.type), ['messenger.routed', 'district.created']);
+    assert.deepEqual(events.map((e: { actor: string }) => e.actor), ['marc-as-messenger', 'marc-as-mayor']);
     assert.equal([...w.state.districts.values()].filter((d) => d.name === 'Front Desk').length, 1);
   });
 
@@ -42,7 +42,7 @@ describe('Marc can create structure and agents himself (as DM and Mayor), or lea
 
   it('works on a request a bot already routed but no Mayor carried out', async () => {
     const i = ask('intent.create_agent', { persona: { voice: 'v', temperament: 't' }, domainFocus: 'bookings' });
-    w.ledger.append(dm, { type: 'dm.routed', city, payload: { intentSeq: i.seq, to: 'mayor' } });
+    w.ledger.append(messenger, { type: 'messenger.routed', city, payload: { intentSeq: i.seq, to: 'mayor' } });
     const { events } = await (await carry(i.seq)).json();
     assert.deepEqual(events.map((e: { type: string }) => e.type), ['agent.enrolled']);
   });
@@ -65,7 +65,7 @@ describe('Marc can create structure and agents himself (as DM and Mayor), or lea
     assert.equal(w.state.agents.get(a)!.departmentId, dept);
   });
 
-  it("Marc's creation requests through the API are applied at once: nothing waits on the DM", async () => {
+  it("Marc's creation requests through the API are applied at once: nothing waits on the World Messenger", async () => {
     const res = await fetch(`${base}/api/events`, {
       method: 'POST',
       headers: { authorization: 'Bearer t-marc', 'content-type': 'application/json' },
@@ -74,9 +74,9 @@ describe('Marc can create structure and agents himself (as DM and Mayor), or lea
     assert.equal(res.status, 201);
     const body = await res.json();
     assert.equal(body.applied, true);
-    assert.deepEqual(body.created.map((e: { type: string }) => e.type), ['dm.routed', 'district.created']);
+    assert.deepEqual(body.created.map((e: { type: string }) => e.type), ['messenger.routed', 'district.created']);
     assert.ok([...w.state.districts.values()].some((d) => d.name === 'Night Desk'));
-    assert.ok(w.state.routed.has(body.seq), 'not left waiting on the DM');
+    assert.ok(w.state.routed.has(body.seq), 'not left waiting on the World Messenger');
   });
 
   it('every request from Marc is applied at once (A19); a message to a Mayor is routed to them at once', async () => {
@@ -87,7 +87,7 @@ describe('Marc can create structure and agents himself (as DM and Mayor), or lea
     });
     const body = await res.json();
     assert.equal(body.applied, true);
-    assert.ok(w.state.routed.has(body.seq), 'nothing waits on the DM');
+    assert.ok(w.state.routed.has(body.seq), 'nothing waits on the World Messenger');
   });
 
   it('a request the rules refuse is kept unfinished and Marc is told why', async () => {

@@ -22,7 +22,7 @@ function fakeStarnet(): string {
         const user = body.messages.at(-1).content;
         if (user === 'fail') { res.writeHead(502); return res.end('{"error":{"message":"no model provider set"}}'); }
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ choices: [{ message: { content: 'station ' + process.env.STARNET_WORKSPACES.split('/').pop() + ' session ' + req.headers['x-starnet-session-id'] + ' heard: ' + user + ' | ' + body.messages[0].content.slice(0, 40) } }], starnet: { completed: true } }));
+        res.end(JSON.stringify({ choices: [{ message: { content: 'station ' + require('node:path').basename(process.env.STARNET_WORKSPACES) + ' session ' + req.headers['x-starnet-session-id'] + ' heard: ' + user + ' | ' + body.messages[0].content.slice(0, 40) } }], starnet: { completed: true } }));
       });
     }).listen(port, '127.0.0.1');
   `);
@@ -54,7 +54,8 @@ describe('StarNet stations (A20)', () => {
     assert.equal(st['CITY-A']!.url, 'http://127.0.0.1:18801/');
     const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
     assert.ok(cfg['test:CITY-A'].apiKey.length >= 32);
-    assert.equal(statSync(configPath).mode & 0o777, 0o600);
+    // Windows has no Unix modes; there the file is private because it lives in the user's own folder.
+    if (process.platform !== 'win32') assert.equal(statSync(configPath).mode & 0o777, 0o600);
   });
 
   it("an agent's message runs on its city's station; the answer lands in the ledger as agent.said", async () => {

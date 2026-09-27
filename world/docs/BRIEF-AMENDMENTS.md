@@ -1,14 +1,15 @@
 # Amendments to the World Build Brief
 
 Changes Marc has ratified on top of the original brief. The brief stays authoritative for
-everything not listed here.
+everything not listed here. Since A22, the District Messenger (DM) is the **World Messenger**; earlier
+amendments keep the old name as they were written.
 
 | # | Date | Amendment | Enforced in |
 |---|---|---|---|
 | A1 | 2026-09-25 | New city FAMILY **Essentials** (`essentials`), alongside `revenue`, `claude` and `gemini`. Innovations City and Security City are Essentials cities. Essentials get their own home on the world map. | `FAMILIES` in `src/domain/model.ts` |
 | A2 | 2026-09-25 | Essentials cities may **see** every other city but **never edit** them. An Essentials Mayor reads all cities; it still writes only its own city's tag. (Extends "only the DM and Bob cross between cities".) | `readScope` in `src/domain/view.ts`; write-guard unchanged |
 | A3 | 2026-09-25 | **Security jail.** Security City holds agents (a) waiting to be deleted, and (b) serving a term for task strikes. | `Jail` in `src/domain/state.ts` |
-| A4 | 2026-09-25 | First cities: AI Receptionist City (Mayor Ana), Personal Finance City (Greg), GGClutchPlays (Kevin), Innovations City (Soren), Security City (Odette). | `config/seed.json` |
+| A4 | 2026-09-25 | First cities: AI Receptionist City (Mayor Ana), Personal Finance City (Greg), GGClutchPlays (Kevin), Innovations City (Soren), Security City (Odette). | Marc creates cities himself from the dashboard; the seed was removed (A22) |
 | A5 | 2026-09-25 | **Name generator** for agent display names, so Marc doesn't have to name each agent. | `src/domain/names.ts` |
 | A6 | 2026-09-25 | **Task strikes**, a counter separate from KPI strikes. A Security City department has agents deployed to each city. Caught not doing a task = 1 task strike. Every 3 = a jail term: 6 hours, then 24 hours, then 3 days; the 4th time = jailed awaiting deletion. Terms end on their own. Task strikes reset after each term; the term level never resets. | `security.task_strike`, `agent.deployed` |
 | A7 | 2026-09-25 | **Shadows are interns**: students in the last phase before graduation, attached to the department they studied for (not to a specific agent). They learn by working alongside its graduated agents. They count in agent totals (under student, labelled intern). | `agent.interned`, `INTERN_BADGE` |
@@ -119,3 +120,32 @@ college creates a Hermes agent. Our copy of StarNet lives inside this project.
   one of the spec's eight), or from a first content line `city=… dept=… agent=… kind=…`.
 - **Creating agents:** an agent is made only by Marc (from the dashboard) or by the DM, a Mayor or the Architect
   when Marc tells them to. Never automatically.
+
+## A22 — The World Messenger; Bob builds Hermes profiles; no seeding
+
+Marc (2026-09-26): "DM is being replaced by World Messenger but Bob will be the one to create the Hermes profile
+and memory bank". Asked to confirm: the World Messenger is the same job under a new name, renamed everywhere;
+when Bob builds a profile, the Messenger records it; and "Start fresh, I will create the cities and departments
+one by one", with no seeding.
+
+- **The World Messenger.** The District Messenger (DM) is now the **World Messenger**. The job is the same:
+  Marc's messenger to and from all cities, routing his requests, writing world events, reading every city. The
+  name changed everywhere: the dashboard, the docs, the Constitution and the ledger.
+  - Ledger role `dm` → `messenger`; event `dm.routed` → `messenger.routed`; the bot's profile `dm` → `messenger`.
+  - Marc's own requests are recorded as `marc-as-messenger` (was `marc-as-dm`).
+  - Webhook settings `DM_WEBHOOK_URL` / `DM_WEBHOOK_SECRET` → `MESSENGER_WEBHOOK_URL` /
+    `MESSENGER_WEBHOOK_SECRET`.
+  - "DM" and "District Messenger" in the brief, the shared-memory spec, the SOUL examples and A1–A21 now mean
+    the World Messenger. Those source documents keep their original wording.
+  - A ledger written before A22 keeps the old names forever (it is never rewritten), so this build refuses it
+    with a clear message. The world starts a fresh ledger.
+- **Bob builds agents' Hermes profiles.** When Marc creates an agent (from the dashboard, or by instruction), Bob
+  the Architect builds its Hermes profile and private memory bank. Bob stays read-only on the ledger: the World
+  Messenger records in the ledger that the profile was built. (That ledger event comes with the Hermes link,
+  which waits on the Hermes API server details.)
+- **No seeding.** The real world starts empty. Marc creates every city himself from the dashboard (A4's five
+  cities are no longer created automatically) and ratifies Constitution 1.0.0 on the Constitution page.
+  `npm run seed` and `config/seed.json` are removed.
+
+Enforced in: `ROLES` in `src/domain/model.ts`, `src/ledger/catalog.ts`, `src/ledger/schema.sql`,
+`src/ledger/ledger.ts` (refuses a pre-A22 ledger), `src/auth/profiles.ts`, `src/server/messengerWebhook.ts`.

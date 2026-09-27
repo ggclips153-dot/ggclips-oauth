@@ -1,7 +1,7 @@
 // Build a DEMO world in data/demo.db so the dashboard can be tried safely. Never touches the real
-// ledger (data/world.db). Every event goes through the real path: Marc intent -> DM routes -> fact.
+// ledger (data/world.db). Every event goes through the real path: Marc intent -> World Messenger routes -> fact.
 //   npm run demo
-//   WORLD_DB=data/demo.db npm start
+//   npm run demo:start
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { AppendInput, Profile } from '../src/ledger/guard.ts';
@@ -21,13 +21,13 @@ let shift: number | null = null;
 const ledger = new Ledger({ path, now: () => new Date(shift ?? Date.now()) });
 
 const marc: Profile = { id: 'marc', role: 'owner', writeScope: ['*'] };
-const dm: Profile = { id: 'dm', role: 'dm', writeScope: ['*'] };
+const messenger: Profile = { id: 'messenger', role: 'messenger', writeScope: ['*'] };
 const mayor = (city: string): Profile => ({ id: `mayor-${city}`, role: 'mayor', writeScope: [city] });
 const persona = { voice: 'warm, concise', temperament: 'steady' };
 
 const intent = (type: string, city: string, payload: Record<string, unknown>) => {
   const e = ledger.append(marc, { type: `intent.${type}`, city, payload });
-  ledger.append(dm, { type: 'dm.routed', city, payload: { intentSeq: e.seq, to: `mayor:${city}` } });
+  ledger.append(messenger, { type: 'messenger.routed', city, payload: { intentSeq: e.seq, to: `mayor:${city}` } });
   return e;
 };
 const fact = (by: Profile, input: AppendInput) => ledger.append(by, input);
@@ -35,7 +35,7 @@ const fact = (by: Profile, input: AppendInput) => ledger.append(by, input);
 function city(name: string, family: string, mayorName: string) {
   const payload = { name, family, mayorName };
   const i = intent('create_city', 'WORLD', payload);
-  return fact(dm, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }).subject!;
+  return fact(messenger, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }).subject!;
 }
 function district(c: string, name: string, supervisor: string) {
   const payload = { name, supervisor };
@@ -199,12 +199,12 @@ const report = fact(mayor(reception), {
 });
 fact(mayor(security), { type: 'security.escalated', city: security, payload: { reportSeq: report.seq, summary: 'Intake student idle for 3 days' } });
 
-// ---- World Constitution: 1.0.0 ratified; open proposals from Innovations, Security and Bob (via the DM) ----
+// ---- World Constitution: 1.0.0 ratified; open proposals from Innovations, Security and Bob (via the World Messenger) ----
 const doc = readConstitution();
 if (doc) {
   const payload = { version: '1.0.0', docRef: CONSTITUTION_DOC_REF, sha256: doc.sha256, summary: 'First World Constitution: the brief and ratified amendments A1-A18.' };
   const i = intent('amend_constitution', 'WORLD', payload);
-  fact(dm, { type: 'constitution.amended', city: 'WORLD', payload, authorizedBy: i.seq });
+  fact(messenger, { type: 'constitution.amended', city: 'WORLD', payload, authorizedBy: i.seq });
 }
 fact(mayor(innovations), {
   type: 'constitution.proposed',
@@ -226,7 +226,7 @@ fact(mayor(security), {
     text: 'Add to Article V.3: Security reviews every quarantined note within 24 hours and brings anything unresolved to Marc.',
   },
 });
-fact(dm, {
+fact(messenger, {
   type: 'constitution.proposed',
   city: 'WORLD',
   payload: {

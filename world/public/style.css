@@ -410,9 +410,6 @@ pre.pointer, pre.proposal-text { white-space: pre-wrap; word-break: break-word; 
 .c3d-picker select { pointer-events: auto; border-radius: 999px; padding: 6px 10px; font-size: 13px; background: var(--surface); color: var(--ink); border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); }
 .c3d-dept button.c3d-dept-name { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .c3d-dept.current { border-left: 3px solid var(--accent); padding-left: 8px; }
-.dm-banner { border-color: var(--warning); border-left-width: 4px; }
-.dm-banner h3 { margin: 0 0 4px; }
-.dm-banner p { margin: 4px 0; }
 .demo-chip { margin-right: 4px; }
 .jumps { display: flex; flex-wrap: wrap; gap: 8px; }
 .page-head .dept-jump { margin-top: 0; }

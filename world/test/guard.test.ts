@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { TestWorld, bob, dm, mayorOf, owner, persona } from './helpers.ts';
+import { TestWorld, bob, mayorOf, messenger, owner, persona } from './helpers.ts';
 
 describe('write-guard: who may write what', () => {
   it('the dashboard (owner) writes intents only, never facts', () => {
@@ -31,7 +31,7 @@ describe('write-guard: who may write what', () => {
     const city = w.city();
     assert.throws(() => w.ledger.append(mayorOf(city), { type: 'world.kpi_rollup', city: 'WORLD', payload: {} }), /may not write/);
     const i = w.ledger.append(owner, { type: 'intent.message_mayor', city, payload: { text: 'hi' } });
-    assert.throws(() => w.ledger.append(mayorOf(city), { type: 'dm.routed', city, payload: { intentSeq: i.seq, to: 'x' } }), /may not write/);
+    assert.throws(() => w.ledger.append(mayorOf(city), { type: 'messenger.routed', city, payload: { intentSeq: i.seq, to: 'x' } }), /may not write/);
   });
 
   it('rejects unknown event types and unknown payload fields', () => {
@@ -59,7 +59,7 @@ describe('write-guard: who may write what', () => {
   });
 });
 
-describe('write-guard: mayor + owner executed (via DM), never self-initiated', () => {
+describe('write-guard: mayor + owner executed (via the World Messenger), never self-initiated', () => {
   it('lifecycle facts without an authorizing intent are rejected', () => {
     const w = new TestWorld();
     const city = w.city();
@@ -69,11 +69,11 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     assert.throws(() => w.ledger.append(mayorOf(city), { type: 'agent.promoted', city, subject: id, payload: { to: 'active' } }), /must cite an owner intent/);
   });
 
-  it('an intent the DM has not routed authorizes nothing', () => {
+  it('an intent the World Messenger has not routed authorizes nothing', () => {
     const w = new TestWorld();
     const payload = { name: 'X', family: 'revenue', mayorName: 'M' };
     const i = w.ledger.append(owner, { type: 'intent.create_city', city: 'WORLD', payload });
-    assert.throws(() => w.ledger.append(dm, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }), /not been routed/);
+    assert.throws(() => w.ledger.append(messenger,{ type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }), /not been routed/);
   });
 
   it('an intent is fulfilled once and must match exactly', () => {
@@ -81,11 +81,11 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     const payload = { name: 'X', family: 'revenue', mayorName: 'M' };
     const i = w.intent('create_city', 'WORLD', payload);
     assert.throws(
-      () => w.ledger.append(dm, { type: 'city.created', city: 'WORLD', payload: { ...payload, family: 'claude' }, authorizedBy: i.seq }),
+      () => w.ledger.append(messenger,{ type: 'city.created', city: 'WORLD', payload: { ...payload, family: 'claude' }, authorizedBy: i.seq }),
       /does not match/,
     );
-    w.ledger.append(dm, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq });
-    assert.throws(() => w.ledger.append(dm, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }), /already been fulfilled/);
+    w.ledger.append(messenger,{ type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq });
+    assert.throws(() => w.ledger.append(messenger,{ type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }), /already been fulfilled/);
   });
 
   it('an intent for one agent cannot promote another', () => {
@@ -100,14 +100,14 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     assert.throws(() => w.ledger.append(mayorOf(city), { type: 'agent.promoted', city, subject: b, payload: { to: 'active' }, authorizedBy: i.seq }), /is for agent/);
   });
 
-  it('the DM routes each intent once, under the intent\'s own city tag', () => {
+  it('the World Messenger routes each intent once, under the intent\'s own city tag', () => {
     const w = new TestWorld();
     const a = w.city('A City');
     const b = w.city('B City');
     const i = w.ledger.append(owner, { type: 'intent.message_mayor', city: a, payload: { text: 'status?' } });
-    assert.throws(() => w.ledger.append(dm, { type: 'dm.routed', city: b, payload: { intentSeq: i.seq, to: 'mayor' } }), /must match intent/);
-    w.ledger.append(dm, { type: 'dm.routed', city: a, payload: { intentSeq: i.seq, to: 'mayor' } });
-    assert.throws(() => w.ledger.append(dm, { type: 'dm.routed', city: a, payload: { intentSeq: i.seq, to: 'mayor' } }), /already routed/);
+    assert.throws(() => w.ledger.append(messenger,{ type: 'messenger.routed', city: b, payload: { intentSeq: i.seq, to: 'mayor' } }), /must match intent/);
+    w.ledger.append(messenger,{ type: 'messenger.routed', city: a, payload: { intentSeq: i.seq, to: 'mayor' } });
+    assert.throws(() => w.ledger.append(messenger,{ type: 'messenger.routed', city: a, payload: { intentSeq: i.seq, to: 'mayor' } }), /already routed/);
   });
 
   it('initial districts are authorized by the city\'s creation intent', () => {
@@ -146,8 +146,9 @@ describe('write-guard: mayor + owner executed (via DM), never self-initiated', (
     const rec = w.state.agents.get(id)!;
     assert.deepEqual([rec.state, rec.badges], ['student', ['intern']]);
     assert.equal(w.state.cityAgentCounts(city).student, 1, 'interns count under student');
-    // Neither Marc nor the DM can appoint it; nor can another city's Mayor.
+    // Neither Marc nor the World Messenger can appoint it; nor can another city's Mayor.
     assert.throws(() => w.ledger.append(owner, { type: 'agent.graduated', city, subject: id, payload: {} }), /may not write/);
+    assert.throws(() => w.ledger.append(messenger, { type: 'agent.graduated', city, subject: id, payload: {} }), /may not write/);
     assert.throws(() => w.ledger.append(mayorOf('elsewhere'), { type: 'agent.graduated', city, subject: id, payload: {} }), /outside .* write scope/);
     // A professor must judge it fit first.
     assert.throws(() => w.fact(mayor, { type: 'agent.graduated', city, subject: id, payload: {} }), /passed exam/);

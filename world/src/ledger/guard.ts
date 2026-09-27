@@ -24,7 +24,7 @@ import {
 export interface Profile {
   id: string;
   role: Role;
-  /** City tags this profile may write. '*' = any (owner intents, DM). Mayor = exactly its own city. */
+  /** City tags this profile may write. '*' = any (owner intents, World Messenger). Mayor = exactly its own city. */
   writeScope: readonly string[];
   label?: string;
 }
@@ -57,7 +57,7 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
 
   const spec = specFor(String(input.type)) ?? invalid(`unknown event type: ${input.type}`);
   if (!spec.writers.includes(profile.role)) {
-    forbid(`${profile.role} may not write ${input.type}${spec.kind === 'fact' && profile.role === 'owner' ? ' (the dashboard writes intents; the DM routes them)' : ''}`);
+    forbid(`${profile.role} may not write ${input.type}${spec.kind === 'fact' && profile.role === 'owner' ? ' (the dashboard writes intents; the World Messenger routes them)' : ''}`);
   }
 
   const city = typeof input.city === 'string' ? input.city.trim() : invalid('city tag is required');
@@ -66,7 +66,7 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
   if (spec.scope === 'world' && city !== WORLD_TAG) invalid(`${input.type} is a world event; city tag must be ${WORLD_TAG}`);
   if (spec.scope === 'city' && !state.cities.has(city)) notFound(`unknown city: ${city}`);
   if (spec.scope === 'proposal') {
-    if (profile.role === 'dm' && city !== WORLD_TAG) invalid(`the DM records Bob's proposals under ${WORLD_TAG}`);
+    if (profile.role === 'messenger' && city !== WORLD_TAG) invalid(`the World Messenger records Bob's proposals under ${WORLD_TAG}`);
     if (profile.role === 'mayor') {
       const family = state.cities.get(city)?.family ?? notFound(`unknown city: ${city}`);
       if (!CROSS_CITY_READ_FAMILIES.includes(family)) forbid('only Innovations, Security (Essentials) and Bob may propose a Constitution amendment');
@@ -100,11 +100,11 @@ export function checkWrite(state: WorldState, profile: Profile, input: AppendInp
   if (spec.authorizedBy) {
     const seq = input.authorizedBy;
     if (typeof seq !== 'number' || !Number.isInteger(seq)) {
-      forbid(`${input.type} must cite an owner intent routed by the DM (authorizedBy); never self-initiated`);
+      forbid(`${input.type} must cite an owner intent routed by the World Messenger (authorizedBy); never self-initiated`);
     }
     intent = state.intents.get(seq as number) ?? notFound(`intent #${seq} not found`);
     if (!spec.authorizedBy.includes(intent.type)) forbid(`intent #${seq} (${intent.type}) cannot authorize ${input.type}`);
-    if (!state.routed.has(intent.seq)) forbid(`intent #${seq} has not been routed by the DM`);
+    if (!state.routed.has(intent.seq)) forbid(`intent #${seq} has not been routed by the World Messenger`);
     // A city's creation intent (tagged WORLD) also authorizes that new city's initial districts.
     const initialDistrict = input.type === 'district.created' && intent.type === 'intent.create_city';
     if (!initialDistrict && intent.city !== city) forbid(`intent #${seq} is for ${intent.city}, not ${city}`);
@@ -289,7 +289,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
   if (isSocial(d.type)) return checkSocial(state, d, intent, now, match);
 
   switch (d.type) {
-    // ---- intents: early checks so Marc sees mistakes before the DM routes them ----
+    // ---- intents: early checks so Marc sees mistakes before the World Messenger routes them ----
     case 'intent.create_city': {
       familyHasRoom();
       const list = p.initialDistricts;
@@ -389,10 +389,10 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       departmentIn(p.departmentId, d.city);
       break;
 
-    // ---- DM ----
-    case 'dm.routed': {
+    // ---- World Messenger ----
+    case 'messenger.routed': {
       const target = state.intents.get(p.intentSeq) ?? notFound(`intent #${p.intentSeq} not found`);
-      if (target.city !== d.city) forbid(`dm.routed city tag must match intent #${target.seq} (${target.city})`);
+      if (target.city !== d.city) forbid(`messenger.routed city tag must match intent #${target.seq} (${target.city})`);
       if (state.routed.has(target.seq)) conflict(`intent #${target.seq} is already routed`);
       break;
     }
@@ -418,7 +418,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       openProposal(p.proposalSeq);
       break;
     case 'constitution.proposed': {
-      if (d.city === WORLD_TAG && p.proposer.toLowerCase() !== 'bob') forbid('under WORLD, the DM records only Bob\'s proposals');
+      if (d.city === WORLD_TAG && p.proposer.toLowerCase() !== 'bob') forbid('under WORLD, the World Messenger records only Bob\'s proposals');
       const soft = softeningIn(`${p.title}\n${p.rationale}\n${p.text}`);
       if (soft.length) forbid(`out of order: the proposal softens the inviolable floor (${soft[0]!.why})`);
       break;

@@ -2,23 +2,23 @@ import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { Profiles } from '../auth/profiles.ts';
+import { Profiles, hashToken, newToken } from '../auth/profiles.ts';
 import { Secrets } from '../auth/secrets.ts';
-import { Users } from '../auth/users.ts';
+import { Users, hashPassword } from '../auth/users.ts';
 import { Ledger } from '../ledger/ledger.ts';
 import { createApp } from './app.ts';
 import { buildId } from './build.ts';
 import { MediaStore } from '../social/media.ts';
 import { attachPublisher } from '../social/publisher.ts';
 import { attachDemoAutopilot } from './demoAutopilot.ts';
-import { attachDmWebhook } from './dmWebhook.ts';
+import { attachMessengerWebhook } from './messengerWebhook.ts';
 import { type StarnetInfo } from './app.ts';
 import { attachStarnetBridge } from '../starnet/bridge.ts';
 import { Stations } from '../starnet/stations.ts';
 import { SurfaceFeed } from '../surface/feed.ts';
 
 const root = resolve(import.meta.dirname, '../..');
-// `--demo`: the sample world in data/demo.db, with the demo DM/Mayor stand-in, for trying things locally.
+// `--demo`: the sample world in data/demo.db, with the demo Messenger/Mayor stand-in, for trying things locally.
 const demo = process.argv.includes('--demo');
 const dbPath = resolve(root, demo ? 'data/demo.db' : (process.env.WORLD_DB ?? 'data/world.db'));
 const profilesPath = resolve(root, process.env.WORLD_PROFILES ?? 'config/profiles.json');
@@ -27,30 +27,51 @@ const port = Number(process.env.WORLD_PORT ?? 8787);
 const host = process.env.WORLD_HOST ?? '127.0.0.1';
 
 mkdirSync(dirname(dbPath), { recursive: true });
-const ledger = new Ledger({ path: dbPath });
+const ledger = (() => {
+  try {
+    return new Ledger({ path: dbPath });
+  } catch (err) {
+    console.error(`Refusing to start: ${(err as Error).message}`);
+    process.exit(1);
+  }
+})();
 const integrity = ledger.verify();
 if (!integrity.ok) {
   console.error(`LEDGER INTEGRITY FAILURE at seq ${integrity.brokenAt}: ${integrity.reason}. Refusing to start.`);
   process.exit(1);
 }
 
-const profiles = Profiles.load(profilesPath);
+// The demo world has its own sign-in, kept in memory (marc / demo-password-123). It never reads or writes the real
+// world's logins or secrets, so neither the demo's published password nor a real bot token crosses over.
+const DEMO_PASSWORD = 'demo-password-123';
+const profiles = demo
+  ? new Profiles([{ id: 'marc', role: 'owner', label: 'Marc', writeScope: ['*'], tokenSha256: hashToken(newToken()) }])
+  : Profiles.load(profilesPath);
 if (profiles.size === 0) console.warn(`No profiles in ${profilesPath}. Create one with: npm run profile -- add ...`);
 
-// Demo data never reaches the real District Messenger.
-if (!demo && process.env.DM_WEBHOOK_URL) {
-  if (!process.env.DM_WEBHOOK_SECRET) throw new Error('DM_WEBHOOK_SECRET is required with DM_WEBHOOK_URL');
-  attachDmWebhook(ledger, { url: process.env.DM_WEBHOOK_URL, secret: process.env.DM_WEBHOOK_SECRET });
+// A22: the District Messenger is now the World Messenger, and its settings were renamed with it.
+for (const old of ['DM_WEBHOOK_URL', 'DM_WEBHOOK_SECRET']) {
+  if (process.env[old]) {
+    console.error(`Refusing to start: ${old} is now called ${old.replace('DM_', 'MESSENGER_')} (A22: the World Messenger).`);
+    process.exit(1);
+  }
+}
+// Demo data never reaches the real World Messenger.
+if (!demo && process.env.MESSENGER_WEBHOOK_URL) {
+  if (!process.env.MESSENGER_WEBHOOK_SECRET) throw new Error('MESSENGER_WEBHOOK_SECRET is required with MESSENGER_WEBHOOK_URL');
+  attachMessengerWebhook(ledger, { url: process.env.MESSENGER_WEBHOOK_URL, secret: process.env.MESSENGER_WEBHOOK_SECRET });
 }
 
-const users = Users.load(resolve(root, process.env.WORLD_USERS ?? 'config/users.json'));
+const users = demo
+  ? new Users([{ username: 'marc', profileId: 'marc', ...hashPassword(DEMO_PASSWORD) }])
+  : Users.load(resolve(root, process.env.WORLD_USERS ?? 'config/users.json'));
 if (users.size === 0) console.warn('No dashboard logins yet. Create one with: npm run user -- add --username marc --profile marc');
 
 // StarNet (A20): one station per city, run from StarNet's source. Set STARNET_DIR to that folder.
 const starnetEvents = new EventEmitter();
 let starnet: StarnetInfo = { events: starnetEvents, view: () => ({ enabled: false, reason: 'STARNET_DIR is not set' }) };
 let starnetHandles = (_city: string) => false;
-const starnetDir = process.env.STARNET_DIR?.replace(/^~(?=$|\/)/, homedir());
+const starnetDir = process.env.STARNET_DIR?.replace(/^~(?=$|[\\/])/, homedir());
 if (starnetDir) {
   const problem = Stations.check(resolve(starnetDir));
   if (problem) {
@@ -115,7 +136,7 @@ if (demo) attachDemoAutopilot(ledger, dbPath, undefined, { starnetHandles: (city
 const media = new MediaStore(resolve(root, 'data/media'));
 attachPublisher(ledger, [], { mediaPath: (ref) => media.path(ref.replace(/^media\//, '')) });
 
-// Pick up events written by other processes (e.g. `npm run seed` while the server is running).
+// Pick up events written by other processes (e.g. a script run while the server is running).
 setInterval(() => {
   try {
     ledger.sync();
@@ -126,7 +147,7 @@ setInterval(() => {
 
 createApp(ledger, profiles, {
   users,
-  secrets: new Secrets(resolve(root, process.env.WORLD_SECRETS ?? 'config/secrets.json')),
+  secrets: new Secrets(demo ? null : resolve(root, process.env.WORLD_SECRETS ?? 'config/secrets.json')),
   cookieSecure: !demo && process.env.WORLD_COOKIE_SECURE !== '0',
   trustProxy: process.env.WORLD_TRUST_PROXY === '1',
   demo,
@@ -136,4 +157,5 @@ createApp(ledger, profiles, {
 }).listen(port, host, () => {
   console.log(`World ledger: ${integrity.count} events verified. Listening on http://${host}:${port}`);
   console.log(`Build ${buildId(root)} · serving ${root}`);
+  if (demo) console.log(`Demo sign-in: marc / ${DEMO_PASSWORD}`);
 });

@@ -1,10 +1,11 @@
 // Manage API profiles. Tokens are printed ONCE and stored only as sha256.
 //   npm run profile -- add --id marc --role owner
-//   npm run profile -- add --id dm --role dm
+//   npm run profile -- add --id messenger --role messenger       (the World Messenger)
 //   npm run profile -- add --id bob --role architect
-//   npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
+//   npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city   (after the city exists)
 //   npm run profile -- add --id hermes-gateway --role gateway   (shared-surface guard only)
 //   npm run profile -- list
+// On Windows PowerShell, type npm.cmd instead of npm (plain npm there can drop the `--`).
 import { existsSync, readFileSync } from 'node:fs';
 import { writePrivateJson } from '../src/auth/files.ts';
 import { resolve } from 'node:path';
@@ -36,5 +37,5 @@ switch (positionals[0]) {
     break;
   }
   default:
-    console.log('usage: profile add --id <id> --role owner|dm|mayor|architect [--city <cityId>] | profile list');
+    console.log('usage: profile add --id <id> --role owner|messenger|mayor|architect|gateway [--city <cityId>] | profile list');
 }

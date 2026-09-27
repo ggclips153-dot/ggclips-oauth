@@ -1,5 +1,5 @@
 // Read-side: what each profile may see, and the dashboard's view of the projection.
-// Marc, the DM and Bob read across cities. Mayors of Essentials cities (Innovations, Security)
+// Marc, the World Messenger and Bob read across cities. Mayors of Essentials cities (Innovations, Security)
 // also read every city but still write only their own. Any other Mayor reads only its own city.
 import { CROSS_CITY_READ_FAMILIES } from './model.ts';
 import { socialView } from '../social/view.ts';

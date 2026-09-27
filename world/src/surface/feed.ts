@@ -104,8 +104,8 @@ export class SurfaceFeed {
   }
 
   /**
-   * What a reader may see, per the spec's matrix: Marc, the DM and the Architect ('*') see every city and WORLD;
-   * a Mayor sees its own city and WORLD, never another city.
+   * What a reader may see, per the spec's matrix: Marc, the World Messenger and the Architect ('*') see every city
+   * and WORLD; a Mayor sees its own city and WORLD, never another city.
    */
   view(scope: string, known: (id: string) => boolean) {
     const notes = [...this.notes.values()]
