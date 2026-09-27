@@ -280,6 +280,13 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (isJailed(obs, now)) conflict(`observer ${obs.id} is in jail`);
     return obs;
   };
+  /** A Security strike report and the agent it is about (A22). */
+  const reportOf = (seq: unknown) => {
+    const agentId = state.reportAgent.get(Number(seq)) ?? notFound(`strike report #${seq} not found`);
+    const a = state.agents.get(agentId)!;
+    if (a.deleted) conflict(`agent ${a.id} is deleted`);
+    return { agent: a, report: a.reports.find((r) => r.seq === Number(seq))! };
+  };
   const deanIn = (id: unknown, city: string) => {
     const dean = state.deanOf(city);
     if (!dean || dean.id !== String(id)) notFound(`${id} is not the dean of ${city}`);
@@ -321,9 +328,13 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       departmentIn(p.departmentId, d.city);
       break;
     case 'intent.promote_agent':
-    case 'intent.delete_agent':
       agentIn(p.agentId, d.city);
       break;
+    case 'intent.delete_agent': {
+      const a = agentIn(p.agentId, d.city);
+      if (p.confirmAgentId !== a.id) invalid(`type the agent's ID (${a.id}) exactly to confirm the deletion`);
+      break;
+    }
     // ---- In-world economy (A18) ----
     case 'work.deliverable': {
       agentIn(p.agentId, d.city);
@@ -521,9 +532,50 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       const prof = state.agents.get(String(p.professorId));
       if (!prof || prof.role !== 'professor' || prof.deleted) return notFound(`unknown professor: ${p.professorId}`);
       deployedObserver(p.observedBy, prof.cityId, prof.id);
-      if (prof.strikes >= MAX_STRIKES) conflict(`professor ${prof.id} already has ${MAX_STRIKES} teaching strikes and awaits deletion`);
+      if (isJailed(prof, now)) conflict(`professor ${prof.id} is in jail`);
       break;
     }
+    // ---- A22: World HQ confirms or dismisses Security's reports; Marc voids, releases, evicts ----
+    case 'hq.strike_confirmed':
+    case 'hq.strike_dismissed': {
+      const r = reportOf(p.strikeSeq);
+      if (r.report.status !== 'pending') conflict(`strike report #${r.report.seq} is already ${r.report.status}`);
+      if (d.type === 'hq.strike_confirmed' && isJailed(r.agent, now)) {
+        conflict(`${r.agent.id} is in jail; a strike can't count while it is inside (dismiss it, or confirm it after release)`);
+      }
+      break;
+    }
+    case 'intent.void_strike':
+    case 'strike.voided': {
+      if (d.type === 'strike.voided') match(['strikeSeq', 'reason']);
+      const r = reportOf(p.strikeSeq);
+      if (r.report.status === 'voided' || r.report.status === 'dismissed') conflict(`strike report #${r.report.seq} is already ${r.report.status}`);
+      break;
+    }
+    case 'intent.release_agent':
+    case 'agent.released': {
+      const a = d.type === 'agent.released' ? agent! : agentIn(p.agentId, d.city);
+      if (d.type === 'agent.released') {
+        if (ip.agentId !== a.id) forbid(`intent #${intent!.seq} is for ${ip.agentId}, not ${a.id}`);
+        match(['reason']);
+      }
+      if (!isJailed(a, now)) conflict(`${a.id} is not in jail`);
+      break;
+    }
+    case 'intent.evict_agent':
+    case 'agent.evicted': {
+      const a = d.type === 'agent.evicted' ? agent! : agentIn(p.agentId, d.city);
+      if (d.type === 'intent.evict_agent' && p.confirmAgentId !== a.id) invalid(`type the agent's ID (${a.id}) exactly to confirm the eviction`);
+      if (d.type === 'agent.evicted') {
+        if (ip.agentId !== a.id) forbid(`intent #${intent!.seq} is for ${ip.agentId}, not ${a.id}`);
+        match(['reason']);
+      }
+      if (isJailed(a, now) && a.jail!.status === 'awaiting_deletion') conflict(`${a.id} is already held awaiting deletion`);
+      break;
+    }
+    case 'hq.deletion_record':
+      if (!isJailed(agent!, now) || agent!.jail!.status !== 'awaiting_deletion') conflict(`${agent!.id} is not held awaiting deletion`);
+      break;
     case 'intent.create_dean':
     case 'dean.appointed':
       if (d.type === 'dean.appointed') match(['name', 'persona', 'domainFocus']);
@@ -638,9 +690,8 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} records task strikes`);
       const a = state.agents.get(String(p.agentId)) ?? notFound(`unknown agent: ${p.agentId}`);
       if (a.deleted) conflict(`agent ${a.id} is deleted`);
-      // Professors take only teaching strikes (A15); the Mayor judges deans.
-      if (a.role !== 'agent') forbid(`${a.id} is a ${a.role}; Security applies task strikes to department agents only`);
-      if (a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet; it has no tasks`);
+      // A22: agents, professors and deans can all be struck (Bob and the DM are not agents of any city).
+      if (a.role === 'agent' && a.state === 'enrolled') conflict(`agent ${a.id} is not placed yet; it has no tasks`);
       deployedObserver(p.observedBy, a.cityId, a.id);
       break;
     }
@@ -654,11 +705,15 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       if (!canMissKpi(agent!)) conflict(`agent ${agent!.id} is ${agent!.state}; only graduated department agents can miss KPI; professors take teaching strikes`);
       if (agent!.strikes !== MAX_STRIKES - 1) conflict(`3rd strike requires ${MAX_STRIKES - 1} prior strikes (agent has ${agent!.strikes})`);
       break;
-    case 'agent.deleted':
+    case 'agent.deleted': {
       intentAgent();
       if (!isJailed(agent!, now) || agent!.jail!.status !== 'awaiting_deletion') {
-        conflict(`deletion only for an agent jailed awaiting deletion (3rd KPI strike, or 4th task-strike jailing)`);
+        conflict(`deletion only for an agent jailed awaiting deletion (3rd KPI strike, 4th task-strike or 3rd teaching-strike jailing, or eviction)`);
       }
+      // A22: World HQ's supervisor archives the ledger and writes the lesson record first; Marc reviews it.
+      const rec = agent!.deletionRecord ?? conflict(`World HQ has not written ${agent!.id}'s archive and lesson record yet`);
+      if (p.ledgerArchiveRef !== rec.ledgerArchiveRef || p.lessonRecordRef !== rec.lessonRecordRef) forbid('the deletion must use World HQ\'s archive and lesson record');
       break;
+    }
   }
 }

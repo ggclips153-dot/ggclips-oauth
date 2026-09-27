@@ -119,3 +119,36 @@ college creates a Hermes agent. Our copy of StarNet lives inside this project.
   one of the spec's eight), or from a first content line `city=… dept=… agent=… kind=…`.
 - **Creating agents:** an agent is made only by Marc (from the dashboard) or by the DM, a Mayor or the Architect
   when Marc tells them to. Never automatically.
+
+## A22 — World HQ confirms strikes; voids, early release, eviction; clean time; everyone can be jailed
+
+Marc (2026-09-27), answering the jail questions:
+- "1. Yes" (voids and early release)
+- "2. yes after a reasonable amount of time" (chosen: 60 days per step)
+- "3. No HQ should confirm"
+- "4. All agents can be struck or sent to Jail except for Bob and World Messenger"
+- "5. 3 teaching strikes will lead to jail 3 times in jail will face deletion" (chosen: 6h, then 24h)
+- "6. HQ supervisor, yes ask me first"
+- "7. Yes, make me type their agent id as a form of 2 factor authentication"
+- "HQ" = a new **World HQ** (chosen).
+
+The rules:
+- **World HQ:** a world-level office with its own supervisor (ledger role `hq`, reads every city). Security's
+  strikes (task and teaching) are **reports**; they count only once **World HQ confirms** them. HQ may also
+  dismiss a report. Nobody else confirms.
+- **Voids:** Marc can **void** any report, pending or confirmed. The jail is worked out again without it; a term
+  it caused ends.
+- **Early release:** Marc can **release** anyone from jail. From a 3rd-KPI-strike hold, the agent goes back with
+  one KPI chance left.
+- **Clean time:** each **60 strike-free days** lowers a jail level by one step, down to zero.
+- **Who can be struck:** every agent of a city can take task strikes and be jailed: department agents,
+  **professors** and **deans**. Bob and the DM can't. Professors' **teaching strikes**: every 3 confirmed is a term
+  (6h, then 24h); the 3rd jailing = awaiting deletion.
+- **Mayors:** also to be strikeable per Marc. **Not built yet**; questions are open (see `docs/JAIL-SYSTEM.md`
+  §13).
+- **Eviction:** Marc can **evict** an agent before a 3rd strike by typing its **agent ID**. It is held in jail
+  awaiting deletion.
+- **Deletion:** needs **World HQ's supervisor's archive and lesson record** first. Marc **reviews it**, then
+  deletes by **typing the agent's ID**.
+- **Older ledgers:** they are upgraded on start to accept HQ's writes. Every entry is copied unchanged, so the
+  hash chain stays intact.

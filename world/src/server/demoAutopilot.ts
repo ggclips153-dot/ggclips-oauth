@@ -44,6 +44,20 @@ export function attachDemoAutopilot(ledger: Ledger, dbPath: string, log = (m: st
         });
       }
     }
+    // An agent held for deletion: the demo World HQ writes its archive and lesson record, so Marc can review and delete.
+    const held = (e.subject && ledger.state.agents.get(e.subject)) || (e.type.startsWith('hq.strike') ? ledger.state.agents.get(ledger.state.reportAgent.get(p.strikeSeq) ?? '') : undefined);
+    if (held && held.jail?.status === 'awaiting_deletion' && !held.deletionRecord && e.type !== 'hq.deletion_record') {
+      later(1500, `lesson record for ${held.id}`, () => {
+        const a = ledger.state.agents.get(held.id);
+        if (!a || a.deleted || a.deletionRecord || a.jail?.status !== 'awaiting_deletion') return;
+        ledger.append({ id: 'hq-demo', role: 'hq', writeScope: ['*'] }, {
+          type: 'hq.deletion_record',
+          city: a.cityId,
+          subject: a.id,
+          payload: { ledgerArchiveRef: `archive/${a.id}/ledger`, lessonRecordRef: `lessons/${a.id}.md`, summary: `(Demo) ${a.name}: held for ${a.jail.cause.replace('_', ' ')}. Ledger archived; lesson: say what went wrong, what was tried, and what the replacement should do first.` },
+        });
+      });
+    }
     if (e.kind !== 'intent') return;
     // Run after the current append has finished.
     setImmediate(() => {

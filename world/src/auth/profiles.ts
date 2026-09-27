@@ -22,6 +22,7 @@ export function checkProfile(p: ProfileRecord): ProfileRecord {
   switch (p.role) {
     case 'owner':
     case 'dm':
+    case 'hq':
       if (scope.length !== 1 || scope[0] !== '*') throw new Error(`${where}: ${p.role} writeScope must be ["*"]`);
       break;
     case 'mayor':

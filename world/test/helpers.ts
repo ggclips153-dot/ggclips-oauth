@@ -6,6 +6,7 @@ export const owner: Profile = { id: 'marc', role: 'owner', writeScope: ['*'] };
 export const dm: Profile = { id: 'dm', role: 'dm', writeScope: ['*'] };
 export const bob: Profile = { id: 'bob', role: 'architect', writeScope: [] };
 export const mayorOf = (city: string): Profile => ({ id: `mayor-${city}`, role: 'mayor', writeScope: [city] });
+export const hq: Profile = { id: 'world-hq', role: 'hq', writeScope: ['*'] };
 
 export const persona = { voice: 'warm, concise', temperament: 'patient' };
 
@@ -17,6 +18,16 @@ export class TestWorld {
 
   constructor(path = ':memory:') {
     this.ledger = new Ledger({ path, now: () => this.time });
+  }
+
+  /** World HQ confirms a Security strike report (A22). */
+  hqConfirm(strikeSeq: number) {
+    return this.ledger.append(hq, { type: 'hq.strike_confirmed', city: 'WORLD', payload: { strikeSeq } });
+  }
+
+  /** World HQ's supervisor writes the archive + lesson record of an agent held for deletion (A22). */
+  hqRecord(city: string, agentId: string, ledgerArchiveRef = 'a', lessonRecordRef = 'l') {
+    return this.ledger.append(hq, { type: 'hq.deletion_record', city, subject: agentId, payload: { ledgerArchiveRef, lessonRecordRef, summary: 'lesson' } });
   }
 
   advanceHours(h: number) {

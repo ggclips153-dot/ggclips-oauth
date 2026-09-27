@@ -4,7 +4,7 @@
 import { CROSS_CITY_READ_FAMILIES } from './model.ts';
 import { socialView } from '../social/view.ts';
 import type { Profile } from '../ledger/guard.ts';
-import { isJailed, type Agent, type LedgerEvent, type WorldState } from './state.ts';
+import { isJailed, levelNow, type Agent, type LedgerEvent, type WorldState } from './state.ts';
 
 export function readScope(profile: Profile, state: WorldState): '*' | string {
   if (profile.role !== 'mayor') return '*';
@@ -21,6 +21,10 @@ export function canRead(profile: Profile, e: LedgerEvent, state: WorldState): bo
   if (e.type === 'security.task_strike') return state.agents.get(String(e.payload.agentId))?.cityId === scope;
   if (e.type === 'professor.strike') return state.agents.get(String(e.payload.professorId))?.cityId === scope;
   if (e.type === 'security.escalated') return state.deanReports.get(Number(e.payload.reportSeq))?.cityId === scope;
+  // World HQ's decisions and Marc's voids on strikes against the Mayor's own agents (A22).
+  if (['hq.strike_confirmed', 'hq.strike_dismissed', 'strike.voided'].includes(e.type)) {
+    return state.agents.get(state.reportAgent.get(Number(e.payload.strikeSeq)) ?? '')?.cityId === scope;
+  }
   return false;
 }
 
@@ -40,7 +44,13 @@ const agentView = (a: Agent) => ({
   lifecycle: a.lifecycle,
   taskStrikes: a.taskStrikes,
   jailTerms: a.jailTerms,
+  teachingStrikes: a.teachingStrikes,
+  teachingJailTerms: a.teachingJailTerms,
+  cleanSince: a.cleanSince,
+  termsServed: a.termsServed,
   jail: a.jail,
+  deletionRecord: a.deletionRecord,
+  pendingReports: a.reports.filter((r) => r.status === 'pending').length,
   deployedTo: a.deployedTo,
   lastExam: a.lastExam,
 });
@@ -65,7 +75,7 @@ function deanView(state: WorldState, dean: Agent, now: Date) {
       stillWorking: grads.filter((a) => !a.deleted && a.role === 'agent' && ['probationer', 'active', 'senior'].includes(a.state)).length,
       promotedPastProbation: grads.filter((a) => !a.deleted && (a.role !== 'agent' || ['active', 'senior'].includes(a.state))).length,
       kpiStrikes: grads.reduce((n, a) => n + a.strikes, 0),
-      jailTerms: grads.reduce((n, a) => n + a.jailTerms, 0),
+      jailTerms: grads.reduce((n, a) => n + a.termsServed, 0),
       inJailNow: grads.filter((a) => isJailed(a, now)).length,
       deleted: grads.filter((a) => a.deleted).length,
     },
@@ -125,8 +135,20 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
   // Timed terms drop off on their own once `until` passes.
   const jail = agents
     .filter((a) => isJailed(a, now) && (scope === '*' || a.cityId === scope))
-    .map((a) => ({ id: a.id, name: a.name, cityId: a.cityId, state: a.state, strikes: a.strikes, jailTerms: a.jailTerms, jail: a.jail }));
-  const taskStrikes = state.taskStrikes.filter((t) => scope === '*' || t.agentCity === scope);
+    .map((a) => ({ id: a.id, name: a.name, role: a.role, cityId: a.cityId, state: a.state, strikes: a.strikes, jailTerms: a.jailTerms, teachingJailTerms: a.teachingJailTerms, jail: a.jail, deletionRecord: a.deletionRecord, lastRelease: a.releases.at(-1) ?? null }));
+  // Security's strike reports with World HQ's decision on each (A22), and each struck agent's level today.
+  const taskStrikes = state.taskStrikes
+    .filter((t) => scope === '*' || t.agentCity === scope)
+    .map((t) => {
+      const a = state.agents.get(t.agentId);
+      const r = a?.reports.find((x) => x.seq === t.seq);
+      return { ...t, status: r?.status ?? 'pending', decided: r?.decided ?? null };
+    });
+  const jailLevels = Object.fromEntries(
+    agents
+      .filter((a) => !a.deleted && (scope === '*' || a.cityId === scope) && (a.jailTerms || a.teachingJailTerms))
+      .map((a) => [a.id, { task: levelNow(a.jailTerms, a.cleanSince.task, now), teaching: levelNow(a.teachingJailTerms, a.cleanSince.teaching, now) }]),
+  );
   // Dean reports Security has brought up to Marc: his inbox.
   const escalations = [...state.deanReports.values()].filter((r) => r.escalated && (scope === '*' || r.cityId === scope));
   // In-world economy (A18): the currency ledger, deliverables and each visible agent's account.
@@ -146,6 +168,7 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
     now: now.toISOString(),
     jail,
     taskStrikes,
+    jailLevels,
     escalations,
     economy,
     // Everyone is bound by the Constitution, so every reader sees the ratified record. Proposals come from

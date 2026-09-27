@@ -66,6 +66,7 @@ npm test                    # 110 tests
 npm run profile -- add --id marc --role owner --label Marc
 npm run profile -- add --id dm --role dm
 npm run profile -- add --id bob --role architect
+npm run profile -- add --id world-hq --role hq   # World HQ supervisor: confirms strikes, writes deletion records (A22)
 npm run seed                # the 5 cities in config/seed.json (safe to re-run)
 npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
 

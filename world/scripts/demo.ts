@@ -185,13 +185,21 @@ place(security, guard, patrol);
 graduate(security, guard, profSec);
 const d = intent('deploy_agent', security, { agentId: guard, toCity: reception });
 fact(mayor(security), { type: 'agent.deployed', city: security, subject: guard, payload: { toCity: reception }, authorizedBy: d.seq });
+// Security reports; World HQ confirms (A22). Three confirmed = a 6-hour term. A 4th report waits for HQ.
+const worldHq: Profile = { id: 'world-hq', role: 'hq', writeScope: ['*'] };
 for (let n = 0; n < 3; n++) {
-  fact(mayor(security), {
+  const r = fact(mayor(security), {
     type: 'security.task_strike',
     city: security,
     payload: { agentId: team[3], observedBy: guard, task: 'daily ledger entry', evidence: `no entry on day ${n + 1}` },
   });
+  fact(worldHq, { type: 'hq.strike_confirmed', city: 'WORLD', payload: { strikeSeq: r.seq } });
 }
+fact(mayor(security), {
+  type: 'security.task_strike',
+  city: security,
+  payload: { agentId: team[2], observedBy: guard, task: 'confirm tomorrow\'s bookings', evidence: '4 bookings unconfirmed at 18:00' },
+});
 const report = fact(mayor(reception), {
   type: 'dean.reported',
   city: reception,

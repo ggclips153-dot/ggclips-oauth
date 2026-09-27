@@ -4,6 +4,7 @@
 //   npm run profile -- add --id bob --role architect
 //   npm run profile -- add --id mayor-ai-receptionist-city --role mayor --city ai-receptionist-city
 //   npm run profile -- add --id hermes-gateway --role gateway   (shared-surface guard only)
+//   npm run profile -- add --id world-hq --role hq               (World HQ supervisor: confirms strikes, deletion records)
 //   npm run profile -- list
 import { existsSync, readFileSync } from 'node:fs';
 import { writePrivateJson } from '../src/auth/files.ts';

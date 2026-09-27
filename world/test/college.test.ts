@@ -115,34 +115,34 @@ const deployGuard = (w: TestWorld, city: string) => {
   return { security, guard };
 };
 
-describe('professor strikes (A13, A15): Security applies TEACHING strikes only', () => {
-  it('Security cannot give a professor a task strike, and a Mayor cannot miss-KPI one', () => {
+describe('professor strikes (A13, A15, A22): teaching strikes and task strikes, confirmed by World HQ', () => {
+  it('a professor can take task strikes too (A22), but a Mayor cannot miss-KPI one', () => {
     const { w, city, dept } = setup();
     const prof = w.professor(city, dept);
     const { security, guard } = deployGuard(w, city);
-    assert.throws(
-      () => w.fact(mayorOf(security), { type: 'security.task_strike', city: security, payload: { agentId: prof, observedBy: guard, task: 't', evidence: 'e' } }),
-      /department agents only/,
-    );
+    const r = w.fact(mayorOf(security), { type: 'security.task_strike', city: security, payload: { agentId: prof, observedBy: guard, task: 't', evidence: 'e' } });
+    w.hqConfirm(r.seq);
+    assert.equal(w.state.agents.get(prof)!.taskStrikes, 1);
     assert.throws(() => w.miss(city, prof), /professors take teaching strikes/);
   });
 
-  it('3 teaching strikes from a deployed Security agent = held awaiting deletion; a jailed professor cannot teach or step in', () => {
+  it('every 3 teaching strikes is a term (6h, then 24h); the 3rd jailing = awaiting deletion; a jailed professor cannot teach or step in', () => {
     const { w, city, dept } = setup();
     const prof = w.professor(city, dept);
     const { security, guard } = deployGuard(w, city);
-    const strike = (by: string = security) => () =>
+    const report = (by: string = security) =>
       w.fact(mayorOf(by), { type: 'professor.strike', city: by, payload: { professorId: prof, observedBy: guard, rule: 'exam not graded within 48h', evidence: 'exam #12 open 3 days' } });
+    const strike = () => w.hqConfirm(report().seq);
 
-    assert.throws(strike(city), /only security-city applies teaching strikes/);
-    strike()();
-    strike()();
-    const p = w.state.agents.get(prof)!;
-    assert.deepEqual([p.role, p.strikes, p.jail], ['professor', 2, null], 'keeps its post until the 3rd');
-    strike()();
-    assert.deepEqual([p.jail!.status, p.jail!.cause], ['awaiting_deletion', 'teaching_strikes']);
-    assert.ok(isJailed(p, w.time));
-    assert.throws(strike(), /awaits deletion/);
+    assert.throws(() => report(city), /only security-city applies teaching strikes/);
+    const p = () => w.state.agents.get(prof)!;
+    strike();
+    strike();
+    assert.deepEqual([p().role, p().teachingStrikes, p().jail], ['professor', 2, null], 'keeps its post until the 3rd');
+    strike();
+    assert.deepEqual([p().jail!.status, p().jail!.cause, p().jail!.term], ['serving', 'teaching_strikes', 1]);
+    assert.equal(Date.parse(p().jail!.until!) - w.time.getTime(), 6 * 3_600_000);
+    assert.throws(() => report(), /in jail/);
 
     const student = w.agent(city, dept, 'Iris');
     assert.throws(() => w.fact(mayorOf(city), { type: 'exam.graded', city, subject: student, payload: { professorId: prof, result: 'pass' } }), /in jail/);
@@ -150,7 +150,17 @@ describe('professor strikes (A13, A15): Security applies TEACHING strikes only',
       () => w.fact(mayorOf(city), { type: 'professor.stepped_in', city, payload: { professorId: prof, departmentId: dept, role: 'r', hours: 1 } }),
       /in jail/,
     );
-    const del = w.intent('delete_agent', city, { agentId: prof });
+    w.advanceHours(6);
+    assert.ok(!isJailed(p(), w.time), 'released on its own');
+    strike(); strike(); strike();
+    assert.deepEqual([p().jail!.status, p().jail!.term], ['serving', 2]);
+    assert.equal(Date.parse(p().jail!.until!) - w.time.getTime(), 24 * 3_600_000);
+    w.advanceHours(24);
+    strike(); strike(); strike();
+    assert.deepEqual([p().jail!.status, p().jail!.cause, p().jail!.term], ['awaiting_deletion', 'teaching_strikes', 3]);
+
+    w.hqRecord(city, prof);
+    const del = w.intent('delete_agent', city, { agentId: prof, confirmAgentId: prof });
     w.fact(mayorOf(city), { type: 'agent.deleted', city, subject: prof, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
     assert.equal(college(w, city).professors.length, 0);
   });

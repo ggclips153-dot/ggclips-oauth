@@ -30,8 +30,9 @@ const taskStrike = (w: TestWorld, security: string, agentId: string, observedBy:
     payload: { agentId, observedBy, task: 'daily ledger entry', evidence: 'no entry for 2026-09-24' },
   });
 
+/** Security reports, World HQ confirms (A22): only confirmed strikes count. */
 const strikes = (w: TestWorld, s: ReturnType<typeof setup>, n: number) => {
-  for (let i = 0; i < n; i++) taskStrike(w, s.security, s.agent, s.guard);
+  for (let i = 0; i < n; i++) w.hqConfirm(taskStrike(w, s.security, s.agent, s.guard).seq);
 };
 
 describe('Essentials family: cross-city READ, never edit', () => {
@@ -61,6 +62,8 @@ describe('Security: deployment and task strikes', () => {
     const e = taskStrike(s.w, s.security, s.agent, s.guard);
     assert.equal(e.city, s.security);
     const a = s.w.state.agents.get(s.agent)!;
+    assert.equal(a.taskStrikes, 0, 'a report counts only once World HQ confirms it');
+    s.w.hqConfirm(e.seq);
     assert.equal(a.taskStrikes, 1);
     assert.equal(a.strikes, 0, 'KPI strikes untouched');
     // The home Mayor sees the strike against its own agent; another revenue Mayor does not.
@@ -132,8 +135,9 @@ describe('Security jail: 3 task strikes = a term; 6h, 24h, 3 days, then deletion
     s.w.advanceHours(24 * 365);
     assert.ok(isJailed(a(), s.w.time), 'never released on its own');
 
-    // Marc decides; the home Mayor executes.
-    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent });
+    // World HQ's supervisor writes the archive and lesson record; Marc decides; the home Mayor executes.
+    s.w.hqRecord(s.city, s.agent, 'archive/a', 'lessons/a');
+    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent, confirmAgentId: s.agent });
     s.w.fact(mayorOf(s.city), {
       type: 'agent.deleted',
       city: s.city,
@@ -155,7 +159,7 @@ describe('Security jail: 3 task strikes = a term; 6h, 24h, 3 days, then deletion
 
   it('3rd KPI strike: jailed awaiting deletion; deletion impossible otherwise', () => {
     const s = setup();
-    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent });
+    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent, confirmAgentId: s.agent });
     const deleteIt = () =>
       s.w.fact(mayorOf(s.city), { type: 'agent.deleted', city: s.city, subject: s.agent, payload: { ledgerArchiveRef: 'x', lessonRecordRef: 'y' }, authorizedBy: del.seq });
     assert.throws(deleteIt, /awaiting deletion/);
@@ -171,6 +175,8 @@ describe('Security jail: 3 task strikes = a term; 6h, 24h, 3 days, then deletion
     s.w.miss(s.city, s.agent, true);
     const jail = s.w.state.agents.get(s.agent)!.jail!;
     assert.deepEqual([jail.status, jail.cause], ['awaiting_deletion', 'kpi_strikes']);
+    assert.throws(deleteIt, /World HQ has not written/);
+    s.w.hqRecord(s.city, s.agent, 'x', 'y');
     deleteIt();
   });
 });

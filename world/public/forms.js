@@ -163,6 +163,22 @@ export function openForm(ctx, { title, intro, fields, submitLabel: label, repeat
   dialog.querySelector('input, select, textarea')?.focus();
 }
 
+/** A22's second factor: type the agent's exact ID (AGT-…) to confirm an eviction or a deletion. */
+function typeIdToConfirm(title, intro, agent, label, run) {
+  const ctx = typeIdToConfirm.ctx;
+  openForm(ctx, {
+    title,
+    intro,
+    fields: [{ name: 'confirm', label: `Type ${agent.name}'s ID: ${agent.id}`, type: 'text', required: true, placeholder: agent.id }],
+    submitLabel: label,
+    danger: true,
+    onSubmit: async (v) => {
+      if (v.confirm.trim() !== agent.id) throw new Error(`That isn't ${agent.id}. Nothing was done.`);
+      return run(v.confirm.trim());
+    },
+  });
+}
+
 /** Deletion's double confirmation: step 1 explains and asks "Yes, continue"; step 2 needs the exact name typed. */
 export function confirmTwice(ctx, { what, name, blocker, consequences, run }) {
   if (blocker) {
@@ -195,10 +211,11 @@ export function confirmTwice(ctx, { what, name, blocker, consequences, run }) {
 
 /** Form openers bound to the dashboard context: { api, toast, data() }. */
 export function formsFor(ctx) {
+  typeIdToConfirm.ctx = ctx;
   const intent = async (type, city, payload) => {
     const e = await ctx.api('/api/events', { method: 'POST', body: { type, city, payload } });
     // A creation the rules refused is kept as a waiting request; say why instead of claiming success.
-    if (e.applied === false) throw new Error(`Not created: ${e.reason}`);
+    if (e.applied === false) throw new Error(`Not done: ${e.reason}`);
     return e;
   };
   const departmentsOf = (city) => city.districts.flatMap((d) => d.departments.map((dp) => [dp.id, `${dp.name} (${d.name})`]));
@@ -462,15 +479,64 @@ export function formsFor(ctx) {
       });
     },
 
+    // A22: deletion uses World HQ's archive and lesson record, which Marc reviews first, then he types the agent's ID.
     remove(city, agent) {
+      const rec = agent.deletionRecord;
+      if (!rec) {
+        ctx.toast(`World HQ's supervisor hasn't written ${agent.name}'s archive and lesson record yet. Delete becomes available once it has.`);
+        return;
+      }
       openForm(ctx, {
-        title: `Delete ${agent.name}?`,
-        intro: `${agent.name}'s ID and name are retired forever. Its ledger is frozen and archived; only a lesson record carries on. This cannot be undone.`,
+        title: `Review ${agent.name}'s lesson record`,
+        intro: `World HQ's supervisor wrote this before deletion. Lesson record: ${rec.lessonRecordRef}. Archived ledger: ${rec.ledgerArchiveRef}. Summary: ${rec.summary}`,
         fields: [],
-        submitLabel: 'Delete agent',
+        submitLabel: 'Approve, continue',
         onSubmit: async () => {
-          await intent('intent.delete_agent', city.id, { agentId: agent.id });
-          return `Deletion of ${agent.name}: done.`;
+          setTimeout(() => typeIdToConfirm(`Delete ${agent.name} permanently?`, `${agent.name}'s ID and name are retired forever; its ledger stays archived and the lesson record carries on. This cannot be undone.`, agent, 'Delete permanently',
+            (confirmAgentId) => intent('intent.delete_agent', city.id, { agentId: agent.id, confirmAgentId }).then(() => `${agent.name} deleted.`)), 0);
+          return 'Step 2 of 2: type the agent\'s ID.';
+        },
+      });
+    },
+    // A22: remove an agent before a 3rd strike. It is held in jail awaiting deletion until HQ's record and Marc's delete.
+    evict(city, agent) {
+      openForm(ctx, {
+        title: `Evict ${agent.name}?`,
+        intro: `${agent.name} goes to Security's jail, held awaiting deletion. World HQ's supervisor then writes its archive and lesson record, and you decide on deletion. You can release it instead at any time.`,
+        fields: [{ name: 'reason', label: 'Reason', type: 'textarea', required: true }],
+        submitLabel: 'Yes, continue',
+        danger: true,
+        onSubmit: async (v) => {
+          setTimeout(() => typeIdToConfirm(`Confirm: evict ${agent.name}`, `Reason: ${v.reason}`, agent, 'Evict',
+            (confirmAgentId) => intent('intent.evict_agent', city.id, { agentId: agent.id, reason: v.reason, confirmAgentId }).then(() => `${agent.name} evicted: held awaiting deletion.`)), 0);
+          return 'Step 2 of 2: type the agent\'s ID.';
+        },
+      });
+    },
+    release(city, agent) {
+      openForm(ctx, {
+        title: `Release ${agent.name} from jail?`,
+        intro: agent.jail?.status === 'awaiting_deletion'
+          ? `${agent.name} is held awaiting deletion. Releasing it sends it back to work${agent.jail.cause === 'kpi_strikes' ? ' with one KPI chance left' : ''}.`
+          : `Ends the current term now. Its jail level stays.`,
+        fields: [{ name: 'reason', label: 'Reason', type: 'textarea', required: true }],
+        submitLabel: 'Release',
+        onSubmit: async (v) => {
+          await intent('intent.release_agent', city.id, { agentId: agent.id, reason: v.reason });
+          return `${agent.name} released.`;
+        },
+      });
+    },
+    voidStrike(strike, agentName) {
+      openForm(ctx, {
+        title: 'Void this strike?',
+        intro: `${agentName}: "${strike.task}". It will no longer count, and the jail is worked out again without it (a term it caused ends).`,
+        fields: [{ name: 'reason', label: 'Reason', type: 'textarea', required: true }],
+        submitLabel: 'Void strike',
+        danger: true,
+        onSubmit: async (v) => {
+          await intent('intent.void_strike', 'WORLD', { strikeSeq: strike.seq, reason: v.reason });
+          return 'Strike voided.';
         },
       });
     },

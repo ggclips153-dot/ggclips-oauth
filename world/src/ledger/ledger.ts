@@ -87,10 +87,40 @@ export class Ledger {
   constructor(opts: LedgerOptions) {
     this.db = new DatabaseSync(opts.path);
     this.db.exec(SCHEMA);
+    this.upgrade();
     this.now = opts.now ?? (() => new Date());
     this.names = opts.names ?? {};
     this.events.setMaxListeners(1000);
     for (const e of this.readAll()) this.state.apply(e);
+  }
+
+  /**
+   * A22: ledgers made before World HQ existed only accept owner/dm/mayor writers. Rebuild the events table with the
+   * wider writer list, copying every row exactly (same seq, same hashes), so the hash chain is untouched.
+   */
+  private upgrade() {
+    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events'").get() as { sql: string } | undefined;
+    if (!row || row.sql.includes("'hq'")) return;
+    const create = /CREATE TABLE IF NOT EXISTS events \([\s\S]*?\n\);/.exec(SCHEMA)![0].replace('IF NOT EXISTS events', 'events_upgraded');
+    this.db.exec('PRAGMA foreign_keys = OFF');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const before = (this.db.prepare('SELECT COUNT(*) AS n, MAX(seq) AS last FROM events').get() as { n: number; last: number | null });
+      this.db.exec(create);
+      this.db.exec('INSERT INTO events_upgraded SELECT * FROM events');
+      this.db.exec('DROP TRIGGER IF EXISTS events_no_update; DROP TRIGGER IF EXISTS events_no_delete; DROP INDEX IF EXISTS events_city; DROP INDEX IF EXISTS events_subject');
+      this.db.exec('DROP TABLE events');
+      this.db.exec('ALTER TABLE events_upgraded RENAME TO events');
+      const after = (this.db.prepare('SELECT COUNT(*) AS n, MAX(seq) AS last FROM events').get() as { n: number; last: number | null });
+      if (after.n !== before.n || after.last !== before.last) throw new Error('ledger upgrade copied a different number of events');
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    } finally {
+      this.db.exec('PRAGMA foreign_keys = ON');
+    }
+    this.db.exec(SCHEMA); // triggers and indexes back on
   }
 
   /** The ledger's clock (injectable for tests); decides whether a timed jail term has ended. */

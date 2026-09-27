@@ -103,7 +103,8 @@ describe('lifecycle: 3 chances total', () => {
     assert.throws(() => w.miss(city, a), /3rd strike/);
     w.miss(city, a, true);
 
-    const del = w.intent('delete_agent', city, { agentId: a });
+    w.hqRecord(city, a, 'archive/AGT-000001/ledger.tar', 'lessons/AGT-000001.md');
+    const del = w.intent('delete_agent', city, { agentId: a, confirmAgentId: a });
     w.fact(mayorOf(city), {
       type: 'agent.deleted',
       city,
@@ -128,7 +129,7 @@ describe('lifecycle: 3 chances total', () => {
   it('deletion is not possible before the 3rd strike, even with an intent', () => {
     const { w, city, dept } = setup();
     const a = w.agent(city, dept, 'Iris');
-    const del = w.intent('delete_agent', city, { agentId: a });
+    const del = w.intent('delete_agent', city, { agentId: a, confirmAgentId: a });
     assert.throws(
       () => w.fact(mayorOf(city), { type: 'agent.deleted', city, subject: a, payload: { ledgerArchiveRef: 'x', lessonRecordRef: 'y' }, authorizedBy: del.seq }),
       /jailed awaiting deletion/,
@@ -170,7 +171,8 @@ function deleteAfterThreeStrikes(w: TestWorld, city: string, dept: string, name:
     w.promote(city, a, 'probationer');
     w.miss(city, a, n === 2);
   }
-  const del = w.intent('delete_agent', city, { agentId: a });
+  w.hqRecord(city, a);
+  const del = w.intent('delete_agent', city, { agentId: a, confirmAgentId: a });
   w.fact(mayorOf(city), { type: 'agent.deleted', city, subject: a, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
   return a;
 }
