@@ -61,6 +61,9 @@ function facts(i: LedgerEvent, { messenger, mayor }: Actors): [Profile, AppendIn
       return [[messenger, { type: 'city.renamed', city: c, payload: p, authorizedBy: i.seq }]];
     case 'intent.designate_security_city':
       return [[messenger, { type: 'city.security_designated', city: c, payload: {}, authorizedBy: i.seq }]];
+    case 'intent.link_hermes_profile':
+      // A23: Marc approves the link; the World Messenger records it.
+      return [[messenger, { type: 'agent.hermes_linked', city: c, subject: p.agentId, payload: { profile: p.profile }, authorizedBy: i.seq }]];
     case 'intent.rename_district':
       return [by('district.renamed', p)];
     case 'intent.rename_department':

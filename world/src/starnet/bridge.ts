@@ -41,14 +41,19 @@ export interface Bridge {
   stop(): void;
 }
 
-export function attachStarnetBridge(ledger: Ledger, stations: StationAsker, { log = (m: string) => console.log(m), onChange = () => {} } = {}): Bridge {
+export function attachStarnetBridge(
+  ledger: Ledger,
+  stations: StationAsker,
+  { log = (m: string) => console.log(m), onChange = () => {}, skip = (_agentId: string): boolean => false } = {},
+): Bridge {
   const errors: Record<string, { seq: number; message: string; at: string }> = {};
   const busy = new Set<string>();
   const onEvent = (e: LedgerEvent) => {
     if (e.type !== 'intent.message_agent' || !stations.isUp(e.city)) return;
     const p = e.payload as { agentId: string; text: string };
     const a = ledger.state.agents.get(p.agentId);
-    if (!a || a.deleted) return;
+    // An agent linked to its Hermes profile answers itself, on CyberStation (A31).
+    if (!a || a.deleted || skip(a.id)) return;
     const by: Profile = { id: `starnet-${e.city}`, role: 'mayor', writeScope: [e.city] };
     busy.add(a.id);
     onChange();

@@ -156,6 +156,8 @@ export interface Agent {
   teaching: { examsGiven: number; examsPassed: number; graduates: number } | null;
   /** Deans only: graduates of its college while in office (judged on how they perform), and the Mayor's reviews. */
   dean: { since: string; graduates: string[]; reviews: { seq: number; ts: string; rating: string; notes: string }[] } | null;
+  /** The agent's own Hermes profile, where its work runs on CyberStation (A23, A31); recorded by the World Messenger. */
+  hermesProfile: string | null;
 }
 
 /** A deliverable credited to the agent that owns its deciding artifact (clean attribution). */
@@ -776,6 +778,9 @@ export class WorldState {
         if (!agent) break;
         agent.status = { status: p.status, activity: p.activity ?? null, ts: e.ts, seq: e.seq };
         break;
+      case 'agent.hermes_linked':
+        if (agent) agent.hermesProfile = p.profile;
+        break;
       case 'city.kpi_pulse': {
         const city = this.cities.get(e.city);
         if (!city) break;
@@ -847,6 +852,7 @@ function newAgent(e: LedgerEvent, p: Record<string, any>): Agent {
     professorSince: null,
     teaching: null,
     dean: null,
+    hermesProfile: null,
   };
 }
 

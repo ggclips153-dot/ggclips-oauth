@@ -18,6 +18,7 @@ const PLAIN = {
   'intent.configure_department': 'Department settings',
   'intent.rename_city': 'Rename city',
   'intent.designate_security_city': 'Make the Security city',
+  'intent.link_hermes_profile': 'Link to Hermes',
   'intent.rename_district': 'Rename district',
   'intent.rename_department': 'Rename department',
   'intent.delete_district': 'Delete district',
@@ -302,6 +303,20 @@ export function formsFor(ctx) {
         onSubmit: async (v) => {
           await intent('intent.rename_city', city.id, { name: v.name });
           return `City renamed to "${v.name}".`;
+        },
+      });
+    },
+
+    /** CyberStation (A23, A31): the agent's own Hermes profile, where its work runs. The name only, never a key. */
+    linkHermes(city, agent) {
+      openForm(ctx, {
+        title: `Link ${agent.name} to Hermes`,
+        intro: `${agent.name}'s work will run on its own Hermes agent, with its own persona, tools and memory. Enter the name of its Hermes profile, not its key. The key is installed on this PC with: npm.cmd run hermes -- key <profile>`,
+        fields: [{ name: 'profile', label: 'Hermes profile name', type: 'text', required: true, value: agent.hermesProfile ?? '', placeholder: 'e.g. aden' }],
+        submitLabel: 'Link',
+        onSubmit: async (v) => {
+          await intent('intent.link_hermes_profile', city.id, { agentId: agent.id, profile: v.profile });
+          return `${agent.name} is linked to Hermes profile "${v.profile}".`;
         },
       });
     },

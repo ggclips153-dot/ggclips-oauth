@@ -44,6 +44,10 @@ Read from StarNet's source (`github.com/androoAGI/starnet`, commit 7ee93ce, down
 - Talking to an agent from the dashboard goes through its station to Hermes.
 - **Needs:** Hermes's API server on and reachable from the PC (asked of Bob), and the keys on the PC (Tony).
 - **Done when:** Tony talks to a real Hermes agent at its station, and it answers from its own memory.
+- **Built so far (27 Sep):** Link to Hermes on each agent (`agent.hermes_linked`, recorded by the World
+  Messenger); `npm run hermes` for Hermes's address and the keys, kept in `config/hermes.json` on the PC; a
+  linked agent's answers come from its own Hermes profile (`src/cyberstation/`). Tested against a stand-in
+  Hermes. **Next in this step:** the stations themselves (crew, supervisor, running work), once Hermes is on.
 
 ### 2. CyberStation's screens (decided: our own)
 - Our own screens, in the dashboard's cyberpunk style: a department floor with a workstation per agent, chat,

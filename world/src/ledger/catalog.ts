@@ -97,6 +97,9 @@ const strikeFields: Schema = {
   target: { t: 'num' },
 };
 
+/** A Hermes profile's name (never its key: keys stay on the PC, in config/hermes.json). */
+const hermesProfile = { t: 'str', max: 64, re: /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/, reWhy: 'a Hermes profile name (letters, digits, ".", "-" and "_")' } as const;
+
 const OWNER: readonly Role[] = ['owner'];
 const MESSENGER: readonly Role[] = ['messenger'];
 const MAYOR: readonly Role[] = ['mayor'];
@@ -256,7 +259,17 @@ export const CATALOG: Record<string, EventSpec> = {
     schema: { text: { t: 'str', max: 4000 } },
   },
 
+  // CyberStation (A23, A31): link an agent (department agent, professor or dean) to its own Hermes profile, where
+  // its work runs. Marc approves it; the World Messenger records it.
+  'intent.link_hermes_profile': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, profile: hermesProfile },
+  },
+
   // Marc talks to one agent directly. Routed to the city's Mayor, whose bot relays it and answers as the agent.
+  // An agent linked to its Hermes profile answers itself, through CyberStation.
   'intent.message_agent': {
     kind: 'intent',
     writers: OWNER,
@@ -644,6 +657,14 @@ export const CATALOG: Record<string, EventSpec> = {
       status: { t: 'str', oneOf: AGENT_STATUSES },
       activity: { t: 'str', max: 280, opt: true },
     },
+    subject: 'agent',
+  },
+  'agent.hermes_linked': {
+    kind: 'fact',
+    writers: MESSENGER,
+    scope: 'city',
+    schema: { profile: hermesProfile },
+    authorizedBy: ['intent.link_hermes_profile'],
     subject: 'agent',
   },
   // What an agent says back to Marc, written by its city's Mayor bot. `replyTo` = the message's intent seq.

@@ -13,6 +13,8 @@ import { attachPublisher } from '../social/publisher.ts';
 import { attachDemoAutopilot } from './demoAutopilot.ts';
 import { attachMessengerWebhook } from './messengerWebhook.ts';
 import { type StarnetInfo } from './app.ts';
+import { attachCyberStation } from '../cyberstation/bridge.ts';
+import { EMPTY_SETTINGS, HermesLink, loadHermesSettings } from '../cyberstation/hermes.ts';
 import { attachStarnetBridge } from '../starnet/bridge.ts';
 import { Stations } from '../starnet/stations.ts';
 import { SurfaceFeed } from '../surface/feed.ts';
@@ -67,6 +69,28 @@ const users = demo
   : Users.load(resolve(root, process.env.WORLD_USERS ?? 'config/users.json'));
 if (users.size === 0) console.warn('No dashboard logins yet. Create one with: npm run user -- add --username marc --profile marc');
 
+// CyberStation (A31): an agent linked to its own Hermes profile answers itself, on Hermes. The address and keys
+// are in config/hermes.json, set with `npm run hermes` in Marc's own window. The demo world stays self-contained.
+const hermes = new HermesLink(demo ? { ...EMPTY_SETTINGS, keys: {} } : loadHermesSettings(resolve(root, process.env.WORLD_HERMES ?? 'config/hermes.json')));
+const cyberEvents = new EventEmitter();
+const cyberBridge = attachCyberStation(ledger, hermes, { onChange: () => cyberEvents.emit('change') });
+const cyberstation: StarnetInfo = {
+  events: cyberEvents,
+  view: (scopeId) => {
+    const inScope = (agentId: string) => scopeId === '*' || ledger.state.agents.get(agentId)?.cityId === scopeId;
+    return {
+      enabled: hermes.configured(),
+      // The profiles with a key on this PC (names only), so a linked agent that can't run yet can say why.
+      profiles: scopeId === '*' ? hermes.profiles() : [],
+      // The agents that answer on Hermes right now (linked, with a key on this PC).
+      agents: [...ledger.state.agents.keys()].filter((id) => inScope(id) && cyberBridge.handlesAgent(id)),
+      errors: Object.fromEntries(Object.entries(cyberBridge.errors()).filter(([id]) => inScope(id))),
+      working: cyberBridge.working().filter(inScope),
+    };
+  },
+};
+if (hermes.configured()) console.log(`CyberStation: agents linked to Hermes answer on their own profiles (${hermes.profiles().length} profile key(s) on this PC)`);
+
 // StarNet (A20): one station per city, run from StarNet's source. Set STARNET_DIR to that folder.
 const starnetEvents = new EventEmitter();
 let starnet: StarnetInfo = { events: starnetEvents, view: () => ({ enabled: false, reason: 'STARNET_DIR is not set' }) };
@@ -87,7 +111,7 @@ if (starnetDir) {
       basePort: Number(process.env.STARNET_BASE_PORT ?? 8801),
       onChange: changed,
     });
-    const bridge = attachStarnetBridge(ledger, stations, { onChange: changed });
+    const bridge = attachStarnetBridge(ledger, stations, { onChange: changed, skip: (agentId) => cyberBridge.handlesAgent(agentId) });
     starnetHandles = (city) => bridge.handles(city);
     stations.startAll([...ledger.state.cities.keys()]);
     // A new city gets its station as soon as it exists.
@@ -154,6 +178,7 @@ createApp(ledger, profiles, {
   media,
   starnet,
   sharedSurface,
+  cyberstation,
 }).listen(port, host, () => {
   console.log(`World ledger: ${integrity.count} events verified. Listening on http://${host}:${port}`);
   console.log(`Build ${buildId(root)} · serving ${root}`);

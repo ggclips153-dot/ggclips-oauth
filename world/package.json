@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning src/server/main.ts",
     "profile": "node --disable-warning=ExperimentalWarning scripts/profile.ts",
+    "hermes": "node --disable-warning=ExperimentalWarning scripts/hermes.ts",
     "user": "node --disable-warning=ExperimentalWarning scripts/user.ts",
     "demo": "node --disable-warning=ExperimentalWarning scripts/demo.ts",
     "demo:social": "node --disable-warning=ExperimentalWarning scripts/demoSocial.ts",

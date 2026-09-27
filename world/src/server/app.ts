@@ -74,6 +74,8 @@ export interface AppOptions {
   starnet?: StarnetInfo;
   /** The shared memory surface, read-only (A21): what the reader may see, and a signal when it changes. */
   sharedSurface?: StarnetInfo;
+  /** CyberStation (A31): agents answering on their own Hermes profiles; conversation state per agent. */
+  cyberstation?: StarnetInfo;
 }
 
 export interface StarnetInfo {
@@ -244,7 +246,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
           .recentFlags(50)
           .filter((f) => scope === '*' || f.writerCity === scope || f.city === scope)
           .map((f) => (scope === '*' || f.writerCity === scope ? f : { ...f, excerpt: '', writer: '' }));
-        return send(res, 200, { ...worldView(ledger.state, profile, ledger.clock()), surfaceFlags, starnet: opts.starnet?.view(scope) ?? { enabled: false, reason: 'not set up' }, sharedSurface: opts.sharedSurface?.view(scope) ?? { enabled: false } });
+        return send(res, 200, { ...worldView(ledger.state, profile, ledger.clock()), surfaceFlags, starnet: opts.starnet?.view(scope) ?? { enabled: false, reason: 'not set up' }, sharedSurface: opts.sharedSurface?.view(scope) ?? { enabled: false }, cyberstation: opts.cyberstation?.view(scope) ?? { enabled: false } });
       }
       if (req.method === 'GET' && url.pathname === '/api/events') {
         const after = intParam(url, 'after', 0);
@@ -327,7 +329,7 @@ export function createApp(ledger: Ledger, profiles: Profiles, opts: AppOptions =
         });
       }
       if (req.method === 'GET' && url.pathname === '/api/stream') {
-        return stream(req, res, url, ledger, profile, surface, [opts.starnet, opts.sharedSurface]);
+        return stream(req, res, url, ledger, profile, surface, [opts.starnet, opts.sharedSurface, opts.cyberstation]);
       }
       send(res, 404, { error: 'NOT_FOUND', message: 'no such route' });
     } catch (err) {

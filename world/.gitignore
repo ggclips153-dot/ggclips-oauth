@@ -4,5 +4,6 @@ config/profiles.json
 config/secrets.json
 config/users.json
 config/starnet.json
+config/hermes.json
 *.db
 *.db-*

@@ -43,6 +43,7 @@ const agentView = (a: Agent) => ({
   jail: a.jail,
   deployedTo: a.deployedTo,
   lastExam: a.lastExam,
+  hermesProfile: a.hermesProfile,
 });
 
 const professorView = (a: Agent, now: Date) => ({

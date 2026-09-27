@@ -467,6 +467,18 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'intent.message_agent':
       agentIn(p.agentId, d.city);
       break;
+    case 'intent.link_hermes_profile':
+    case 'agent.hermes_linked': {
+      if (d.type === 'agent.hermes_linked') {
+        intentAgent();
+        match(['profile']);
+      }
+      const a = agent ?? agentIn(p.agentId, d.city);
+      // One Hermes profile is one agent: its memory and persona belong to that agent alone.
+      const holder = [...state.agents.values()].find((x) => !x.deleted && x.id !== a.id && x.hermesProfile?.toLowerCase() === String(p.profile).toLowerCase());
+      if (holder) conflict(`Hermes profile "${p.profile}" is already linked to ${holder.name} (${holder.id}); one profile is one agent`);
+      break;
+    }
     case 'agent.said':
       if (p.replyTo !== undefined) {
         const m = state.intents.get(p.replyTo);

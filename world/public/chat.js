@@ -77,6 +77,10 @@ export function refreshChat() {
   const role = a.role === 'dean' ? 'Dean' : a.role === 'professor' ? 'Professor' : a.state ? a.state[0].toUpperCase() + a.state.slice(1) : 'Agent';
   const starnet = data.starnet;
   const onStation = starnet?.stations?.[a.cityId]?.state === 'up';
+  // CyberStation (A31): a linked agent with a key on this PC answers itself, on its own Hermes profile.
+  const cyber = data.cyberstation;
+  const onHermes = !!cyber?.agents?.includes(agentId);
+  const other = onStation ? 'the StarNet station' : "the Mayor's bot";
   const sentBack = (data.social?.posts ?? []).filter((p) => p.author.kind === 'agent' && p.author.id === agentId && p.status === 'rejected');
   head.replaceChildren(
     h('div', { class: 'row-head' },
@@ -84,15 +88,20 @@ export function refreshChat() {
         h('h2', {}, a.name),
         h('div', { class: 'small secondary' }, [role, dept ? dept.name : a.role === 'agent' ? 'at the college' : 'college', city?.name].filter(Boolean).join(' · '), ' ', h('span', { class: 'mono muted' }, a.id))),
       a.status ? h('div', { class: 'small secondary chat-status' }, h('b', {}, a.status.status), a.status.activity ? ` · ${a.status.activity}` : '') : null),
-    h('p', { class: 'small secondary chat-via' }, onStation
-      ? `Runs on the ${city?.name ?? 'city'} StarNet station: real model calls, tools and costs.`
-      : starnet?.enabled
-        ? `The ${city?.name ?? 'city'} station isn't running, so the Mayor's bot answers for now.`
-        : `The ${city?.name ?? 'city'} Mayor's bot passes messages on and answers for the agent.`),
+    h('p', { class: 'small secondary chat-via' }, onHermes
+      ? `Answers on its own Hermes agent (${a.hermesProfile}), through CyberStation: its own persona, tools and memory.`
+      : a.hermesProfile
+        ? `Linked to Hermes profile ${a.hermesProfile}, but this PC can't reach it yet (Hermes's address or the profile's key isn't set), so ${other} answers for now.`
+        : onStation
+          ? `Runs on the ${city?.name ?? 'city'} StarNet station: real model calls, tools and costs.`
+          : starnet?.enabled
+            ? `The ${city?.name ?? 'city'} station isn't running, so the Mayor's bot answers for now.`
+            : `The ${city?.name ?? 'city'} Mayor's bot passes messages on and answers for the agent.`),
     ...(sentBack.length ? [h('p', { class: 'small' }, `${sentBack.length} post(s) you rejected are back with ${a.name} for rework.`)] : []));
   const msgs = data.chats?.[agentId] ?? [];
-  const working = !!starnet?.working?.includes(agentId);
-  const err = starnet?.errors?.[agentId];
+  const runner = onHermes ? cyber : starnet;
+  const working = !!runner?.working?.includes(agentId);
+  const err = runner?.errors?.[agentId];
   const key = `${msgs.length}|${working}|${err?.seq ?? ''}|${err?.message ?? ''}`;
   if (key === open.count) return;
   open.count = key;
@@ -102,8 +111,10 @@ export function refreshChat() {
       ? msgs.map((m) => h('div', { class: `bubble ${m.from === 'marc' ? 'you' : 'them'}` }, m.text, h('div', { class: 'muted small' }, `${m.from === 'marc' ? 'You' : a.name} · ${new Date(m.ts).toLocaleString()}`)))
       : [h('p', { class: 'muted small' }, `No messages yet. Say something to ${a.name}.`)]),
     ...(err && lastMine && err.seq === msgs.at(-1).seq
-      ? [h('p', { class: 'error small', role: 'alert' }, `${a.name} couldn't answer on StarNet: ${err.message}. Check the station (for example its model provider in the station's Settings), then send again.`)]
-      : lastMine ? [h('p', { class: 'muted small typing' }, working ? `${a.name} is working on it on the StarNet station…` : `Waiting for ${a.name}…`)] : []),
+      ? [h('p', { class: 'error small', role: 'alert' }, onHermes
+          ? `${a.name} couldn't answer on Hermes: ${err.message}. Send again once that's fixed.`
+          : `${a.name} couldn't answer on StarNet: ${err.message}. Check the station (for example its model provider in the station's Settings), then send again.`)]
+      : lastMine ? [h('p', { class: 'muted small typing' }, working ? `${a.name} is working on it${onHermes ? ' on Hermes' : ' on the StarNet station'}…` : `Waiting for ${a.name}…`)] : []),
   );
   thread.scrollTop = thread.scrollHeight;
 }

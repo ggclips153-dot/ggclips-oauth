@@ -772,6 +772,7 @@ function collegeSection(ix, c, deptName) {
     dean
       ? [
           h('div', {}, h('b', {}, agentName(chatCtx(), dean)), ' ', h('span', { class: 'mono muted' }, dean.id), h('span', { class: 'small muted' }, ` · since ${new Date(dean.since).toLocaleDateString()}`)),
+          hermesLink(c, dean),
           h('div', { class: 'kpi-row' },
             miniStat('Graduates', dean.scorecard.graduates),
             miniStat('Still working', dean.scorecard.stillWorking),
@@ -787,7 +788,7 @@ function collegeSection(ix, c, deptName) {
   const profs = table(
     ['Professor', 'Specialty', { label: 'Exams', num: true }, { label: 'Passed', num: true }, { label: 'Graduates', num: true }, { label: 'Teaching strikes', num: true }, 'Now', ''],
     c.college.professors.map((p) => [
-      h('div', {}, agentName(chatCtx(), p), h('div', { class: 'mono muted' }, p.id)),
+      h('div', {}, agentName(chatCtx(), p), h('div', { class: 'mono muted' }, p.id), hermesLink(c, p)),
       deptName(p.specialtyDepartmentId),
       p.teaching?.examsGiven ?? 0,
       p.teaching?.examsPassed ?? 0,
@@ -799,7 +800,7 @@ function collegeSection(ix, c, deptName) {
     'No professors yet.');
 
   const waiting = table(['New agent', 'Domain focus', 'Created'],
-    c.college.enrolled.map((a) => [h('div', {}, agentName(chatCtx(), a), h('div', { class: 'mono muted' }, a.id)), a.domainFocus, ago(a.lifecycle[0].ts)]),
+    c.college.enrolled.map((a) => [h('div', {}, agentName(chatCtx(), a), h('div', { class: 'mono muted' }, a.id), hermesLink(c, a)), a.domainFocus, ago(a.lifecycle[0].ts)]),
     'No new agents waiting for a department.');
 
   return h('section', { class: 'card section', id: 'at-college', 'aria-labelledby': `college-${c.id}` },
@@ -810,6 +811,13 @@ function collegeSection(ix, c, deptName) {
 }
 
 const miniStat = (label, value) => h('div', { class: 'stat' }, h('div', { class: 'label' }, label), h('div', { class: 'value' }, whole.format(value)));
+
+/** CyberStation (A31): the agent's own Hermes profile, and the owner's button to link it. */
+function hermesLink(c, a) {
+  const button = act(a.hermesProfile ? 'Change' : 'Link to Hermes', () => forms.linkHermes(c, a));
+  if (!a.hermesProfile && !button) return null;
+  return h('div', { class: 'dept-meta hermes-link' }, a.hermesProfile ? badge(`Hermes: ${a.hermesProfile}`) : null, button);
+}
 
 function jailChip(a) {
   if (!a.jail) return null;
@@ -904,7 +912,7 @@ function worldCityJump(onPick) {
 function departmentCard(ix, c, dp) {
   const capText = (n, max) => (max == null ? `${n}` : `${n} / ${max}`);
   const rows = dp.agents.map((a) => [
-    h('div', {}, agentName(chatCtx(), a), h('div', { class: 'mono muted' }, a.id)),
+    h('div', {}, agentName(chatCtx(), a), h('div', { class: 'mono muted' }, a.id), hermesLink(c, a)),
     h('div', { class: 'dept-meta' }, badge(cap(a.state)), a.badges.map((b) => badge(b === 'intern' ? 'Shadow (intern)' : b))),
     a.status
       ? h('div', {}, h('b', {}, cap(a.status.status)), a.status.activity && h('div', { class: 'small secondary' }, a.status.activity), h('div', { class: 'small muted' }, ago(a.status.ts)))
