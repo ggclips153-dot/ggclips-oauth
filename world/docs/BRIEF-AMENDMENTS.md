@@ -149,3 +149,89 @@ one by one", with no seeding.
 
 Enforced in: `ROLES` in `src/domain/model.ts`, `src/ledger/catalog.ts`, `src/ledger/schema.sql`,
 `src/ledger/ledger.ts` (refuses a pre-A22 ledger), `src/auth/profiles.ts`, `src/server/messengerWebhook.ts`.
+
+## A23–A28 (2026-09-27): decided with Tony while starting Bob's operator build
+
+Marc is Tony: "Marc" is the owner's handle in these docs (world-layer note `w_owner`). Tony decided these in the
+Claude session that took the world live, answering Bob's queued command `cmd_1a0e14e476e` ("START BUILD …
+BOB OPERATOR SPEC + OWNERSHIP MODEL") and the world-layer notes it points to.
+
+### A23 — New agents: Claude builds the shell, Bob writes the role, Tony approves
+
+Tony: "Claude builds the shell (profile/memory/bank); Bob authors each agent's SOUL/role content from the world
+surface; you approve before live; WM logs it. Include Claude's VPS→Hermes access in the build."
+
+- When Marc creates an agent in the dashboard, Claude builds its Hermes shell: the profile, its memory and its
+  private bank. Bob writes its SOUL and role content, from the world surface. Marc approves it before it goes
+  live. The World Messenger records it in the ledger.
+- This replaces A22's "Bob builds each new agent's Hermes profile and private bank".
+- Claude's access from the world to Hermes on the VPS is part of the build.
+
+### A24 — The ledger stays the source of truth; Bob keeps the shared memory in step
+
+- The event ledger stays the single source of truth (the brief). The dashboard only reads the shared memory (A21
+  stands).
+- Bob is the reconciler: he reads the ledger and updates the shared memory, so the two never drift.
+
+### A25 — The chain of command; Bob is second-in-command
+
+Tony confirmed the world-layer note "CHAIN OF COMMAND (canonical)":
+
+- Tony (Marc) → Bob (architect, second-in-command) → City Mayor → District Supervisor → Department Supervisor
+  → agents. Every district has a District Supervisor and every department a Department Supervisor.
+- Escalation goes up one link at a time, unless an emergency needs a direct line to Tony. Cross-city routing goes
+  through the World Messenger. No one skips a link.
+- Bob gets every dashboard view: the map with districts, departments and supervisors; the agent roster; the jail
+  board; the command queue; his world notes; the audit log. He acts only on the shared memory, with his own tools
+  (Hermes and the bridge): setting up agents' roles, editing his notes, keeping the shared memory in step. He
+  never holds a ledger-writing role: the ledger stays inviolate.
+- This replaces the brief's "Bob … advisory, cross-city READ only, no execution" for the shared memory. In the
+  ledger Bob stays read-only.
+
+### A26 — Supervisors carry out Tony's StarNet tasks, and may only suggest
+
+Tony: "Supervisors route, manage, and carry out your StarNet tasks for their own department's agents — dispatch,
+check, steer, withdraw — every step logged, Security-watched. They never originate/command tasks on their own.
+Instead they may propose task suggestions to queue, which flow up for approval: Supervisor → Mayor (quality
+check) → World Messenger → you (final call). Nothing runs until you decide."
+
+- This fits the brief's "no agent may instruct another agent; only the World Messenger and Marc route work": a
+  supervisor only carries out work Tony gave.
+
+### A27 — Strike records, voiding and appeals
+
+Tony's spec, "Strike & Jail Accountability / Appeals System":
+
+1. **Every strike is recorded end to end** in the ledger: why (the reason, and the missing task or metric), the
+   evidence and its reference, the observer, the recording authority, the city and district, the time, and its
+   status (active, voided, disputed). Nothing is deleted: a voided or adjusted strike stays in the ledger,
+   timestamped, and is left out of counts and terms.
+2. **Each agent's discipline history**, built from the ledger: every strike with its reason, evidence, observer and
+   status, and the jail timeline (which 3rd strike gave which term: 6 hours, 24 hours, 3 days; the 4th time or
+   awaiting deletion). Shown on the jail board, in each agent's row and in the agent's own view.
+3. **Voiding a wrong strike:** `security.strike_voided`, Marc only. Terms are recalculated without the voided
+   strike (re-sequenced if needed). A voided strike stays in the ledger, marked voided.
+4. **Appeals, two ways in:** (a) the struck agent's home Mayor disputes a strike, through Security to Marc's inbox;
+   (b) the agent itself asks to dispute one strike, or the set of strikes that put it in jail.
+5. **Review chain for both:** Jail Supervisor → Mayor → Marc. Each step records its review in the ledger. Only Marc
+   decides the outcome (void, adjust or deny). Disputes land in Marc's inbox; nothing executes itself.
+6. **Five disputes per agent, for life.** Never reset, shown as "X of 5 used", and spread as the agent chooses.
+7. **Events:** `security.strike_voided` (Marc), `agent.dispute_requested` (the agent), `jail.dispute_reviewed` (the
+   Jail Supervisor or the Mayor), and Marc's decision (void, adjust or deny), each attributed correctly.
+8. **Screens:** the agent's discipline record shows the whole history and a Dispute action with the disputes left;
+   the jail board and agent rows show the history and each dispute's status.
+
+Details to settle when it's built are in `OPEN-QUESTIONS.md` (#43–#45).
+
+### A28 — The Security city is HQ, whatever its name
+
+Tony: "The Security City will be named HQ, you can start over."
+
+- An Essentials city can be created as the Security city, one per world. The ledger records it (`city.created`
+  with `security: true`), so the jail works whatever the city is called. In a world from before A28, the city
+  with ID `security-city` keeps that role.
+- The live world starts over with HQ as its Security city. The first live ledger, made before this, is kept as
+  an archive.
+
+Enforced in (A28): `securityCityId()` in `src/domain/state.ts`, `src/ledger/guard.ts`, `src/ledger/catalog.ts`,
+the **+ New city** form. A23–A27 are built next (Bob's operator build).

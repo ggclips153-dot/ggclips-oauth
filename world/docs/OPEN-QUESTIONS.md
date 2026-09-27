@@ -26,6 +26,10 @@ so nothing is decided silently. Answer here or via the World Messenger (the Dist
 | 38 | **Version numbers.** Any rule for major vs minor? | Any newer `x.y.z`; the Ratify form suggests the next minor. |
 | 39 | **Ledger backups** (`docs/templates/LEDGER-RETENTION.md`): how often, where, how many kept? | None automated. |
 | 40 | **Proposals from other cities.** Only Innovations, Security and Bob may propose. Should a revenue Mayor be able to raise one through the World Messenger? | No; they message Marc instead. |
-| 41 | **Constitution Article XI** lists the amendments it incorporates as A1–A18. Should the 1.0.0 ratified in the new ledger also list A19–A22? | Unchanged apart from the A22 rename; nothing is ratified in the new ledger yet. |
+| 41 | **Constitution Article XI** lists the amendments it incorporates as A1–A18. Should the 1.0.0 ratified in the new ledger also list A19–A22? | **Answered (26 Sep):** yes; Article XI lists A1–A22, updated before 1.0.0 was ratified in the new ledger. |
+| 42 | **How the dashboard reads the shared surface** (handoff #26). Hermes reports the repo's `vps/surface_reader.py` is superseded by its own shared-memory bridge. A21 as recorded reads through that reader. Keep it, read through the bridge (read-only), or something else? | The reader stays off; the Memory tab has no data until this is decided. |
+| 43 | **A27: who records an agent's own dispute and a Jail Supervisor's review?** Agents and supervisors have no ledger role. | To settle when A27 is built. Likely their Mayor records it for them, as for `agent.said`. |
+| 44 | **A27: what does "adjust" change?** (Void and deny are clear.) | To settle when A27 is built. |
+| 45 | **A27: can KPI strikes be voided and disputed too,** or only Security's task and teaching strikes? | To settle when A27 is built. |
 
-Resolved: A1-A22, see `BRIEF-AMENDMENTS.md`.
+Resolved: A1-A28, see `BRIEF-AMENDMENTS.md`.
