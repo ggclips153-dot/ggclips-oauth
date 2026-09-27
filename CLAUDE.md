@@ -10,8 +10,10 @@ The project is `world/`: the event ledger and dashboard for Marc's world of AI c
 3. `world/docs/BRIEF-AMENDMENTS.md`: A1–A31, every change Marc ratified on top of the brief.
 4. `world/docs/SPEC-2026-09-26-SHARED-MEMORY-FOUR-TIER.md`: the shared-memory spec (A21).
 5. `world/docs/OPEN-QUESTIONS.md`: interim decisions where the brief is ambiguous.
-6. `world/docs/LIVE-START-2026-09-26.md`: the runbook for starting the live world on Marc's PC (until it's
-   live).
+6. `world/docs/LIVE-START-2026-09-26.md`: the runbook for starting the live world on Marc's PC (live since
+   27 Sep).
+7. `world/docs/PLAN-OPERATOR-BUILD-2026-09-27.md`: the approved operator build plan, in order (what's next),
+   starting with CyberStation, our own station engine on Hermes.
 
 **Branch:** `claude/ai-agent-world-build-xxy71v`. Develop, commit and push there.
 

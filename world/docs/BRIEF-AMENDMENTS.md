@@ -296,3 +296,9 @@ station per department, he answered yes.
   licensed with it (StarNet's `NOTICE.md`), so CyberStation works like StarNet but ships its own name and art.
   It needs Hermes's API server on for the agent profiles and reachable from the PC (asked of Bob on
   `cmd_1a0e14e476e`).
+- **Built our own way** (Tony, 27 Sep, after reading StarNet's code): "Our own on Hermes, The CyberStation will
+  act as a tool and place of work for our agents to use. It will never create agents so dont include the create
+  agent screen". Its engine runs inside the world server, on Hermes, with our own screens.
+- **The college too:** "A college station per city that will act as the classroom", for the dean, professors
+  and new agents, who have no department.
+- The build order is in `docs/PLAN-OPERATOR-BUILD-2026-09-27.md` (approved 27 Sep).
