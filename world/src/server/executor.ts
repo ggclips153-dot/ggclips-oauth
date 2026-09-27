@@ -1,7 +1,8 @@
 // Carrying out an intent: the World Messenger routes it, then the Mayor (or the Messenger, for world events)
 // writes the facts. Used by the demo autopilot, and by Marc's requests (A19), applied as Messenger and Mayor.
 // Every write still goes through the write-guard, so whatever the bots could not do, this cannot either.
-import type { LedgerEvent } from '../domain/state.ts';
+import type { LedgerEvent, WorldState } from '../domain/state.ts';
+import { conflict } from '../ledger/errors.ts';
 import type { AppendInput, Profile } from '../ledger/guard.ts';
 import type { Ledger } from '../ledger/ledger.ts';
 
@@ -11,7 +12,7 @@ export interface Actors {
 }
 
 /** The fact(s) a Mayor (or the World Messenger) writes to carry out an intent. */
-function facts(i: LedgerEvent, { messenger, mayor }: Actors): [Profile, AppendInput][] {
+function facts(i: LedgerEvent, { messenger, mayor }: Actors, state: WorldState): [Profile, AppendInput][] {
   const p = i.payload as Record<string, any>;
   const c = i.city;
   const m = mayor(c);
@@ -62,7 +63,7 @@ function facts(i: LedgerEvent, { messenger, mayor }: Actors): [Profile, AppendIn
     case 'intent.designate_security_city':
       return [[messenger, { type: 'city.security_designated', city: c, payload: {}, authorizedBy: i.seq }]];
     case 'intent.link_hermes_profile':
-      // A23: Marc approves the link; the World Messenger records it.
+      // A32: Marc approves the link; the World Messenger records it.
       return [[messenger, { type: 'agent.hermes_linked', city: c, subject: p.agentId, payload: { profile: p.profile }, authorizedBy: i.seq }]];
     case 'intent.rename_district':
       return [by('district.renamed', p)];
@@ -80,8 +81,17 @@ function facts(i: LedgerEvent, { messenger, mayor }: Actors): [Profile, AppendIn
       return [p.to === 'dept-lead' ? by('agent.lead_assigned', {}, p.agentId) : by('agent.promoted', { to: p.to }, p.agentId)];
     case 'intent.move_agent':
       return [by('agent.moved', { toDepartmentId: p.toDepartmentId }, p.agentId)];
-    case 'intent.delete_agent':
-      return [by('agent.deleted', { ledgerArchiveRef: `archive/${p.agentId}/ledger`, lessonRecordRef: `lessons/${p.agentId}.md` }, p.agentId)];
+    case 'intent.delete_agent': {
+      // A32: the deletion uses exactly the archive and lesson record HQ's supervisor wrote.
+      const rec = state.agents.get(p.agentId)?.deletionRecord ?? conflict(`HQ has not written ${p.agentId}'s archive and lesson record yet`);
+      return [by('agent.deleted', { ledgerArchiveRef: rec.ledgerArchiveRef, lessonRecordRef: rec.lessonRecordRef }, p.agentId)];
+    }
+    case 'intent.evict_agent':
+      return [by('agent.evicted', { reason: p.reason }, p.agentId)];
+    case 'intent.release_agent':
+      return [[messenger, { type: 'agent.released', city: c, subject: p.agentId, payload: { reason: p.reason }, authorizedBy: i.seq }]];
+    case 'intent.void_strike':
+      return [[messenger, { type: 'security.strike_voided', city: 'WORLD', payload: { strikeSeq: p.strikeSeq, reason: p.reason }, authorizedBy: i.seq }]];
     case 'intent.create_professor':
       return [by('professor.enrolled', p)];
     case 'intent.specialize_professor':
@@ -125,7 +135,7 @@ export function carryOut(ledger: Ledger, intent: LedgerEvent, actors: Actors, to
       payload: { intentSeq: intent.seq, to: to ?? (intent.city === 'WORLD' ? 'world' : `mayor:${intent.city}`) },
     }));
   }
-  for (const [who, input] of facts(intent, actors)) {
+  for (const [who, input] of facts(intent, actors, ledger.state)) {
     const fact = ledger.append(who, input);
     written.push(fact);
     for (const [who2, next] of followUps(fact, intent, actors)) written.push(ledger.append(who2, next));

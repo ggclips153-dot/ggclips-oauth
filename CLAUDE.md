@@ -7,7 +7,7 @@ The project is `world/`: the event ledger and dashboard for Marc's world of AI c
 1. `world/docs/HANDOFF-2026-09-26.md`: everything built, decided and open (setup, rules, screens, all ledger
    events, API, history, open questions, what's next).
 2. `world/docs/source/WORLD-BUILD-BRIEF.md`: Marc's original brief (authoritative).
-3. `world/docs/BRIEF-AMENDMENTS.md`: A1–A31, every change Marc ratified on top of the brief.
+3. `world/docs/BRIEF-AMENDMENTS.md`: A1–A32, every change Marc ratified on top of the brief.
 4. `world/docs/SPEC-2026-09-26-SHARED-MEMORY-FOUR-TIER.md`: the shared-memory spec (A21).
 5. `world/docs/OPEN-QUESTIONS.md`: interim decisions where the brief is ambiguous.
 6. `world/docs/LIVE-START-2026-09-26.md`: the runbook for starting the live world on Marc's PC (live since
@@ -22,7 +22,7 @@ The project is `world/`: the event ledger and dashboard for Marc's world of AI c
 - **Marc is Tony** (Marc is the owner's handle in these docs). Address him as Tony, by name, at the start of
   every reply.
 - **Follow the brief precisely.** Where anything is ambiguous, **ask Marc rather than improvise**, and flag it
-  "back to the World Messenger". Record ratified changes as the next amendment (A32, …) in
+  "back to the World Messenger". Record ratified changes as the next amendment (A33, …) in
   `BRIEF-AMENDMENTS.md`.
 - **Read Bob's latest world-layer notes first** (the shared memory, layer `world`, role `architect`) before
   asking Marc a design question: he often briefs Bob, and Bob records the decision there.
@@ -37,7 +37,9 @@ The project is `world/`: the event ledger and dashboard for Marc's world of AI c
   records it (A23).
 - **Nothing is seeded** (A22): the real world starts empty and Marc creates every city himself.
 - **No auto-publish.** Nothing is published without Marc's approval.
-- **Deletion always needs a double confirm:** "Yes, continue", then type the exact name.
+- **Deletion always needs a double confirm:** "Yes, continue", then type the exact name. For agents (evicting or
+  deleting), Marc types the **agent ID** instead (A32), and deletion needs HQ's lesson record first (HQ is the
+  Security city; its Mayor records HQ's decisions).
 - **The inviolable floor:**
   - the ledger is append-only and hash-chained
   - no cross-city writes

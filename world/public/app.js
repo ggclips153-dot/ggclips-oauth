@@ -27,7 +27,7 @@ const STAGES = [
   ['deletion', 'Deleted'],
 ];
 const BAD_STAGES = new Set(['school-return', '3rd-strike', 'deletion']);
-const JAIL_CAUSE = { kpi_strikes: 'KPI strikes', task_strikes: 'Task strikes', teaching_strikes: 'Teaching strikes' };
+const JAIL_CAUSE = { kpi_strikes: 'KPI strikes', task_strikes: 'Task strikes', teaching_strikes: 'Teaching strikes', eviction: 'Evicted' };
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 const whole = new Intl.NumberFormat('en');
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -773,6 +773,7 @@ function collegeSection(ix, c, deptName) {
       ? [
           h('div', {}, h('b', {}, agentName(chatCtx(), dean)), ' ', h('span', { class: 'mono muted' }, dean.id), h('span', { class: 'small muted' }, ` · since ${new Date(dean.since).toLocaleDateString()}`)),
           hermesLink(c, dean),
+          h('div', { class: 'small' }, strikeText({ ...dean, role: 'dean' }), ' ', jailChip(dean), h('div', { class: 'toolbar' }, ...disciplineActions(c, { ...dean, role: 'dean' }))),
           h('div', { class: 'kpi-row' },
             miniStat('Graduates', dean.scorecard.graduates),
             miniStat('Still working', dean.scorecard.stillWorking),
@@ -786,16 +787,16 @@ function collegeSection(ix, c, deptName) {
       : h('p', { class: 'muted small' }, 'No dean yet.'));
 
   const profs = table(
-    ['Professor', 'Specialty', { label: 'Exams', num: true }, { label: 'Passed', num: true }, { label: 'Graduates', num: true }, { label: 'Teaching strikes', num: true }, 'Now', ''],
+    ['Professor', 'Specialty', { label: 'Exams', num: true }, { label: 'Passed', num: true }, { label: 'Graduates', num: true }, 'Strikes', 'Now', ''],
     c.college.professors.map((p) => [
       h('div', {}, agentName(chatCtx(), p), h('div', { class: 'mono muted' }, p.id), hermesLink(c, p)),
       deptName(p.specialtyDepartmentId),
       p.teaching?.examsGiven ?? 0,
       p.teaching?.examsPassed ?? 0,
       p.teaching?.graduates ?? 0,
-      `${p.strikes} / 3`,
+      strikeText({ ...p, role: 'professor' }),
       p.jail ? jailChip(p) : p.steppedIn ? badge(`In ${deptName(p.steppedIn.departmentId)}: ${p.steppedIn.role} (${until(p.steppedIn.until)})`) : 'Teaching',
-      c.districts.some((d) => d.departments.length) ? act('Specialty', () => forms.specialize(c, p)) : null,
+      h('div', { class: 'toolbar' }, c.districts.some((d) => d.departments.length) ? act('Specialty', () => forms.specialize(c, p)) : null, ...disciplineActions(c, { ...p, role: 'professor' })),
     ]),
     'No professors yet.');
 
@@ -847,7 +848,31 @@ function agentActions(c, a) {
     lead && act('Make dept-lead', () => forms.promote(c, a, 'dept-lead')),
     a.state === 'senior' && act('Retire to professor', () => forms.retire(c, a)),
     (data.economy.accounts[a.id]?.balanceCents ?? 0) > 0 && act('Grant reward', () => forms.grantReward(c, a, data.economy.accounts[a.id], REWARDS)),
-    a.jail?.status === 'awaiting_deletion' && act('Delete', () => forms.remove(c, a), 'danger'));
+    ...disciplineActions(c, a));
+}
+
+/** A32: release early, evict (typing the ID), or delete once HQ's record is in (typing the ID). */
+function disciplineActions(c, a) {
+  if (!isOwner()) return [];
+  const inside = a.jail && (a.jail.status === 'awaiting_deletion' || Date.parse(a.jail.until) > serverNow());
+  const awaiting = inside && a.jail.status === 'awaiting_deletion';
+  return [
+    inside && act('Release early', () => forms.release(c, a)),
+    awaiting && (a.deletionRecord ? act('Review & delete', () => forms.remove(c, a), 'danger') : h('span', { class: 'small muted' }, 'Waiting for HQ\'s lesson record')),
+    !awaiting && act('Evict', () => forms.evict(c, a), 'danger'),
+  ];
+}
+
+/** Strike counters for a row: KPI (agents), task (everyone), teaching (professors). */
+function strikeText(a) {
+  const parts = [];
+  if (a.role === 'agent' || !a.role) parts.push(`KPI ${a.strikes}/3`);
+  parts.push(`Task ${a.taskStrikes}/3`);
+  if (a.role === 'professor') parts.push(`Teaching ${a.teachingStrikes}/3`);
+  const lv = data.jailLevels?.[a.id];
+  if (lv && (lv.task || lv.teaching)) parts.push(`jail level ${Math.max(lv.task, lv.teaching)}`);
+  if (a.pendingReports) parts.push(`${a.pendingReports} awaiting HQ`);
+  return parts.join(' · ');
 }
 
 /** Scroll to the place named in the address (#/city/<id>/at/<college | district | department>), once per jump. */
@@ -917,7 +942,7 @@ function departmentCard(ix, c, dp) {
     a.status
       ? h('div', {}, h('b', {}, cap(a.status.status)), a.status.activity && h('div', { class: 'small secondary' }, a.status.activity), h('div', { class: 'small muted' }, ago(a.status.ts)))
       : h('span', { class: 'muted' }, '—'),
-    h('div', { class: 'small' }, `KPI ${a.strikes}/3 · Task ${a.taskStrikes}/3`, h('div', {}, jailChip(a))),
+    h('div', { class: 'small' }, strikeText(a), h('div', {}, jailChip(a))),
     lifecycleStrip(a),
     agentActions(c, a),
   ]);
@@ -958,17 +983,38 @@ function retiredSection(c) {
 
 function jailView(ix) {
   const cityName = (id) => ix.cities.get(id)?.name ?? id;
-  const hqJail = data.securityCityId ? `${cityName(data.securityCityId)}'s jail` : "the Security city's jail";
-  const rows = data.jail.map((j) => [
-    h('div', {}, j.name, h('div', { class: 'mono muted' }, j.id)),
-    h('a', { href: `#/city/${encodeURIComponent(j.cityId)}` }, cityName(j.cityId)),
-    `${cityName(j.heldIn)} jail`,
-    JAIL_CAUSE[j.jail.cause] ?? j.jail.cause,
-    j.jail.term ?? '—',
-    j.jail.status === 'awaiting_deletion' ? statusChip('critical', 'Awaiting your deletion decision') : statusChip('serious', until(j.jail.until)),
-    j.jail.status === 'awaiting_deletion' && ix.cities.get(j.cityId) ? act('Delete', () => forms.remove(ix.cities.get(j.cityId), j), 'danger') : null,
-  ]);
-  const strikes = data.taskStrikes.slice(-20).reverse().map((t) => [ago(t.ts), agentLabel(ix, t.agentId), cityName(t.agentCity), t.task, agentLabel(ix, t.observedBy)]);
+  // A30: each city holds its own agents; an agent awaiting deletion is held in HQ's jail (the Security city's).
+  const hqName = data.securityCityId ? cityName(data.securityCityId) : 'the Security city';
+  const hqJail = data.securityCityId ? `${hqName}'s jail` : "the Security city's jail";
+  const cityOf = (id) => ix.cities.get(id);
+  const rows = data.jail.map((j) => {
+    const lv = data.jailLevels?.[j.id];
+    return [
+      h('div', {}, agentName(chatCtx(), j), h('div', { class: 'mono muted' }, j.id)),
+      h('a', { href: `#/city/${encodeURIComponent(j.cityId)}` }, cityName(j.cityId)),
+      `${cityName(j.heldIn)} jail`,
+      JAIL_CAUSE[j.jail.cause] ?? j.jail.cause,
+      j.jail.term ?? '—',
+      j.jail.status === 'awaiting_deletion'
+        ? (j.deletionRecord ? statusChip('critical', 'Awaiting your deletion decision') : statusChip('warning', `Awaiting deletion · ${hqName} writing the lesson record`))
+        : statusChip('serious', until(j.jail.until)),
+      lv ? `task ${lv.task}${j.role === 'professor' ? ` · teaching ${lv.teaching}` : ''}` : '—',
+      cityOf(j.cityId) ? h('div', { class: 'toolbar' }, ...disciplineActions(cityOf(j.cityId), j)) : null,
+    ];
+  });
+  const statusLabel = { pending: ['warning', `Waiting for ${hqName}`], confirmed: ['critical', `Confirmed by ${hqName}`], dismissed: ['good', `Dismissed by ${hqName}`], voided: ['good', 'Voided by you'] };
+  const reportRow = (t) => [
+    ago(t.ts),
+    agentLabel(ix, t.agentId),
+    cityName(t.agentCity),
+    t.kind === 'teaching' ? 'Teaching' : 'Task',
+    h('div', { class: 'small' }, t.task),
+    agentLabel(ix, t.observedBy),
+    statusChip(...statusLabel[t.status]),
+    isOwner() && (t.status === 'pending' || t.status === 'confirmed') ? act('Void', () => forms.voidStrike(t, agentLabel(ix, t.agentId)), 'danger') : null,
+  ];
+  const pending = data.taskStrikes.filter((t) => t.status === 'pending').reverse();
+  const recent = data.taskStrikes.filter((t) => t.status !== 'pending').slice(-30).reverse();
   const flags = (data.surfaceFlags ?? []).map((f) => [
     ago(f.ts),
     agentLabel(ix, f.writer),
@@ -977,14 +1023,18 @@ function jailView(ix) {
     h('div', { class: 'small' }, f.reasons.join(' · ')),
     h('div', { class: 'small secondary excerpt' }, f.excerpt),
   ]);
+  const strikeHeaders = ['When', 'Who', 'City', 'Kind', 'What', 'Observed by', 'Status', ''];
   return [
     h('h1', {}, 'Security'),
     h('h2', {}, 'Jail'),
-    h('p', { class: 'secondary' }, `Every city holds its own agents in its own jail. Every 3 task strikes means a jail term: 6 hours, then 24 hours, then 3 days. The 4th time, or a 3rd KPI or teaching strike, the agent is moved to ${hqJail} and waits there for your deletion decision. Timed terms end on their own.`),
+    h('p', { class: 'secondary' }, `Every city holds its own agents in its own jail. Security reports strikes; ${hqName} confirms them (its Judiciary). Every 3 confirmed task strikes is a jail term: 6 hours, then 24 hours, then 3 days; the 4th time the agent is moved to ${hqJail} and waits there for your deletion decision. Professors: every 3 teaching strikes is a term (6 hours, then 24 hours); the 3rd time, deletion. A 3rd KPI strike or an eviction also means waiting for deletion in ${hqJail}. Terms end on their own, and each 60 strike-free days lowers the jail level one step.`),
     !data.securityCityId && h('p', { class: 'small' }, statusChip('warning', 'No Security city yet'),
-      ' Deployments, task strikes and the jail for agents awaiting deletion need one. Open your Security city (an Essentials city) and choose "Make this the Security city".'),
-    h('div', { class: 'card' }, table(['Agent', 'City', 'Held in', 'Cause', { label: 'Term', num: true }, 'Release', ''], rows, 'Nobody is in jail.')),
-    h('div', { class: 'card section' }, h('h2', {}, 'Recent task strikes'), table(['When', 'Agent', 'City', 'Task', 'Observed by'], strikes, 'No task strikes recorded.')),
+      ' Deployments, strikes and the jail for agents awaiting deletion need one. Open your Security city (an Essentials city) and choose "Make this the Security city".'),
+    h('div', { class: 'card' }, table(['Who', 'City', 'Held in', 'Cause', { label: 'Term', num: true }, 'Release', 'Jail level now', ''], rows, 'Nobody is in jail.')),
+    h('div', { class: 'card section' }, h('h2', {}, `Waiting for ${hqName} (${pending.length})`),
+      h('p', { class: 'small secondary' }, `Strikes Security reported. They count only once ${hqName} confirms them. You can void any report.`),
+      table(strikeHeaders, pending.map(reportRow), `Nothing waiting for ${hqName}.`)),
+    h('div', { class: 'card section' }, h('h2', {}, 'Recent strikes'), table(strikeHeaders, recent.map(reportRow), 'No strikes decided yet.')),
     h('div', { class: 'card section' },
       h('h2', {}, 'Shared-surface guard'),
       h('p', { class: 'small secondary' }, 'Notes the guard stopped before they reached the shared surface: wrong city tag, one agent instructing another, or text that reads like prompt injection. Quarantined notes are for Security to review.'),

@@ -207,11 +207,34 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { agentId: { t: 'str', max: 20 }, toDepartmentId: { t: 'str', max: 20 } },
   },
+  // Deleting needs Marc to type the agent's ID (A32: a second factor, so the wrong agent is never deleted).
   'intent.delete_agent': {
     kind: 'intent',
     writers: OWNER,
     scope: 'city',
-    schema: { agentId: { t: 'str', max: 20 } },
+    schema: { agentId: { t: 'str', max: 20 }, confirmAgentId: { t: 'str', max: 20 } },
+  },
+  // ---- A32: discipline ----
+  // Evict an agent before a 3rd strike: it is held in jail awaiting deletion. Marc types its ID to confirm.
+  'intent.evict_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, reason: { t: 'str', max: 2000 }, confirmAgentId: { t: 'str', max: 20 } },
+  },
+  // Release an agent from jail early (a timed term or a hold awaiting deletion).
+  'intent.release_agent': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'city',
+    schema: { agentId: { t: 'str', max: 20 }, reason: { t: 'str', max: 2000 } },
+  },
+  // Cancel a strike report (pending or confirmed): it no longer counts, and the jail is worked out again without it.
+  'intent.void_strike': {
+    kind: 'intent',
+    writers: OWNER,
+    scope: 'world',
+    schema: { strikeSeq: { t: 'int', min: 1 }, reason: { t: 'str', max: 2000 } },
   },
   // Deploy a Security city agent to watch a city. Tagged with the Security city; its Mayor executes.
   // ---- In-world economy (A18): grants are Mayor + Marc executed, never self-run ----
@@ -626,6 +649,49 @@ export const CATALOG: Record<string, EventSpec> = {
     },
     authorizedBy: ['intent.delete_agent'],
     subject: 'agent',
+  },
+  // ---- A32: HQ (the Security city) confirms strikes; Marc voids, releases and evicts; HQ records deletions ----
+  // Security reports a strike (security.task_strike / professor.strike); it counts only once HQ confirms it. HQ's
+  // Mayor records the decision (its Judiciary's) under HQ's own tag, like the report.
+  'security.strike_confirmed': { kind: 'fact', writers: MAYOR, scope: 'city', schema: { strikeSeq: { t: 'int', min: 1 }, note: { t: 'str', max: 2000, opt: true } } },
+  'security.strike_dismissed': { kind: 'fact', writers: MAYOR, scope: 'city', schema: { strikeSeq: { t: 'int', min: 1 }, reason: { t: 'str', max: 2000 } } },
+  // Marc voids a strike (A27): recorded by the World Messenger.
+  'security.strike_voided': {
+    kind: 'fact',
+    writers: MESSENGER,
+    scope: 'world',
+    schema: { strikeSeq: { t: 'int', min: 1 }, reason: { t: 'str', max: 2000 } },
+    authorizedBy: ['intent.void_strike'],
+  },
+  'agent.released': {
+    kind: 'fact',
+    writers: MESSENGER,
+    scope: 'city',
+    schema: { reason: { t: 'str', max: 2000 } },
+    authorizedBy: ['intent.release_agent'],
+    subject: 'agent',
+  },
+  'agent.evicted': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: { reason: { t: 'str', max: 2000 } },
+    authorizedBy: ['intent.evict_agent'],
+    subject: 'agent',
+  },
+  // HQ's supervisor archives the ledger and writes the lesson record of an agent held for deletion (in HQ's jail,
+  // A30). Recorded by HQ's Mayor under HQ's own tag. Marc reviews it before he deletes; the deletion uses exactly
+  // these references.
+  'security.deletion_record': {
+    kind: 'fact',
+    writers: MAYOR,
+    scope: 'city',
+    schema: {
+      agentId: { t: 'str', max: 20 },
+      ledgerArchiveRef: { t: 'str', max: 300 },
+      lessonRecordRef: { t: 'str', max: 300 },
+      summary: { t: 'str', max: 4000 },
+    },
   },
   'agent.deployed': {
     kind: 'fact',

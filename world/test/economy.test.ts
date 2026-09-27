@@ -138,7 +138,8 @@ describe('spending: rewards R1-R5 only, executed by the Mayor + Marc', () => {
       s.w.promote(s.city, s.agent, 'probationer');
     }
     s.w.miss(s.city, s.agent, true);
-    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent });
+    s.w.hqRecord(s.agent);
+    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent, confirmAgentId: s.agent });
     s.w.fact(mayorOf(s.city), { type: 'agent.deleted', city: s.city, subject: s.agent, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
     assert.ok(s.w.state.agents.get(s.agent)!.deleted);
   });
@@ -151,7 +152,8 @@ describe('spending: rewards R1-R5 only, executed by the Mayor + Marc', () => {
       s.w.promote(s.city, s.agent, 'probationer');
     }
     s.w.miss(s.city, s.agent, true);
-    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent });
+    s.w.hqRecord(s.agent);
+    const del = s.w.intent('delete_agent', s.city, { agentId: s.agent, confirmAgentId: s.agent });
     s.w.fact(mayorOf(s.city), { type: 'agent.deleted', city: s.city, subject: s.agent, payload: { ledgerArchiveRef: 'a', lessonRecordRef: 'l' }, authorizedBy: del.seq });
     assert.throws(() => s.w.intent('grant_reward', s.city, { agentId: s.agent, reward: 'R5', amountCents: 100, detail: 'x' }), /deleted/);
   });

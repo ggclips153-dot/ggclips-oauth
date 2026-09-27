@@ -8,8 +8,10 @@ import {
   INTERN_BADGE,
   LEGACY_SECURITY_CITY_ID,
   MAX_STRIKES,
+  CLEAN_DAYS_PER_LEVEL,
   JAIL_TERMS_HOURS,
   TASK_STRIKES_PER_JAIL,
+  TEACHING_JAIL_TERMS_HOURS,
   type AgentState,
   type Family,
   type LifecycleStage,
@@ -136,12 +138,26 @@ export interface Agent {
   status: { status: string; activity: string | null; ts: string; seq: number } | null;
   lifecycle: LifecycleEntry[];
   deleted: { seq: number; ts: string; ledgerArchiveRef: string; lessonRecordRef: string } | null;
-  /** Task strikes toward the next jail term (separate from KPI `strikes`). Resets after each term. */
+  /** Confirmed task strikes toward the next jail term (separate from KPI `strikes`). Resets at each jailing. */
   taskStrikes: number;
-  /** Jail terms from task strikes so far. Never resets. */
+  /** Task-strike jail level: the next term is one step higher. Drops one step per CLEAN_DAYS_PER_LEVEL clean days (A32). */
   jailTerms: number;
+  /** Professors: confirmed teaching strikes toward the next jail term, and the teaching jail level (A32). */
+  teachingStrikes: number;
+  teachingJailTerms: number;
+  /** When the clean-days clock for each ladder last restarted (last counted strike or end of a term). */
+  cleanSince: { task: string | null; teaching: string | null };
+  /** Every jail term actually served or started, for scorecards (never goes down). */
+  termsServed: number;
   /** Latest jail record. A timed term ends on its own at `until`; see isJailed(). */
   jail: Jail | null;
+  /** Security's strike reports about this agent (A32: they count only once HQ confirms them). */
+  reports: StrikeReport[];
+  /** Early releases Marc granted, and holds (3rd KPI strike, eviction) that put the agent in jail. */
+  releases: { seq: number; ts: string; reason: string }[];
+  holds: { seq: number; ts: string; cause: 'kpi_strikes' | 'eviction'; reason: string | null }[];
+  /** HQ's supervisor's archive + lesson record, required before Marc can delete (A32). */
+  deletionRecord: { seq: number; ts: string; ledgerArchiveRef: string; lessonRecordRef: string; summary: string } | null;
   /** Security City agents only: the city it is deployed to watch. */
   deployedTo: string | null;
   /** Latest exam from a professor. A pass is required to graduate; reset on each return to school. */
@@ -202,9 +218,22 @@ export interface DeanReport {
   escalated: { seq: number; ts: string; summary: string } | null;
 }
 
+/** A strike Security reported. Only `confirmed` ones count toward jail (A32). */
+export interface StrikeReport {
+  seq: number;
+  ts: string;
+  kind: 'task' | 'teaching';
+  observedBy: string;
+  /** The task not done, or the college rule broken. */
+  what: string;
+  evidence: string;
+  status: 'pending' | 'confirmed' | 'dismissed' | 'voided';
+  decided: { seq: number; ts: string; by: string; note: string | null } | null;
+}
+
 export interface Jail {
   status: 'serving' | 'awaiting_deletion';
-  cause: 'kpi_strikes' | 'task_strikes' | 'teaching_strikes';
+  cause: 'kpi_strikes' | 'task_strikes' | 'teaching_strikes' | 'eviction';
   /** Task-strike term number (1 = 6h, 2 = 24h, 3 = 3 days, 4 = awaiting deletion). */
   term: number | null;
   seq: number;
@@ -222,6 +251,84 @@ export interface TaskStrike {
   task: string;
   evidence: string;
   evidenceRef: string | null;
+  kind: 'task' | 'teaching';
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Work out an agent's jail from scratch (A32), in time order:
+ *  - each CONFIRMED, not voided strike (at the moment HQ confirmed it) climbs its ladder; every 3rd is a term:
+ *    task strikes 6h, 24h, 3 days, then awaiting deletion; teaching strikes 6h, 24h, then awaiting deletion;
+ *  - a ladder's level drops one step per CLEAN_DAYS_PER_LEVEL days without a counted strike or a term;
+ *  - a hold (3rd KPI strike, eviction) puts the agent in jail awaiting deletion;
+ *  - Marc's early release ends whatever jail it's in.
+ * Deterministic, so voiding a strike later gives exactly the jail the agent would have had without it.
+ */
+export function workOutJail(a: Agent): void {
+  type Item = { t: string; seq: number; kind: 'strike'; ladder: 'task' | 'teaching' } | { t: string; seq: number; kind: 'hold'; cause: 'kpi_strikes' | 'eviction' } | { t: string; seq: number; kind: 'release' };
+  const items: Item[] = [
+    ...a.reports.filter((r) => r.status === 'confirmed').map((r) => ({ t: r.decided!.ts, seq: r.decided!.seq, kind: 'strike' as const, ladder: r.kind })),
+    ...a.holds.map((h) => ({ t: h.ts, seq: h.seq, kind: 'hold' as const, cause: h.cause })),
+    ...a.releases.map((r) => ({ t: r.ts, seq: r.seq, kind: 'release' as const })),
+  ].sort((x, y) => x.seq - y.seq);
+  const ladder = {
+    task: { count: 0, level: 0, since: null as number | null, table: JAIL_TERMS_HOURS },
+    teaching: { count: 0, level: 0, since: null as number | null, table: TEACHING_JAIL_TERMS_HOURS },
+  };
+  let jail: Jail | null = null;
+  let served = 0;
+  const step = CLEAN_DAYS_PER_LEVEL * DAY_MS;
+  for (const it of items) {
+    const t = Date.parse(it.t);
+    if (it.kind === 'release') {
+      if (jail) {
+        // A term ended early: its clean-days clock starts now, not at the planned end.
+        for (const l of Object.values(ladder)) if (l.since !== null && l.since > t) l.since = t;
+        jail = null;
+      }
+      continue;
+    }
+    if (it.kind === 'hold') {
+      jail = { status: 'awaiting_deletion', cause: it.cause, term: null, seq: it.seq, ts: it.t, until: null };
+      continue;
+    }
+    const l = ladder[it.ladder];
+    // Clean time since the clock last restarted lowers the level first (A32: 60 strike-free days per step).
+    if (l.since !== null && l.level > 0) {
+      const steps = Math.floor(Math.max(0, t - l.since) / step);
+      if (steps > 0) l.level = Math.max(0, l.level - steps);
+    }
+    l.since = t;
+    l.count += 1;
+    if (l.count < TASK_STRIKES_PER_JAIL) continue;
+    l.count = 0;
+    l.level += 1;
+    served += 1;
+    const hours = l.table[l.level - 1];
+    const cause = it.ladder === 'task' ? 'task_strikes' : 'teaching_strikes';
+    jail = hours === undefined
+      ? { status: 'awaiting_deletion', cause, term: l.level, seq: it.seq, ts: it.t, until: null }
+      : { status: 'serving', cause, term: l.level, seq: it.seq, ts: it.t, until: new Date(t + hours * 3_600_000).toISOString() };
+    // The clean-days clock restarts when the term ends.
+    if (jail.until) l.since = Date.parse(jail.until);
+  }
+  a.taskStrikes = ladder.task.count;
+  a.jailTerms = ladder.task.level;
+  a.teachingStrikes = ladder.teaching.count;
+  a.teachingJailTerms = ladder.teaching.level;
+  a.cleanSince = {
+    task: ladder.task.since === null ? null : new Date(ladder.task.since).toISOString(),
+    teaching: ladder.teaching.since === null ? null : new Date(ladder.teaching.since).toISOString(),
+  };
+  a.termsServed = served;
+  a.jail = jail;
+}
+
+/** A ladder's level today, after clean-time forgiveness (for display; the rules apply it at the next strike). */
+export function levelNow(level: number, since: string | null, now: Date): number {
+  if (!since || level === 0) return level;
+  return Math.max(0, level - Math.floor(Math.max(0, now.getTime() - Date.parse(since)) / (CLEAN_DAYS_PER_LEVEL * DAY_MS)));
 }
 
 /** In jail right now? Timed terms release on their own once `until` passes. */
@@ -299,8 +406,10 @@ export class WorldState {
   readonly consumed = new Set<string>();
   /** Names of deleted agents: retired forever. */
   readonly retiredNames = new Set<string>();
-  /** Task strikes recorded by Security City, oldest first. */
+  /** Strike reports recorded by Security City (task and teaching), oldest first. */
   readonly taskStrikes: TaskStrike[] = [];
+  /** strike report seq -> the agent it is about (A32). */
+  readonly reportAgent = new Map<number, string>();
   constitution: Constitution = { current: null, history: [] };
   /** Social media: channels, posts, inbox, metrics (src/social). */
   readonly social = new SocialState();
@@ -617,14 +726,46 @@ export class WorldState {
         break;
       }
       case 'professor.strike': {
+        // A report only: it counts once HQ confirms it (A32).
         const prof = this.agents.get(p.professorId);
+        this.taskStrikes.push({ seq: e.seq, ts: e.ts, agentId: p.professorId, agentCity: prof?.cityId ?? '', observedBy: p.observedBy, task: p.rule, evidence: p.evidence, evidenceRef: p.evidenceRef ?? null, kind: 'teaching' });
         if (!prof) break;
-        prof.strikes += 1;
-        // Professors aren't sent to school; only the 3rd strike appears on the lifecycle strip.
-        if (prof.strikes >= MAX_STRIKES) {
-          prof.lifecycle.push({ stage: '3rd-strike', seq: e.seq, ts: e.ts, detail: `teaching: ${p.rule}` });
-          prof.jail = { status: 'awaiting_deletion', cause: 'teaching_strikes', term: null, seq: e.seq, ts: e.ts, until: null };
+        this.reportAgent.set(e.seq, prof.id);
+        prof.reports.push({ seq: e.seq, ts: e.ts, kind: 'teaching', observedBy: p.observedBy, what: p.rule, evidence: p.evidence, status: 'pending', decided: null });
+        break;
+      }
+      case 'security.strike_confirmed':
+      case 'security.strike_dismissed':
+      case 'security.strike_voided': {
+        const target = this.agents.get(this.reportAgent.get(p.strikeSeq) ?? '');
+        const report = target?.reports.find((r) => r.seq === p.strikeSeq);
+        if (!target || !report) break;
+        report.status = e.type === 'security.strike_confirmed' ? 'confirmed' : e.type === 'security.strike_dismissed' ? 'dismissed' : 'voided';
+        report.decided = { seq: e.seq, ts: e.ts, by: e.actor, note: p.note ?? p.reason ?? null };
+        const before = target.jail;
+        workOutJail(target);
+        if (target.jail?.status === 'awaiting_deletion' && before?.status !== 'awaiting_deletion') {
+          target.lifecycle.push({ stage: '3rd-strike', seq: e.seq, ts: e.ts, detail: target.jail.cause === 'teaching_strikes' ? 'teaching strikes: awaiting deletion' : 'task strikes: awaiting deletion' });
         }
+        break;
+      }
+      case 'agent.released':
+        if (!agent) break;
+        // Released from a 3rd-KPI-strike hold: back to work with one chance left.
+        if (agent.jail?.cause === 'kpi_strikes') agent.strikes = MAX_STRIKES - 1;
+        agent.releases.push({ seq: e.seq, ts: e.ts, reason: p.reason });
+        agent.deletionRecord = null;
+        workOutJail(agent);
+        break;
+      case 'agent.evicted':
+        if (!agent) break;
+        agent.holds.push({ seq: e.seq, ts: e.ts, cause: 'eviction', reason: p.reason });
+        workOutJail(agent);
+        agent.lifecycle.push({ stage: '3rd-strike', seq: e.seq, ts: e.ts, detail: `evicted: ${p.reason}` });
+        break;
+      case 'security.deletion_record': {
+        const held = this.agents.get(p.agentId);
+        if (held) held.deletionRecord = { seq: e.seq, ts: e.ts, ledgerArchiveRef: p.ledgerArchiveRef, lessonRecordRef: p.lessonRecordRef, summary: p.summary };
         break;
       }
       case 'exam.graded': {
@@ -719,13 +860,15 @@ export class WorldState {
         if (!agent) break;
         agent.strikes += 1;
         // Waiting for deletion: held in Security's jail.
-        agent.jail = { status: 'awaiting_deletion', cause: 'kpi_strikes', term: null, seq: e.seq, ts: e.ts, until: null };
+        agent.holds.push({ seq: e.seq, ts: e.ts, cause: 'kpi_strikes', reason: null });
+        workOutJail(agent);
         mark('3rd-strike');
         break;
       case 'agent.deployed':
         if (agent) agent.deployedTo = p.toCity;
         break;
       case 'security.task_strike': {
+        // A report only: it counts once HQ confirms it (A32).
         const target = this.agents.get(p.agentId);
         this.taskStrikes.push({
           seq: e.seq,
@@ -736,24 +879,11 @@ export class WorldState {
           task: p.task,
           evidence: p.evidence,
           evidenceRef: p.evidenceRef ?? null,
+          kind: 'task',
         });
         if (!target) break;
-        target.taskStrikes += 1;
-        if (target.taskStrikes < TASK_STRIKES_PER_JAIL) break;
-        target.taskStrikes = 0;
-        target.jailTerms += 1;
-        const hours = JAIL_TERMS_HOURS[target.jailTerms - 1];
-        target.jail =
-          hours === undefined
-            ? { status: 'awaiting_deletion', cause: 'task_strikes', term: target.jailTerms, seq: e.seq, ts: e.ts, until: null }
-            : {
-                status: 'serving',
-                cause: 'task_strikes',
-                term: target.jailTerms,
-                seq: e.seq,
-                ts: e.ts,
-                until: new Date(Date.parse(e.ts) + hours * 3_600_000).toISOString(),
-              };
+        this.reportAgent.set(e.seq, target.id);
+        target.reports.push({ seq: e.seq, ts: e.ts, kind: 'task', observedBy: p.observedBy, what: p.task, evidence: p.evidence, status: 'pending', decided: null });
         break;
       }
       case 'agent.deleted':
@@ -844,7 +974,15 @@ function newAgent(e: LedgerEvent, p: Record<string, any>): Agent {
     deleted: null,
     taskStrikes: 0,
     jailTerms: 0,
+    teachingStrikes: 0,
+    teachingJailTerms: 0,
+    cleanSince: { task: null, teaching: null },
+    termsServed: 0,
     jail: null,
+    reports: [],
+    releases: [],
+    holds: [],
+    deletionRecord: null,
     deployedTo: null,
     lastExam: null,
     specialtyDepartmentId: null,

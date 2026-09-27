@@ -1,284 +1,314 @@
-# The Jailing System — Complete Handoff
+# The Jailing System — Complete Handoff (updated for A28, A30 and A32)
 
-This document covers Security City's jail as built in `world/`. It is written from the code
-(`src/domain/model.ts`, `src/domain/state.ts`, `src/ledger/guard.ts`, `src/ledger/catalog.ts`,
-`src/domain/view.ts`, `public/app.js`, `public/city3d.js`) and the tests (`test/jail.test.ts`,
-`test/college.test.ts`, `test/dean.test.ts`, `test/lifecycle.test.ts`). Where Marc's own words set a rule,
-they are quoted.
+This document covers the jail as built in `world/`. It is written from the code:
+- `src/domain/model.ts`, `src/domain/state.ts` (`workOutJail`), `src/ledger/guard.ts`, `src/ledger/catalog.ts`
+- `src/server/executor.ts`, `src/domain/view.ts`
+- `public/app.js`, `public/forms.js`, `public/city3d.js`, `public/world3d.js`
+
+and from the tests:
+- `test/jail.test.ts`, `test/discipline.test.ts`, `test/college.test.ts`, `test/dean.test.ts`,
+  `test/lifecycle.test.ts`
+
+Where Marc's own words set a rule, they are quoted. **HQ is the Security city** (A28): in Marc's world the city
+named HQ (ID `security`); in the demo, "Security City" (ID `security-city`).
 
 **Amendments behind it:**
 - **A3:** Security keeps a jail.
 - **A6:** task strikes and jail terms.
-- **A13/A15:** professors take teaching strikes from Security.
-- **A15:** deans report to Security, which escalates to Marc.
+- **A13/A15:** professors and Security's teaching strikes; dean reports go to Marc.
 - **A28:** the Security city is **HQ**, whatever its name. Marc's HQ was created as "Security" before a city
-  could be created as the Security city, so it is made the Security city once, from its page ("Make this the
+  could be created as the Security city, so it was made the Security city once, from its page ("Make this the
   Security city", `city.security_designated`).
 - **A30:** **every city has its own jail.** An agent serving a term is held in its own city's jail. An agent
   **awaiting deletion** is moved to **HQ's jail** and waits there for Marc's decision. Where an agent is held is
-  worked out from the ledger (like the terms), so no event records the move. HQ still records every task and
-  teaching strike.
-
-In the sections below, "Security City" means the Security city, which is HQ in Marc's world (its ID is
-`security`; the demo's is `security-city`).
+  worked out from the ledger (like the terms), so no event records the move.
+- **A32 (27 Sept):** HQ confirms strikes; voids, early release, eviction; clean time; everyone can be struck;
+  deletion needs HQ's record and typing the agent's ID.
 
 ---
 
 ## 1. In one paragraph
 
-Security City keeps a department of agents **deployed to every city** to watch for work not being done.
-Each time a deployed agent catches an agent in its city not doing a task, Security's Mayor records a **task
-strike**. Every **3 task strikes** puts the agent in **jail**: 6 hours the first time, 24 hours the second,
-3 days the third. The **4th** time, the agent is jailed **awaiting deletion**. The same happens after a
-**3rd KPI strike** (a department agent), or a **3rd teaching strike** (a professor). Timed terms end **on
-their own**. Nobody has to release anyone. **Nothing is ever deleted automatically:** only Marc decides a
-deletion, and the agent's home Mayor carries it out.
+HQ keeps agents **deployed to every city** to watch for work not being done.
+- **Strikes.** A deployed agent that catches someone not doing a task gets HQ's Mayor to **report** a strike.
+  The report counts **only once HQ confirms it** (its Judiciary).
+- **The ladder.** Every **3 confirmed task strikes** is a **jail term**: 6 hours, then 24 hours, then 3 days,
+  served in the person's own city's jail. The **4th** time, the agent is jailed **awaiting deletion** in HQ's jail.
+- **Professors** also take **teaching strikes**: every 3 is a term of 6 hours, then 24 hours, and the **3rd**
+  time means awaiting deletion.
+- **Other holds.** A **3rd KPI strike**, or Marc **evicting** an agent, also means awaiting deletion.
+- **Release and forgiveness.** Terms end **on their own**. Each **60 strike-free days** lowers the jail level
+  one step.
+- **Marc's powers.** He can **void** any strike and **release** anyone early.
+- **Deletion.** Nothing is deleted automatically. **HQ's supervisor** writes the archive and lesson record,
+  Marc **reviews it**, and he deletes by **typing the agent's ID**.
 
-Marc, 25 Sept: *"if they're caught not doing a task they will get a strike, 3 strikes and they go to jail for 6
-hours for the first time, 24 hours the 2nd time. 3 days for the 3rd time and face deletion on the 4th."*
-*"yes 2 separate counters"*, *"There will be a department created in the Security city that has agents
-deployed in each city"*, *"yes release happens on it's own"*.
+**Marc's words**
+- 25 Sept: *"if they're caught not doing a task they will get a strike, 3 strikes and they go to jail for 6
+  hours for the first time, 24 hours the 2nd time. 3 days for the 3rd time and face deletion on the 4th."*
+- 27 Sept (A30): *"Every city will have a jail and HQ's Jail will be the one agents are held in before facing
+  deletion"*; *"HQ is SECURITY"*.
+- 27 Sept (A32):
+  - *"No HQ should confirm"*
+  - *"All agents can be struck or sent to Jail except for Bob and World Messenger"*
+  - *"3 teaching strikes will lead to jail 3 times in jail will face deletion"*
+  - *"HQ supervisor, yes ask me first"*
+  - *"make me type their agent id as a form of 2 factor authentication"*
+  - Chosen: 60 days per step; professors 6h then 24h. Then "HQ = Security confirms": HQ is the Security city,
+    not a separate office.
 
 ---
 
-## 2. The three kinds of strike
+## 2. HQ confirms (A32)
+
+- **Who confirms.** HQ, the Security city. Its **Mayor** records HQ's decisions (its Judiciary's) under HQ's own
+  tag, like its reports:
+  - **Confirm** or **dismiss** each strike reported (`security.strike_confirmed`, `security.strike_dismissed`).
+    Until then a report is "Waiting for HQ" and **doesn't count**.
+  - **Write the deletion record** (`security.deletion_record`) for an agent held awaiting deletion: where its
+    ledger is archived, where its lesson record is, and a short summary.
+- **Who can't confirm.** Marc, the World Messenger and every other city's Mayor. Marc can **void** a report at
+  any time (section 6).
+- **No new login or role.** HQ's Mayor bot does it, with the Mayor login of HQ's city.
+- **Why not a separate office.** A cloud session built "World HQ" as its own world-level office with a new
+  ledger role, and a one-time rebuild of the ledger file to allow it. Marc chose "HQ = Security confirms", so
+  neither was kept.
+
+---
+
+## 3. The three kinds of strike
 
 | | KPI strikes | Task strikes | Teaching strikes |
 |---|---|---|---|
-| **Who gets them** | Graduated department agents (probationer, active, senior) | Department agents that are placed (not `enrolled`); **not** professors or deans | Professors only |
-| **Why** | The agent missed its city KPI (value below target) | Caught not doing a task by a deployed Security agent | Broke a college rule (free text until Marc's school system arrives) |
-| **Who records it** | The agent's **home Mayor** (`agent.school_returned`, `agent.third_strike`) | **Security's Mayor**, under **Security's own city tag** (`security.task_strike`) | **Security's Mayor** (`professor.strike`) |
-| **Counter** | `strikes` (0–3), never resets | `taskStrikes` (0–2), **resets to 0 at each jailing** | `strikes` (0–3), never resets |
-| **Consequence** | Miss #1 → back to school. Miss #2 → back to school. Miss #3 → **jailed awaiting deletion** | Every 3rd strike → **a jail term** (6 h → 24 h → 3 days); the 4th jailing → **awaiting deletion** | Strikes 1–2: keeps its post. **3rd → jailed awaiting deletion** |
-| **Jail cause shown** | "KPI strikes" | "Task strikes" | "Teaching strikes" |
+| **Who gets them** | Graduated department agents | **Everyone who is an agent of a city**: department agents (once placed), **professors** and **deans**. Not Bob or the World Messenger | Professors |
+| **Why** | Missed the city KPI (value below target) | Caught not doing a task | Broke a college rule (free text until the school system spec) |
+| **Reported by** | The home Mayor (`agent.school_returned` / `agent.third_strike`) | **HQ's Mayor**, under HQ's tag (`security.task_strike`) | **HQ's Mayor** (`professor.strike`) |
+| **Counts when** | Recorded | **HQ confirms** | **HQ confirms** |
+| **Counter** | 0–3, never resets (a release from the 3rd sets it back to 2) | 0–2, resets at each jailing | 0–2, resets at each jailing |
+| **Consequence** | Miss #1, #2 → school; #3 → **awaiting deletion** | Every 3rd → term: **6 h → 24 h → 3 days → awaiting deletion** | Every 3rd → term: **6 h → 24 h → awaiting deletion** |
 
-The counters are **completely separate** (Marc: "2 separate counters"). A KPI miss never counts toward jail
-terms, and a task strike never sends an agent to school.
-
-**Deans** take none of these. The Mayor judges a dean through reviews (exceeds / meets / below); what a bad
-review leads to is still open (section 11).
+The counters are **separate**. A professor has two ladders (task and teaching); a dean has the task ladder.
 
 ---
 
-## 3. Deployment: who can give task strikes
+## 4. Deployment: who may observe
 
-- **Marc deploys** a Security agent: Security City page → **Deploy an agent**, then choose the agent and the
-  city to watch.
-  - This writes `intent.deploy_agent` (tagged `security-city`), and Security's Mayor writes `agent.deployed`.
-  - Under A19 it applies at once as Marc.
-- **Who can be deployed:** only a **Security City** department agent that is **graduated** (probationer,
-  active or senior). Professors and deans can't be deployed.
-- **Where:** any city, including Security City itself. Each deployed agent watches **one** city at a time;
-  deploying it again moves it.
-- **A deployment ends by itself** if the Security agent goes back to school (KPI miss) or retires into a
-  professor. It then has to be deployed again after it re-graduates.
-
-**Who may observe a strike.** A strike is rejected unless the observer is all of these:
-- a living Security City **department agent** (not a professor or dean)
-- **graduated** (probationer, active or senior)
-- **deployed to the struck agent's city**
-- **not in jail** itself
-- **not the struck agent** ("an agent cannot strike itself")
+- **Deploying:** Marc deploys a **graduated HQ agent** to a city (HQ's page → **Deploy an agent**). HQ's Mayor
+  carries it out; under A19 it applies at once.
+- **Where:** one city at a time; deploying again moves it. It ends by itself if the agent goes back to
+  school or retires into a professor.
+- **Who may be the observer:** a report is refused unless the observer is **all** of these:
+  - a living HQ department agent
+  - graduated
+  - deployed to the struck person's city
+  - not in jail
+  - not the person being struck
 
 ---
 
-## 4. The jail ladder, exactly
+## 5. The ladders, exactly
 
 ```
-task strikes:  1  2  [3] → JAIL term 1: 6 hours      (task strikes reset to 0)
-               1  2  [3] → JAIL term 2: 24 hours     (reset to 0)
-               1  2  [3] → JAIL term 3: 3 days (72h) (reset to 0)
-               1  2  [3] → JAIL term 4: AWAITING DELETION (no release)
+Task strikes (agents, professors, deans):     Teaching strikes (professors):
+  3 confirmed → term 1: 6 hours                 3 confirmed → term 1: 6 hours
+  3 confirmed → term 2: 24 hours                3 confirmed → term 2: 24 hours
+  3 confirmed → term 3: 3 days                  3 confirmed → term 3: AWAITING DELETION
+  3 confirmed → term 4: AWAITING DELETION
 ```
 
-- **The term level never goes down.** An agent that served term 1 months ago goes straight to term 2 on its
-  next 3rd strike. (Marc accepted the default: "strikes reset after each term, but the jail level never
-  resets".)
-- **Release is automatic.** The jail record stores `until` = the moment of the 3rd strike + the term's hours.
-  The system works out "in jail?" from the ledger clock: inside while `until` is in the future, free once it
-  passes. **No release event is written or needed.**
-- **After release** the agent works normally: it can be promoted, earn, and so on. Its `jailTerms` count
-  stays.
-- **Awaiting deletion** has no `until`, so the agent stays in jail **until Marc decides**. The tests check a
-  full year passing without release.
+- **When a strike counts.** A strike counts at the moment **HQ confirms** it. The count toward the next term
+  resets to 0 at each jailing.
+- **Release is automatic.** A term ends at `until`, and nobody writes a release. "Awaiting deletion" never
+  ends on its own.
+- **Clean time (A32): 60 days per step.**
+  - Each full 60 days with no counted strike (and no term running) lowers that ladder's level by one step,
+    down to zero.
+  - The clock restarts at each counted strike and at the end of each term.
+  - Example: an agent that served 24 hours (level 2) and then stays clean 60 days is back at level 1. Its next
+    3rd strike gives 24 hours again, not 3 days.
+  - The Security page shows each person's **jail level now**.
+- **Where the numbers live:** all in `src/domain/model.ts`.
+  - `TASK_STRIKES_PER_JAIL = 3`
+  - `JAIL_TERMS_HOURS = [6, 24, 72]`
+  - `TEACHING_JAIL_TERMS_HOURS = [6, 24]`
+  - `CLEAN_DAYS_PER_LEVEL = 60`
+  - `MAX_STRIKES = 3` (KPI)
 
-**Where the numbers live (to change them later):**
-- `TASK_STRIKES_PER_JAIL = 3`
-- `JAIL_TERMS_HOURS = [6, 24, 72]`
-- `MAX_STRIKES = 3` (KPI and teaching)
+**How it's worked out.** The jail isn't stored as a changing value. It's **worked out from the ledger** in
+order:
+- confirmed, not voided strikes
+- holds (3rd KPI strike, eviction)
+- Marc's releases
 
-All are in `src/domain/model.ts`. Adding a 4th timed term is one more number in the list, and "awaiting
-deletion" moves to the 5th.
+So voiding a strike later gives exactly the jail the person would have had without it. A server restart
+always gives the same answer. **Where** the person is held (A30) is worked out the same way: its own city's jail
+during a term, HQ's while awaiting deletion.
 
 ---
 
-## 5. What a jailed agent can't do
+## 6. Marc's powers (A32)
 
-While inside (a timed term or awaiting deletion), the ledger **rejects** all of these for that agent:
+| Action | Where | What happens |
+|---|---|---|
+| **Void a strike** (pending or confirmed) | Security → "Waiting for HQ" or "Recent strikes" → **Void** (with a reason) | It never counts. The jail is worked out again; a term it caused ends. |
+| **Release early** | Security jail table, or the person's row → **Release early** (with a reason) | Ends the term now (the level stays). From "awaiting deletion" it goes back to work: after a 3rd KPI strike with one KPI chance left; its deletion record is cleared. |
+| **Evict** (before a 3rd strike) | The person's row, or the jail table → **Evict**: reason, then **type the agent's ID** | Held in HQ's jail **awaiting deletion** (cause "Evicted"). HQ then writes the record, and Marc decides. |
+| **Delete** | **Review & delete**, which appears once HQ's record is in | Step 1: **review HQ's lesson record** (Marc: "ask me first"). Step 2: **type the agent's ID**. The deletion uses exactly HQ's archive and lesson references. |
+
+- **Checked twice.** A wrong ID is refused in the form and again by the server. Nothing happens.
+- **Evict and Delete buttons appear** for department agents (city Details), professors (College), the dean
+  (dean card) and anyone in the jail table.
+
+---
+
+## 7. What a person in jail can't do
+
+While inside (any term, or awaiting deletion):
 
 | Area | Blocked |
 |---|---|
-| **Work and pay** | Being credited earnings (`intent.grant_earning`, `currency.earned`) or given rewards (`intent.grant_reward`, `currency.spent`) |
-| **Strikes** | More task strikes (`security.task_strike`) or KPI strikes (`agent.school_returned`, `agent.third_strike`): it isn't being measured while inside |
-| **School and ladder** | Exams (`exam.graded`), becoming an intern, graduating, promotion (`intent.promote_agent`, `agent.promoted`), dept-lead |
-| **Movement** | Moving department (`intent.move_agent`, `agent.moved`), retiring into a professor |
-| **Delegation** | Handing a basic task to a shadow (`task.delegated`) |
+| **Work and pay** | Earnings and rewards |
+| **Strikes** | New strike reports; HQ can't confirm a waiting report either |
+| **School and ladder** | Exams (as student or as examiner), intern, graduation, promotions, dept-lead |
+| **Movement** | Moves, retiring to professor, a professor stepping in |
+| **Other roles** | Delegating to shadows; a jailed dean can't report; a jailed professor can't be made dean; a jailed HQ agent can't observe |
 
-**Also:**
-- A **jailed Security agent can't observe** strikes.
-- A **jailed professor can't give exams, step in** to a department, or be made dean.
-- A **jailed dean can't report** agents.
-
-What it **keeps**:
-- its ID, name, department placement and history
-- its conversations: Marc can still talk to it
+It **keeps** its ID, name, place, history and conversations (Marc can still talk to it).
 
 ---
 
-## 6. Deletion: only from jail, only by Marc
+## 8. Deletion, step by step
 
-- **Deletion is possible only** for an agent jailed **awaiting deletion**:
-  - its 4th task-strike jailing,
-  - its 3rd KPI strike, or
-  - a professor's 3rd teaching strike.
+1. **The person is held awaiting deletion** in HQ's jail: 4th task term, 3rd teaching term, 3rd KPI strike, or
+   eviction.
+2. **HQ's supervisor writes the deletion record** (`security.deletion_record`, by HQ's Mayor, under HQ's tag):
+   - `agentId`: who it is for
+   - `ledgerArchiveRef`: the agent's full ledger, frozen and archived
+   - `lessonRecordRef`: the distilled, sanitized lesson record for the replacement
+   - `summary`: a short summary
 
-  Anything else is rejected, including an agent serving a timed term: *"deletion only for an agent jailed
-  awaiting deletion (3rd KPI strike, or 4th task-strike jailing)"*.
-- **Marc decides.** Delete appears on the **Security** page next to that agent, and on the agent's row in
-  its city. It writes `intent.delete_agent`. The **home Mayor** executes `agent.deleted` with:
-  - `ledgerArchiveRef`: where the agent's full ledger is **frozen and archived**
-  - `lessonRecordRef`: the **distilled, sanitized lesson record** that becomes the replacement's first
-    curriculum (template: `docs/templates/LESSON-RECORD.md`)
-- **Under A19** Marc's click applies at once, and the refs are filled as `archive/<agentID>/ledger` and
-  `lessons/<agentID>.md`. **Hermes must actually archive the ledger and write the lesson record at those
-  places.** See section 11, question 6.
-- **On deletion:**
-  - the agent leaves the jail and its department
-  - its **ID and name are retired forever** (never reissued or reused)
-  - the lifecycle strip ends at "deletion"
-  - it's listed under the city's **Retired agents**, with its lesson record
-- The brief: *"Lessons persist, the individual doesn't."* Also: **no agent executes its own exit**.
+   Until then the jail shows "Awaiting deletion · HQ writing the lesson record", and Delete isn't offered.
+3. **Marc** clicks **Review & delete**, reads the record, approves, and **types the agent's ID**.
+4. **The home Mayor carries it out** (`agent.deleted`, with HQ's exact references; under A19 at once):
+   - the ID and name are retired forever
+   - the agent is listed under Retired agents with its lesson record
+
+"Lessons persist, the individual doesn't." No agent executes its own exit.
 
 ---
 
-## 7. Deans, Security and Marc's inbox (A15)
+## 9. Dean reports (A15)
 
-Marc: *"deans will … monitor for work not being done and can report an agent to security to be brought up
-to me."*
-
-1. A college **dean reports** an agent of its city (`dean.reported`): reason and evidence, written by the
-   city's Mayor.
-   - A jailed dean can't report.
-   - A dean can't report itself.
-2. **Security escalates** the report to Marc (`security.escalated`, by Security's Mayor, once per report).
-3. It appears in Marc's **Inbox** (top bar). **Marc decides** what happens.
-   - Nothing about a report jails or strikes anyone by itself.
+1. **A dean reports** an agent to Security (`dean.reported`). A jailed dean can't report, and it can't report
+   itself.
+2. **HQ escalates** it to Marc (`security.escalated`).
+3. It appears in the **Inbox**. **Marc decides**; a report never jails anyone by itself.
 
 ---
 
-## 8. Who sees the jail
+## 10. Who sees what
 
-- **Marc, the World Messenger, Bob, and the Essentials Mayors (Security, Innovations)** see every jailed agent
-  from every city (A2).
-- **A revenue, Claude or Gemini Mayor** sees only its own city's agents in the jail.
-  - It also sees Security's task strikes, teaching strikes and escalations **about its own agents**, even
-    though Security records them under its own tag.
-- **Nobody but Security's Mayor can write** a task strike, teaching strike or escalation. The home Mayor
-  can't erase one.
+- **Everything:** Marc, the World Messenger, Bob, and the Essentials Mayors (HQ, Innovations).
+- **Another Mayor** sees only its own city's people in the jail, plus the reports, HQ's decisions, deletion
+  records and voids **about its own agents**, even though they're recorded under HQ's or the World's tag.
+- **Who writes what:**
+  - Only HQ's Mayor writes reports, confirmations, dismissals and deletion records.
+  - Only Marc voids, releases and evicts.
 
 ---
 
-## 9. Where it shows in the dashboard
+## 11. In the dashboard
 
 | Place | What you see |
 |---|---|
-| **Top bar → Security** (count = people in jail + quarantined notes) | **Jail** table: agent, city, **held in** (its own city's jail, or HQ's while awaiting deletion), cause, term, release ("5h 12m left") or **"Awaiting your deletion decision"** with **Delete**. A warning while the world has no Security city. **Recent task strikes**: when, agent, city, task, observed by (last 20). Also the shared-surface guard's stopped notes. |
-| **Map → city tiles, city header** | A red "**N in jail**" chip. |
-| **World KPI row** | "In jail" total. |
-| **City → Details → each agent row** | "KPI x/3 · Task x/3", and a jail chip: "Jail · 5h left" or "Jail · awaiting deletion". **Delete** only when awaiting deletion. |
-| **College → professors** | The jail chip in "Now". |
-| **Dean card** | Scorecard includes the graduates' **jail terms** and **in jail now**. |
-| **Live** page | The jail chip next to each agent. |
-| **3D city and globe** | **Every city** has a red wireframe **jail cage** holding its own jailed agents (hover for "in jail until …"). HQ's cage also holds the agents **awaiting deletion** from every city, labelled "holds agents awaiting deletion". Jailed agents wear orange and stand inside. |
-| **Deploy an agent** | Button on the Security city's page (owner). |
+| **Security** (top bar) | **Jail**: who, city, **held in** (its own city's jail, or HQ's while awaiting deletion), cause (task / teaching / KPI strikes / evicted), term, release time or "awaiting your deletion decision", **jail level now**, and Release early / Evict / Review & delete. **Waiting for HQ**: reports not yet decided, with Void. **Recent strikes**: HQ's decisions (confirmed / dismissed / voided), with Void. A warning while the world has no Security city. Also the shared-surface guard. |
+| **City Details → agent rows** | "KPI x/3 · Task x/3 · jail level n · n awaiting HQ", a jail chip, and Release early / Evict / Review & delete. |
+| **College → professors; dean card** | The same, with "Teaching x/3" for professors. |
+| **Map and city header** | "N in jail" chips; "In jail" in the world KPI row. |
+| **Dean scorecard** | The graduates' jail terms served and in jail now. |
+| **3D city and globe** | **Every city** has a red wireframe **jail cage** holding its own jailed people (hover for details). HQ's cage also holds the agents **awaiting deletion** from every city. Jailed people wear orange and stand inside. |
+| **Deploy an agent** | Button on HQ's page (owner). |
 | **Make this the Security city** | Button on an Essentials city's page while the world has none (owner, once). |
 
 ---
 
-## 10. Ledger events involved
+## 12. Ledger events
 
 | Event | Written by | Tag | Payload | Rules |
 |---|---|---|---|---|
-| `intent.deploy_agent` | Marc | `security-city` | `agentId`, `toCity` | Security agent, graduated, city exists |
-| `agent.deployed` | Security's Mayor | `security-city` | `toCity` (subject = agent) | cites the intent; matches it |
-| `security.task_strike` | Security's Mayor | **`security-city` only** | `agentId`, `observedBy`, `task`, `evidence`, `evidenceRef?` | target is a living, placed department agent, not jailed; observer rules in section 3 |
-| `agent.school_returned` | home Mayor | the agent's city | `reason`, `metric`, `value`, `target` | a real miss (value < target); graduated agent; not the 3rd |
-| `agent.third_strike` | home Mayor | the agent's city | same | exactly 2 prior KPI strikes → jailed awaiting deletion |
-| `professor.strike` | Security's Mayor | `security-city` | `professorId`, `observedBy`, `rule`, `evidence`, `evidenceRef?` | observer deployed to the professor's city; the 3rd → awaiting deletion; no 4th |
-| `dean.reported` | the city's Mayor | the city | `deanId`, `agentId`, `reason`, `evidence`, `evidenceRef?` | the dean isn't jailed; not itself |
-| `security.escalated` | Security's Mayor | `security-city` | `reportSeq`, `summary` | once per report |
-| `intent.delete_agent` | Marc | the agent's city | `agentId` | — |
-| `agent.deleted` | home Mayor | the agent's city | `ledgerArchiveRef`, `lessonRecordRef` | cites the intent; agent **awaiting deletion** |
+| `intent.deploy_agent` / `agent.deployed` | Marc / HQ's Mayor | HQ | `agentId`, `toCity` | graduated HQ agent |
+| `security.task_strike` | HQ's Mayor | HQ | `agentId`, `observedBy`, `task`, `evidence`, `evidenceRef?` | a **report**; target not jailed; observer rules |
+| `professor.strike` | HQ's Mayor | HQ | `professorId`, `observedBy`, `rule`, `evidence`, `evidenceRef?` | a **report**; professor not jailed |
+| `security.strike_confirmed` | **HQ's Mayor** | HQ | `strikeSeq`, `note?` | report pending; person not in jail |
+| `security.strike_dismissed` | **HQ's Mayor** | HQ | `strikeSeq`, `reason` | report pending |
+| `intent.void_strike` → `security.strike_voided` | Marc → World Messenger (A19: marc-as-messenger) | WORLD | `strikeSeq`, `reason` | report not already voided or dismissed |
+| `intent.release_agent` → `agent.released` | Marc → World Messenger | the person's city | `agentId`, `reason` | the person is in jail |
+| `intent.evict_agent` → `agent.evicted` | Marc → home Mayor | the person's city | `agentId`, `reason`, **`confirmAgentId`** | the typed ID must match; not already awaiting deletion |
+| `agent.school_returned` / `agent.third_strike` | home Mayor | the agent's city | KPI miss fields | the 3rd → awaiting deletion |
+| `security.deletion_record` | **HQ's Mayor** | HQ | `agentId`, `ledgerArchiveRef`, `lessonRecordRef`, `summary` | person awaiting deletion |
+| `intent.delete_agent` → `agent.deleted` | Marc → home Mayor | the person's city | `agentId`, **`confirmAgentId`** / refs | typed ID must match; awaiting deletion; **uses HQ's exact refs** |
+| `dean.reported` / `security.escalated` | city Mayor / HQ's Mayor | city / HQ | report fields / `reportSeq`, `summary` | once per report |
+| `intent.designate_security_city` → `city.security_designated` | Marc → World Messenger | that city | none | an Essentials city; once per world (A28) |
 
-`security-city` above is the demo's Security city; in Marc's world the tag is HQ's ID, `security`. Making an
-older Essentials city the Security city: `intent.designate_security_city` (Marc, that city's tag) and
-`city.security_designated` (the World Messenger), once per world.
+"HQ" as a tag is the Security city's ID: `security` in Marc's world, `security-city` in the demo.
 
-A jail term is not an event. It's the **result** of the 3rd strike, worked out when the strike is recorded;
-release is worked out from time. The same goes for where the agent is held (A30). So a restart gives exactly
-the same jail.
-
----
-
-## 11. Open questions (back to the World Messenger)
-
-1. **Appeals or mistakes.** There's no way to **cancel a wrong strike** or **release someone early**. The
-   ledger is append-only, so this would be a new event (e.g. `security.strike_voided`, Marc only). Do you
-   want it?
-2. **Pardon or clean-record decay.** Should the term level ever go down, for example after 30 or 90 clean
-   days? It never does today, as agreed.
-3. **Who confirms a strike.** Today Security's Mayor records it on its deployed agent's evidence, and the home
-   Mayor can't dispute it. Should the home Mayor (or you) confirm each one first?
-4. **Deans and strikes.** Deans can't receive task or teaching strikes; only Mayor reviews. Should a bad dean
-   be jailable too?
-5. **Teaching-strike rules.** They're free text until your school system spec arrives. Should professors get
-   timed terms, or stay "3 = awaiting deletion" with no timed jail?
-6. **Archive and lesson record on deletion.** When you click Delete, the refs default to
-   `archive/<ID>/ledger` and `lessons/<ID>.md`. Who writes those files: Hermes (the home Mayor) or the World Messenger?
-   Should Delete ask you for the lesson record first?
-7. **Eviction before a 3rd strike.** You can't delete an agent that isn't awaiting deletion (interim rule). Do
-   you want a separate eviction path?
-8. **Clock.** Terms use the world server's clock. When the world moves to the PC, the PC's clock should be
-   correct (automatic time sync on).
-9. **Demo note.** The demo's jailed agent starts a 6-hour term when the demo is built, so it's free again 6
-   hours later. Rebuild the demo to see it inside again.
+A jail term is not an event. It's the **result** of the confirmed strikes, worked out from the ledger;
+release is worked out from time, and so is where the person is held (A30). So a restart gives exactly the same
+jail. Strikes recorded **before** A32 had no confirmation, so they show as "Waiting for HQ" and count once HQ
+confirms them (Marc's live world has none).
 
 ---
 
-## 12. Tests covering it
+## 13. Open questions (back to the World Messenger)
 
-`npm test` checks every rule above (176 tests in total). The jail-specific ones:
+1. **Mayors in jail.** Marc said Mayors can be struck and jailed too, but a Mayor isn't an agent record in the
+   ledger yet. Before building it:
+   - While a Mayor is in jail, who runs the city: its Mayor bot paused, the World Messenger, or a deputy?
+   - Which of its writes are blocked?
+   - Does "deletion" of a Mayor mean replacing it with a new Mayor?
+   - Who observes a Mayor: an HQ agent deployed to that city?
+2. **Supervisors.** Can district and department supervisors be struck and jailed too? (Everyone except Bob and
+   the World Messenger suggests yes.)
+3. **KPI strikes and HQ.** HQ confirms task and teaching strikes. KPI strikes are recorded by the home Mayor
+   from the KPI numbers. Should HQ confirm those too?
+4. **Partial strikes and clean time.** Clean time lowers the jail **level**. Should 1–2 strikes toward the
+   next term also wear off after 60 clean days?
+5. **Disputes (A27).** The Jail Supervisor → Mayor → Marc review chain and the 5 disputes per agent are still to
+   be built on top of voids (`OPEN-QUESTIONS.md` #43–#45, #48).
+6. **Clock.** Terms run on the world server's clock: keep the PC's time synced automatically.
+7. **Demo.** The demo's jailed agent is released 6 hours after the demo is built; a 4th report waits for HQ.
+
+---
+
+## 14. Tests
+
+`npm test`: 191 tests, all passing.
 
 **`test/jail.test.ts`**
 - Essentials read everything but write only their own city.
-- Task strikes are recorded under Security's tag and are separate from KPI strikes.
-- Only a deployed Security agent can observe.
-- Deployment needs Marc's intent and a graduated Security agent.
-- **The ladder, hour by hour:** 6 h, 24 h and 3 days, each checked one hour before and at release.
-  - Blocked actions are refused while inside.
-  - The roster appears and disappears.
-  - The 4th time waits a full year without release.
-  - Deletion by Marc's intent.
-- **The level never resets,** and the agent works normally after a term.
-- **The 3rd KPI strike** means awaiting deletion; deletion is refused in every other case, including during a
-  timed term.
-- **A28:** a Security city named HQ runs deployments, task strikes and the jail; one per world, Essentials only;
-  an older world keeps `security-city`; an Essentials city made before A28 (Marc's "Security", renamed HQ) can be
+- Reports count only after HQ confirms.
+- Observer rules and deployment.
+- **The ladder hour by hour** (6 h, 24 h, 3 days, each checked an hour before and at release).
+- A year without release while awaiting deletion.
+- The level after a term; deletion only with HQ's record.
+- **A28:** a Security city named HQ runs deployments, strikes and the jail; one per world, Essentials only; an
+  older world keeps `security-city`; an Essentials city made before A28 (Marc's "Security", renamed HQ) can be
   made the Security city once.
 - **A30:** a term is served in the home city's jail; awaiting deletion, the agent is held in HQ's; with no
   Security city yet, it stays in its own city's jail.
 
+**`test/discipline.test.ts` (A32)**
+- Only HQ confirms (not the struck agent's Mayor, not the World Messenger); dismissed reports never count.
+- The home Mayor sees HQ's decisions about its agents.
+- HQ can't confirm while the person is inside.
+- **Voiding** the strike that caused a term ends it.
+- **Early release**, including from a 3rd KPI strike (one chance left).
+- **60-day clean-time** step-down (the next term is 24 h instead of 3 days).
+- **A dean jailed** by task strikes.
+- **Eviction and deletion** refuse a wrong typed ID and need HQ's record, with HQ's exact refs.
+- A release clears the record.
+
 **Other files**
-- **`test/college.test.ts`:** professors' teaching strikes, and jailed professors can't examine or step in.
-- **`test/dean.test.ts`:** dean reports, Security's escalation to Marc's inbox, and that a jailed professor can't be made dean.
-- **`test/lifecycle.test.ts`:** the KPI 3-chances path.
+- **`test/college.test.ts`:** professors take task strikes too; the **teaching ladder** (6 h, 24 h, then
+  awaiting deletion); jailed professors can't examine or step in.
+- **`test/dean.test.ts`**, **`test/lifecycle.test.ts`:** dean reports and escalations; the KPI 3-chances path.

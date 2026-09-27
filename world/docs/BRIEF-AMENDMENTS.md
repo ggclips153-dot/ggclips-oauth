@@ -302,3 +302,43 @@ station per department, he answered yes.
 - **The college too:** "A college station per city that will act as the classroom", for the dean, professors
   and new agents, who have no department.
 - The build order is in `docs/PLAN-OPERATOR-BUILD-2026-09-27.md` (approved 27 Sep).
+
+## A32 (2026-09-27): HQ confirms strikes; voids, early release, eviction; clean time; everyone can be jailed
+
+Tony answered the jail questions (`docs/JAIL-SYSTEM.md` §11) on 27 Sep in a cloud session opened by accident.
+That session built them as its own "A23", reading "HQ" as a new world-level office ("World HQ"). In the PC
+session Tony then chose "HQ = Security confirms": HQ is the Security city (A28), so there is no separate office,
+no new ledger role and no rebuild of the ledger file. Everything else is kept as that session built it.
+
+Tony's answers:
+- "1. Yes" (voids and early release)
+- "2. yes after a reasonable amount of time" (chosen: 60 days per step)
+- "3. No HQ should confirm"
+- "4. All agents can be struck or sent to Jail except for Bob and World Messenger"
+- "5. 3 teaching strikes will lead to jail 3 times in jail will face deletion" (chosen: 6h, then 24h)
+- "6. HQ supervisor, yes ask me first"
+- "7. Yes, make me type their agent id as a form of 2 factor authentication"
+
+The rules:
+- **HQ confirms:** Security's strikes (task and teaching) are **reports**. They count only once **HQ** confirms
+  them (`security.strike_confirmed`); HQ may dismiss one instead (`security.strike_dismissed`). HQ's Mayor records
+  the decision (its Judiciary's) under HQ's own tag. Nobody else confirms.
+- **Voids:** Marc can **void** any report, pending or confirmed (`security.strike_voided`, the name A27 gave it).
+  The jail is worked out again without it; a term it caused ends.
+- **Early release:** Marc can **release** anyone from jail. From a 3rd-KPI-strike hold, the agent goes back with
+  one KPI chance left.
+- **Clean time:** each **60 strike-free days** lowers a jail level by one step, down to zero.
+- **Who can be struck:** every agent of a city can take task strikes and be jailed: department agents,
+  **professors** and **deans**. Bob and the World Messenger can't. Professors' **teaching strikes**: every 3
+  confirmed is a term (6h, then 24h); the 3rd jailing means awaiting deletion.
+- **Mayors:** also to be strikeable, per Tony. **Not built yet**; questions are open (see `docs/JAIL-SYSTEM.md`).
+- **Eviction:** Marc can **evict** an agent before a 3rd strike by typing its **agent ID**. It is held in jail
+  awaiting deletion.
+- **Deletion:** needs **HQ's supervisor's archive and lesson record** first (`security.deletion_record`, recorded
+  by HQ's Mayor). Marc **reviews it**, then deletes by **typing the agent's ID**.
+- **Where:** as A30, a term is served in the agent's own city's jail, and an agent awaiting deletion is held in
+  HQ's jail.
+- A27's disputes (Jail Supervisor → Mayor → Marc) are still to be built on top of this.
+
+Enforced in: `workOutJail` in `src/domain/state.ts`, `src/ledger/catalog.ts`, `src/ledger/guard.ts`,
+`src/server/executor.ts`, the Security page and the agent rows.

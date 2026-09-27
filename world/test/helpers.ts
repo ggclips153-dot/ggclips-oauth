@@ -19,6 +19,29 @@ export class TestWorld {
     this.ledger = new Ledger({ path, now: () => this.time });
   }
 
+  /** HQ, the Security city: its Mayor records HQ's decisions under HQ's own tag (A32). Made on first use if missing. */
+  hq(): string {
+    return this.state.securityCityId() ?? this.city('Security City', 'essentials');
+  }
+
+  /** HQ confirms a Security strike report (A32). */
+  hqConfirm(strikeSeq: number) {
+    const hq = this.hq();
+    return this.ledger.append(mayorOf(hq), { type: 'security.strike_confirmed', city: hq, payload: { strikeSeq } });
+  }
+
+  /** HQ dismisses a Security strike report (A32). */
+  hqDismiss(strikeSeq: number, reason: string) {
+    const hq = this.hq();
+    return this.ledger.append(mayorOf(hq), { type: 'security.strike_dismissed', city: hq, payload: { strikeSeq, reason } });
+  }
+
+  /** HQ's supervisor writes the archive + lesson record of an agent held for deletion (A32). */
+  hqRecord(agentId: string, ledgerArchiveRef = 'a', lessonRecordRef = 'l') {
+    const hq = this.hq();
+    return this.ledger.append(mayorOf(hq), { type: 'security.deletion_record', city: hq, payload: { agentId, ledgerArchiveRef, lessonRecordRef, summary: 'lesson' } });
+  }
+
   advanceHours(h: number) {
     this.time = new Date(this.time.getTime() + h * 3_600_000);
   }
