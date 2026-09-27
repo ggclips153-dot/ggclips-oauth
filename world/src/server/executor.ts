@@ -57,6 +57,8 @@ function facts(i: LedgerEvent, { messenger, mayor }: Actors): [Profile, AppendIn
     case 'intent.social_mark_posted':
       // Posted by hand: the World Messenger records it (no authorization link, like a connector's report).
       return [[messenger, { type: 'social.post_published', city: c, payload: { postId: p.postId, channelId: p.channelId, ...(p.url ? { url: p.url } : {}), manual: true } }]];
+    case 'intent.rename_city':
+      return [[messenger, { type: 'city.renamed', city: c, payload: p, authorizedBy: i.seq }]];
     case 'intent.rename_district':
       return [by('district.renamed', p)];
     case 'intent.rename_department':

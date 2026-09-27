@@ -400,6 +400,11 @@ export class WorldState {
           lastHealthReport: null,
         });
         break;
+      case 'city.renamed': {
+        const city = this.cities.get(e.city);
+        if (city) city.name = p.name;
+        break;
+      }
       case 'constitution.amended': {
         const v: ConstitutionVersion = {
           version: p.version,

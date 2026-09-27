@@ -413,6 +413,9 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       familyHasRoom();
       securityCityHasRoom();
       break;
+    case 'city.renamed':
+      match(['name']);
+      break;
     case 'intent.amend_constitution':
     case 'constitution.amended': {
       if (d.type === 'constitution.amended') match(['version', 'docRef', 'sha256', 'summary', 'proposalSeq']);

@@ -16,6 +16,7 @@ const PLAIN = {
   'intent.create_district': 'New district',
   'intent.create_department': 'New department',
   'intent.configure_department': 'Department settings',
+  'intent.rename_city': 'Rename city',
   'intent.rename_district': 'Rename district',
   'intent.rename_department': 'Rename department',
   'intent.delete_district': 'Delete district',
@@ -288,6 +289,18 @@ export function formsFor(ctx) {
           const botTokenRef = botToken ? (await ctx.api('/api/secrets', { method: 'POST', body: { purpose: `${v.name}-bot`, value: botToken } })).ref : undefined;
           await intent('intent.create_department', city.id, { districtId: district.id, ...v, ...(botTokenRef ? { botTokenRef } : {}) });
           return `Department "${v.name}": done.`;
+        },
+      });
+    },
+
+    renameCity(city) {
+      openForm(ctx, {
+        title: `Rename ${city.name}`,
+        intro: `Only the name changes. The city keeps its ID (${city.id}), its Mayor, districts and agents.`,
+        fields: [{ name: 'name', label: 'City name', type: 'text', required: true, value: city.name }],
+        onSubmit: async (v) => {
+          await intent('intent.rename_city', city.id, { name: v.name });
+          return `City renamed to "${v.name}".`;
         },
       });
     },

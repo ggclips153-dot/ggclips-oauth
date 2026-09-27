@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { worldView } from '../src/domain/view.ts';
-import { TestWorld, mayorOf, owner } from './helpers.ts';
+import { TestWorld, mayorOf, messenger, owner } from './helpers.ts';
 
 const apply = (w: TestWorld, city: string, type: string, fact: string, payload: Record<string, unknown>) => {
   const i = w.intent(type, city, payload);
@@ -55,6 +55,37 @@ describe('renaming and deleting districts and departments', () => {
     const b = w.city('Personal Finance City');
     const dist = w.district(a);
     assert.throws(() => w.intent('rename_district', b, { districtId: dist, name: 'x' }), /not in/);
+  });
+});
+
+describe('renaming a city', () => {
+  it('only the name changes: the ID, Mayor and districts stay', () => {
+    const w = new TestWorld();
+    const city = w.city('Security', 'essentials');
+    const dist = w.district(city, 'Oversight');
+    const i = w.intent('rename_city', city, { name: 'HQ' });
+    w.fact(messenger, { type: 'city.renamed', city, payload: { name: 'HQ' }, authorizedBy: i.seq });
+    const c = worldView(w.state, owner, w.time).cities[0]!;
+    assert.deepEqual([c.id, c.name, c.mayorName, c.districts.map((d) => d.id)], ['security', 'HQ', 'Mayor Ada', [dist]]);
+  });
+
+  it("the World Messenger records it, as Marc asked, never a Mayor or the Messenger on its own", () => {
+    const w = new TestWorld();
+    const city = w.city();
+    assert.throws(() => w.fact(messenger, { type: 'city.renamed', city, payload: { name: 'HQ' } }), /must cite an owner intent/);
+    const i = w.intent('rename_city', city, { name: 'HQ' });
+    assert.throws(() => w.fact(mayorOf(city), { type: 'city.renamed', city, payload: { name: 'HQ' }, authorizedBy: i.seq }), /mayor may not write city\.renamed/);
+    assert.throws(() => w.fact(messenger, { type: 'city.renamed', city, payload: { name: 'Other' }, authorizedBy: i.seq }), /does not match/);
+    assert.throws(() => w.intent('rename_city', 'no-such-city', { name: 'HQ' }), /unknown city/);
+    assert.throws(() => w.intent('rename_city', city, { name: '  ' }), /must not be empty/);
+  });
+
+  it("the old name's ID is never reused: a new city with that name gets a new ID", () => {
+    const w = new TestWorld();
+    const city = w.city('Security', 'essentials');
+    const i = w.intent('rename_city', city, { name: 'HQ' });
+    w.fact(messenger, { type: 'city.renamed', city, payload: { name: 'HQ' }, authorizedBy: i.seq });
+    assert.equal(w.city('Security', 'essentials'), 'security-2');
   });
 });
 

@@ -130,6 +130,8 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { departmentId: { t: 'str', max: 20 }, ...departmentSettings },
   },
+  // Rename a city (tagged with the city itself). Only its name changes; its ID stays the same.
+  'intent.rename_city': { kind: 'intent', writers: OWNER, scope: 'city', schema: { name: { t: 'str', max: 120 } } },
   // Rename, or delete, a district or department. Deleting needs it empty (no departments / no agents), so
   // nobody is left without a place; its ID is retired like every other ID.
   'intent.rename_district': { kind: 'intent', writers: OWNER, scope: 'city', schema: renameDistrict },
@@ -278,6 +280,14 @@ export const CATALOG: Record<string, EventSpec> = {
     },
     authorizedBy: ['intent.create_city'],
     allocates: 'CITY',
+  },
+  // The World Messenger recorded the city's creation, so it records the new name too, under the city's own tag.
+  'city.renamed': {
+    kind: 'fact',
+    writers: MESSENGER,
+    scope: 'city',
+    schema: { name: { t: 'str', max: 120 } },
+    authorizedBy: ['intent.rename_city'],
   },
   'constitution.amended': {
     kind: 'fact',

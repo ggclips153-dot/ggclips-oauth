@@ -606,7 +606,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
         h('p', { class: 'small secondary' }, `Mayor ${city.mayorName} · ${city.districts.length} district(s)`),
         h('p', { class: 'small' }, STATES.map((s) => `${cap(s)} ${counts[s] ?? 0}`).join(' · ')),
         h('p', { class: 'small secondary' }, 'Choose a district or jump to a department above, or click a district\'s ground.'),
-        act && h('div', { class: 'toolbar' }, btn('+ Create agent at the college', () => act.createAgent(city), 'primary')),
+        act && h('div', { class: 'toolbar' }, btn('+ Create agent at the college', () => act.createAgent(city), 'primary'), btn('Rename city', () => act.renameCity(city))),
       );
       return;
     }

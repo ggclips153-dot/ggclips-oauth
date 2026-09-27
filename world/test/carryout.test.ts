@@ -90,6 +90,20 @@ describe('Marc can create structure and agents himself (as World Messenger and M
     assert.ok(w.state.routed.has(body.seq), 'nothing waits on the World Messenger');
   });
 
+  it('renaming a city is applied at once, recorded by the World Messenger (who recorded its creation)', async () => {
+    const res = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer t-marc', 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'intent.rename_city', city, payload: { name: 'Front Office City' } }),
+    });
+    const body = await res.json();
+    assert.equal(body.applied, true);
+    assert.deepEqual(body.created.map((e: { type: string }) => e.type), ['messenger.routed', 'city.renamed']);
+    const renamed = w.ledger.readAll().at(-1)!;
+    assert.deepEqual([renamed.actor, renamed.city], ['marc-as-messenger', city]);
+    assert.equal(w.state.cities.get(city)!.name, 'Front Office City');
+  });
+
   it('a request the rules refuse is kept unfinished and Marc is told why', async () => {
     const rookie = w.collegeAgent(city, 'Rookie Two');
     const res = await fetch(`${base}/api/events`, {
