@@ -290,3 +290,9 @@ station per department, he answered yes.
 - Each **department** gets its own StarNet station, where its supervisor carries out Marc's tasks for the
   department's agents (A26). Districts get none. This replaces A20's "one station per city".
 - To build in the operator build plan (`OPEN-QUESTIONS.md` #49). Until then, one station per city.
+- **CyberStation** (Tony's name): the station is our own copy of StarNet that runs Tony's Hermes agents, each
+  agent's turn going to its own Hermes profile (the plan since A21: "make our own copy of StarNet that uses
+  Marc's setup"). StarNet's code is MIT and may be forked; its name, logo, station artwork and sprites are not
+  licensed with it (StarNet's `NOTICE.md`), so CyberStation works like StarNet but ships its own name and art.
+  It needs Hermes's API server on for the agent profiles and reachable from the PC (asked of Bob on
+  `cmd_1a0e14e476e`).
