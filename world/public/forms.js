@@ -1,5 +1,5 @@
-// Marc's forms. Every form writes an INTENT to the ledger and the server applies it at once, acting as DM and
-// Mayor (A19). The server's write-guard re-checks everything, so these forms only help.
+// Marc's forms. Every form writes an INTENT to the ledger and the server applies it at once, acting as World
+// Messenger and Mayor (A19). The server's write-guard re-checks everything, so these forms only help.
 import { h } from './dom.js';
 
 const FAMILY_OPTIONS = [
@@ -163,7 +163,7 @@ export function openForm(ctx, { title, intro, fields, submitLabel: label, repeat
   dialog.querySelector('input, select, textarea')?.focus();
 }
 
-/** A22's second factor: type the agent's exact ID (AGT-…) to confirm an eviction or a deletion. */
+/** A23's second factor: type the agent's exact ID (AGT-…) to confirm an eviction or a deletion. */
 function typeIdToConfirm(title, intro, agent, label, run) {
   const ctx = typeIdToConfirm.ctx;
   openForm(ctx, {
@@ -479,7 +479,7 @@ export function formsFor(ctx) {
       });
     },
 
-    // A22: deletion uses World HQ's archive and lesson record, which Marc reviews first, then he types the agent's ID.
+    // A23: deletion uses World HQ's archive and lesson record, which Marc reviews first, then he types the agent's ID.
     remove(city, agent) {
       const rec = agent.deletionRecord;
       if (!rec) {
@@ -498,7 +498,7 @@ export function formsFor(ctx) {
         },
       });
     },
-    // A22: remove an agent before a 3rd strike. It is held in jail awaiting deletion until HQ's record and Marc's delete.
+    // A23: remove an agent before a 3rd strike. It is held in jail awaiting deletion until HQ's record and Marc's delete.
     evict(city, agent) {
       openForm(ctx, {
         title: `Evict ${agent.name}?`,

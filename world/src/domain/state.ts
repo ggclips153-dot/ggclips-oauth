@@ -139,9 +139,9 @@ export interface Agent {
   deleted: { seq: number; ts: string; ledgerArchiveRef: string; lessonRecordRef: string } | null;
   /** Confirmed task strikes toward the next jail term (separate from KPI `strikes`). Resets at each jailing. */
   taskStrikes: number;
-  /** Task-strike jail level: the next term is one step higher. Drops one step per CLEAN_DAYS_PER_LEVEL clean days (A22). */
+  /** Task-strike jail level: the next term is one step higher. Drops one step per CLEAN_DAYS_PER_LEVEL clean days (A23). */
   jailTerms: number;
-  /** Professors: confirmed teaching strikes toward the next jail term, and the teaching jail level (A22). */
+  /** Professors: confirmed teaching strikes toward the next jail term, and the teaching jail level (A23). */
   teachingStrikes: number;
   teachingJailTerms: number;
   /** When the clean-days clock for each ladder last restarted (last counted strike or end of a term). */
@@ -150,12 +150,12 @@ export interface Agent {
   termsServed: number;
   /** Latest jail record. A timed term ends on its own at `until`; see isJailed(). */
   jail: Jail | null;
-  /** Security's strike reports about this agent (A22: they count only once World HQ confirms them). */
+  /** Security's strike reports about this agent (A23: they count only once World HQ confirms them). */
   reports: StrikeReport[];
   /** Early releases Marc granted, and holds (3rd KPI strike, eviction) that put the agent in jail. */
   releases: { seq: number; ts: string; reason: string }[];
   holds: { seq: number; ts: string; cause: 'kpi_strikes' | 'eviction'; reason: string | null }[];
-  /** World HQ's supervisor's archive + lesson record, required before Marc can delete (A22). */
+  /** World HQ's supervisor's archive + lesson record, required before Marc can delete (A23). */
   deletionRecord: { seq: number; ts: string; ledgerArchiveRef: string; lessonRecordRef: string; summary: string } | null;
   /** Security City agents only: the city it is deployed to watch. */
   deployedTo: string | null;
@@ -215,7 +215,7 @@ export interface DeanReport {
   escalated: { seq: number; ts: string; summary: string } | null;
 }
 
-/** A strike Security reported. Only `confirmed` ones count toward jail (A22). */
+/** A strike Security reported. Only `confirmed` ones count toward jail (A23). */
 export interface StrikeReport {
   seq: number;
   ts: string;
@@ -254,7 +254,7 @@ export interface TaskStrike {
 const DAY_MS = 86_400_000;
 
 /**
- * Work out an agent's jail from scratch (A22), in time order:
+ * Work out an agent's jail from scratch (A23), in time order:
  *  - each CONFIRMED, not voided strike (at the moment HQ confirmed it) climbs its ladder; every 3rd is a term:
  *    task strikes 6h, 24h, 3 days, then awaiting deletion; teaching strikes 6h, 24h, then awaiting deletion;
  *  - a ladder's level drops one step per CLEAN_DAYS_PER_LEVEL days without a counted strike or a term;
@@ -291,7 +291,7 @@ export function workOutJail(a: Agent): void {
       continue;
     }
     const l = ladder[it.ladder];
-    // Clean time since the clock last restarted lowers the level first (A22: 60 strike-free days per step).
+    // Clean time since the clock last restarted lowers the level first (A23: 60 strike-free days per step).
     if (l.since !== null && l.level > 0) {
       const steps = Math.floor(Math.max(0, t - l.since) / step);
       if (steps > 0) l.level = Math.max(0, l.level - steps);
@@ -353,7 +353,7 @@ export interface Constitution {
 export interface ConstitutionProposal {
   seq: number;
   ts: string;
-  /** Proposing city tag (Innovations / Security) or WORLD for Bob via the DM. */
+  /** Proposing city tag (Innovations / Security) or WORLD for Bob via the World Messenger. */
   city: string;
   proposer: string;
   title: string;
@@ -397,7 +397,7 @@ export class WorldState {
     list.push(m);
     if (list.length > CHAT_KEEP) list.shift();
   }
-  /** intent seq -> dm.routed seq */
+  /** intent seq -> messenger.routed seq */
   readonly routed = new Map<number, number>();
   /** `${intentSeq}|${factType}|${key}` once an intent has been fulfilled by that fact. */
   readonly consumed = new Set<string>();
@@ -405,7 +405,7 @@ export class WorldState {
   readonly retiredNames = new Set<string>();
   /** Strike reports recorded by Security City (task and teaching), oldest first. */
   readonly taskStrikes: TaskStrike[] = [];
-  /** strike report seq -> the agent it is about (A22). */
+  /** strike report seq -> the agent it is about (A23). */
   readonly reportAgent = new Map<number, string>();
   constitution: Constitution = { current: null, history: [] };
   /** Social media: channels, posts, inbox, metrics (src/social). */
@@ -484,7 +484,7 @@ export class WorldState {
       agent?.lifecycle.push({ stage, seq: e.seq, ts: e.ts, ...(detail ? { detail } : {}) });
 
     switch (e.type) {
-      case 'dm.routed':
+      case 'messenger.routed':
         this.routed.set(p.intentSeq, e.seq);
         break;
       case 'city.created':
@@ -704,7 +704,7 @@ export class WorldState {
         break;
       }
       case 'professor.strike': {
-        // A report only: it counts once World HQ confirms it (A22).
+        // A report only: it counts once World HQ confirms it (A23).
         const prof = this.agents.get(p.professorId);
         this.taskStrikes.push({ seq: e.seq, ts: e.ts, agentId: p.professorId, agentCity: prof?.cityId ?? '', observedBy: p.observedBy, task: p.rule, evidence: p.evidence, evidenceRef: p.evidenceRef ?? null, kind: 'teaching' });
         if (!prof) break;
@@ -844,7 +844,7 @@ export class WorldState {
         if (agent) agent.deployedTo = p.toCity;
         break;
       case 'security.task_strike': {
-        // A report only: it counts once World HQ confirms it (A22).
+        // A report only: it counts once World HQ confirms it (A23).
         const target = this.agents.get(p.agentId);
         this.taskStrikes.push({
           seq: e.seq,

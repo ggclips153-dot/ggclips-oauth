@@ -1,5 +1,5 @@
-// Carrying out an intent: the DM routes it, then the Mayor (or the DM, for world events) writes the facts.
-// Used by the demo autopilot, and by Marc's "Carry out" button when he acts as DM and Mayor himself.
+// Carrying out an intent: the World Messenger routes it, then the Mayor (or the Messenger, for world events)
+// writes the facts. Used by the demo autopilot, and by Marc's requests (A19), applied as Messenger and Mayor.
 // Every write still goes through the write-guard, so whatever the bots could not do, this cannot either.
 import type { LedgerEvent, WorldState } from '../domain/state.ts';
 import { conflict } from '../ledger/errors.ts';
@@ -7,12 +7,12 @@ import type { AppendInput, Profile } from '../ledger/guard.ts';
 import type { Ledger } from '../ledger/ledger.ts';
 
 export interface Actors {
-  dm: Profile;
+  messenger: Profile;
   mayor: (city: string) => Profile;
 }
 
-/** The fact(s) a Mayor (or the DM) writes to carry out an intent. */
-function facts(i: LedgerEvent, { dm: DM, mayor }: Actors, state: WorldState): [Profile, AppendInput][] {
+/** The fact(s) a Mayor (or the World Messenger) writes to carry out an intent. */
+function facts(i: LedgerEvent, { messenger, mayor }: Actors, state: WorldState): [Profile, AppendInput][] {
   const p = i.payload as Record<string, any>;
   const c = i.city;
   const m = mayor(c);
@@ -22,7 +22,7 @@ function facts(i: LedgerEvent, { dm: DM, mayor }: Actors, state: WorldState): [P
   ];
   switch (i.type) {
     case 'intent.create_city': {
-      const created: [Profile, AppendInput] = [DM, { type: 'city.created', city: 'WORLD', payload: { name: p.name, family: p.family, mayorName: p.mayorName }, authorizedBy: i.seq }];
+      const created: [Profile, AppendInput] = [messenger, { type: 'city.created', city: 'WORLD', payload: { name: p.name, family: p.family, mayorName: p.mayorName }, authorizedBy: i.seq }];
       return [created];
     }
     case 'intent.create_district':
@@ -55,8 +55,8 @@ function facts(i: LedgerEvent, { dm: DM, mayor }: Actors, state: WorldState): [P
     case 'intent.social_close':
       return [by('social.inbox_closed', p)];
     case 'intent.social_mark_posted':
-      // Posted by hand: the DM records it (no authorization link, like a connector's report).
-      return [[DM, { type: 'social.post_published', city: c, payload: { postId: p.postId, channelId: p.channelId, ...(p.url ? { url: p.url } : {}), manual: true } }]];
+      // Posted by hand: the World Messenger records it (no authorization link, like a connector's report).
+      return [[messenger, { type: 'social.post_published', city: c, payload: { postId: p.postId, channelId: p.channelId, ...(p.url ? { url: p.url } : {}), manual: true } }]];
     case 'intent.rename_district':
       return [by('district.renamed', p)];
     case 'intent.rename_department':
@@ -74,16 +74,16 @@ function facts(i: LedgerEvent, { dm: DM, mayor }: Actors, state: WorldState): [P
     case 'intent.move_agent':
       return [by('agent.moved', { toDepartmentId: p.toDepartmentId }, p.agentId)];
     case 'intent.delete_agent': {
-      // A22: the deletion uses exactly the archive and lesson record World HQ's supervisor wrote.
+      // A23: the deletion uses exactly the archive and lesson record World HQ's supervisor wrote.
       const rec = state.agents.get(p.agentId)?.deletionRecord ?? conflict(`World HQ has not written ${p.agentId}'s archive and lesson record yet`);
       return [by('agent.deleted', { ledgerArchiveRef: rec.ledgerArchiveRef, lessonRecordRef: rec.lessonRecordRef }, p.agentId)];
     }
     case 'intent.evict_agent':
       return [by('agent.evicted', { reason: p.reason }, p.agentId)];
     case 'intent.release_agent':
-      return [[DM, { type: 'agent.released', city: c, subject: p.agentId, payload: { reason: p.reason }, authorizedBy: i.seq }]];
+      return [[messenger, { type: 'agent.released', city: c, subject: p.agentId, payload: { reason: p.reason }, authorizedBy: i.seq }]];
     case 'intent.void_strike':
-      return [[DM, { type: 'strike.voided', city: 'WORLD', payload: { strikeSeq: p.strikeSeq, reason: p.reason }, authorizedBy: i.seq }]];
+      return [[messenger, { type: 'strike.voided', city: 'WORLD', payload: { strikeSeq: p.strikeSeq, reason: p.reason }, authorizedBy: i.seq }]];
     case 'intent.create_professor':
       return [by('professor.enrolled', p)];
     case 'intent.specialize_professor':
@@ -101,9 +101,9 @@ function facts(i: LedgerEvent, { dm: DM, mayor }: Actors, state: WorldState): [P
     case 'intent.deploy_agent':
       return [by('agent.deployed', { toCity: p.toCity }, p.agentId)];
     case 'intent.amend_constitution':
-      return [[DM, { type: 'constitution.amended', city: 'WORLD', payload: p, authorizedBy: i.seq }]];
+      return [[messenger, { type: 'constitution.amended', city: 'WORLD', payload: p, authorizedBy: i.seq }]];
     case 'intent.decline_proposal':
-      return [[DM, { type: 'constitution.declined', city: 'WORLD', payload: p, authorizedBy: i.seq }]];
+      return [[messenger, { type: 'constitution.declined', city: 'WORLD', payload: p, authorizedBy: i.seq }]];
     default:
       return []; // e.g. message_mayor: routed only
   }
@@ -121,8 +121,8 @@ function followUps(fact: LedgerEvent, intent: LedgerEvent, { mayor }: Actors): [
 export function carryOut(ledger: Ledger, intent: LedgerEvent, actors: Actors, to?: string): LedgerEvent[] {
   const written: LedgerEvent[] = [];
   if (!ledger.state.routed.has(intent.seq)) {
-    written.push(ledger.append(actors.dm, {
-      type: 'dm.routed',
+    written.push(ledger.append(actors.messenger, {
+      type: 'messenger.routed',
       city: intent.city,
       payload: { intentSeq: intent.seq, to: to ?? (intent.city === 'WORLD' ? 'world' : `mayor:${intent.city}`) },
     }));

@@ -55,7 +55,7 @@ function poster(seed: number, w = 480, hgt = 480): Buffer {
  */
 export function seedSocial(ledger: Ledger, mediaDir: string, setNow: (ms: number | null) => void) {
   const marc: Profile = { id: 'marc', role: 'owner', writeScope: ['*'] };
-  const dm: Profile = { id: 'dm', role: 'dm', writeScope: ['*'] };
+  const messenger: Profile = { id: 'messenger', role: 'messenger', writeScope: ['*'] };
   const mayor = (city: string): Profile => ({ id: `mayor-${city}`, role: 'mayor', writeScope: [city] });
   const st = ledger.state;
   const cityNamed = (name: string) => [...st.cities.values()].find((c) => c.name === name)?.id;
@@ -69,7 +69,7 @@ export function seedSocial(ledger: Ledger, mediaDir: string, setNow: (ms: number
   const at = (ms: number) => setNow(ms);
   const request = (type: string, city: string, payload: Record<string, unknown>) => {
     const i = ledger.append(marc, { type: `intent.${type}`, city, payload });
-    ledger.append(dm, { type: 'dm.routed', city, payload: { intentSeq: i.seq, to: `mayor:${city}` } });
+    ledger.append(messenger, { type: 'messenger.routed', city, payload: { intentSeq: i.seq, to: `mayor:${city}` } });
     return i;
   };
   const carry = (type: string, city: string, payload: Record<string, unknown>) => {
@@ -117,7 +117,7 @@ export function seedSocial(ledger: Ledger, mediaDir: string, setNow: (ms: number
     at(now - (p.days + 2) * DAY);
     const id = carry('draft_post', p.city, { channelIds: p.ch, text: p.text, ...(p.title ? { title: p.title } : {}), media: p.media, approve: true, scheduledAt: new Date(now - p.days * DAY).toISOString() })!;
     at(now - p.days * DAY + 60_000);
-    for (const c of p.ch) ledger.append(dm, { type: 'social.post_published', city: p.city, payload: { postId: id, channelId: c, manual: true } });
+    for (const c of p.ch) ledger.append(messenger,{ type: 'social.post_published', city: p.city, payload: { postId: id, channelId: c, manual: true } });
     postIds.push({ id, ch: p.ch, days: p.days, city: p.city });
   }
 
@@ -129,7 +129,7 @@ export function seedSocial(ledger: Ledger, mediaDir: string, setNow: (ms: number
     const date = new Date(now - d * DAY).toISOString().slice(0, 10);
     for (const ch of channels) {
       const boost = postIds.some((p) => p.ch.includes(ch.id) && p.days >= d && p.days - d < 3) ? 2.2 : 1;
-      ledger.append(dm, {
+      ledger.append(messenger,{
         type: 'social.metrics',
         city: ch.city,
         payload: {
@@ -148,7 +148,7 @@ export function seedSocial(ledger: Ledger, mediaDir: string, setNow: (ms: number
     for (const c of p.ch) {
       const big = c === tt ? 4 : c === yt ? 2 : 1;
       const views = Math.round((1500 + rnd() * 6000) * big);
-      ledger.append(dm, {
+      ledger.append(messenger,{
         type: 'social.metrics',
         city: p.city,
         payload: { channelId: c, postId: p.id, date: new Date(now - p.days * DAY).toISOString().slice(0, 10), views, impressions: Math.round(views * 1.3), likes: Math.round(views * (0.04 + rnd() * 0.05)), comments: Math.round(views * 0.006), shares: Math.round(views * 0.004), saves: Math.round(views * 0.003) },
@@ -200,7 +200,7 @@ export function seedSocial(ledger: Ledger, mediaDir: string, setNow: (ms: number
   const items: string[] = [];
   for (const [n, [city, channelId, kind, from, text, postId]] of inbox.entries()) {
     at(now - (6 - n) * 3_600_000);
-    items.push(ledger.append(dm, { type: 'social.inbox_received', city, payload: { channelId, kind, from, text, ...(postId ? { postId } : {}) } }).subject!);
+    items.push(ledger.append(messenger,{ type: 'social.inbox_received', city, payload: { channelId, kind, from, text, ...(postId ? { postId } : {}) } }).subject!);
   }
   at(now - 30 * 60_000);
   carry('reply', gaming, { itemId: items[0], text: 'Thanks! Small cyan dot, no outline. Full settings in the pinned comment.' });

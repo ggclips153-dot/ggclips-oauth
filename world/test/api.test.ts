@@ -5,7 +5,7 @@ import { Profiles, hashToken } from '../src/auth/profiles.ts';
 import { createApp } from '../src/server/app.ts';
 import { TestWorld } from './helpers.ts';
 
-const tokens = { marc: 't-marc', dm: 't-dm', bob: 't-bob', mayorA: 't-mayor-a' };
+const tokens = { marc: 't-marc', messenger: 't-messenger', bob: 't-bob', mayorA: 't-mayor-a' };
 
 describe('HTTP API', () => {
   const w = new TestWorld();
@@ -13,7 +13,7 @@ describe('HTTP API', () => {
   const b = w.city('B City');
   const profiles = new Profiles([
     { id: 'marc', role: 'owner', writeScope: ['*'], tokenSha256: hashToken(tokens.marc) },
-    { id: 'dm', role: 'dm', writeScope: ['*'], tokenSha256: hashToken(tokens.dm) },
+    { id: 'messenger', role: 'messenger', writeScope: ['*'], tokenSha256: hashToken(tokens.messenger) },
     { id: 'bob', role: 'architect', writeScope: [], tokenSha256: hashToken(tokens.bob) },
     { id: 'mayor-a', role: 'mayor', writeScope: [a], tokenSha256: hashToken(tokens.mayorA) },
   ]);
@@ -63,7 +63,7 @@ describe('HTTP API', () => {
     assert.equal(res.status, 403);
   });
 
-  it("Marc's request from the dashboard is routed at once (A19): nothing waits on the DM", async () => {
+  it("Marc's request from the dashboard is routed at once (A19): nothing waits on the World Messenger", async () => {
     const res = await call('/api/events', tokens.marc, { type: 'intent.message_mayor', city: a, payload: { text: 'weekly report please' } });
     assert.equal(res.status, 201);
     const intent = await res.json();
@@ -71,18 +71,19 @@ describe('HTTP API', () => {
     assert.ok(!state.pendingIntents.some((i: { seq: number }) => i.seq === intent.seq));
   });
 
-  it('the DM bot can still route a waiting request', async () => {
+  it("the World Messenger's bot can still route a waiting request", async () => {
     const intent = w.ledger.append({ id: 'marc', role: 'owner', writeScope: ['*'] }, { type: 'intent.message_mayor', city: a, payload: { text: 'from before A19' } });
     let state = await (await call('/api/state', tokens.marc)).json();
     assert.ok(state.pendingIntents.some((i: { seq: number }) => i.seq === intent.seq));
-    const routed = await call('/api/events', tokens.dm, { type: 'dm.routed', city: a, payload: { intentSeq: intent.seq, to: 'mayor:a-city' } });
+    const routed = await call('/api/events', tokens.messenger, { type: 'messenger.routed', city: a, payload: { intentSeq: intent.seq, to: 'mayor:a-city' } });
     assert.equal(routed.status, 201);
     state = await (await call('/api/state', tokens.marc)).json();
     assert.ok(!state.pendingIntents.some((i: { seq: number }) => i.seq === intent.seq));
+    assert.ok((await (await call('/api/health')).json()).messengerSeenAt, 'the dashboard can tell the Messenger is connected');
   });
 
   it('only the owner may verify the chain', async () => {
-    assert.equal((await call('/api/verify', tokens.dm)).status, 403);
+    assert.equal((await call('/api/verify', tokens.messenger)).status, 403);
     assert.deepEqual(await (await call('/api/verify', tokens.marc)).json(), { ok: true, count: w.ledger.state.lastSeq });
   });
 });

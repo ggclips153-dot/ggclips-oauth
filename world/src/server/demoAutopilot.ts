@@ -1,6 +1,6 @@
-// DEMO ONLY. Plays the DM and the Mayors for data/demo.db so Marc can try the dashboard's forms
-// before the real Telegram bots are connected. Every write goes through the same write-guard as the
-// real bots (DM routes the intent, the Mayor executes the fact), so rejected requests stay rejected.
+// DEMO ONLY. Plays the World Messenger and the Mayors for data/demo.db so Marc can try the dashboard's forms
+// before the real Telegram bots are connected. Every write goes through the same write-guard as the real
+// bots (the Messenger routes the intent, the Mayor executes the fact), so rejected requests stay rejected.
 // It refuses to attach to any ledger file not named demo.db: the real world is never auto-executed.
 import { basename } from 'node:path';
 import type { LedgerEvent } from '../domain/state.ts';
@@ -8,7 +8,7 @@ import type { Profile } from '../ledger/guard.ts';
 import type { Ledger } from '../ledger/ledger.ts';
 import { carryOut } from './executor.ts';
 
-const DM: Profile = { id: 'dm-demo', role: 'dm', writeScope: ['*'] };
+const MESSENGER: Profile = { id: 'messenger-demo', role: 'messenger', writeScope: ['*'] };
 const mayor = (city: string): Profile => ({ id: `mayor-demo-${city}`, role: 'mayor', writeScope: [city] });
 
 export function attachDemoAutopilot(ledger: Ledger, dbPath: string, log = (m: string) => console.log(m), { starnetHandles = (_city: string): boolean => false } = {}): () => void {
@@ -64,14 +64,14 @@ export function attachDemoAutopilot(ledger: Ledger, dbPath: string, log = (m: st
       // Already routed (e.g. Marc's own creation requests are applied at once): nothing left to do.
       if (ledger.state.routed.has(e.seq)) return;
       try {
-        carryOut(ledger, e, { dm: DM, mayor });
+        carryOut(ledger, e, { messenger: MESSENGER, mayor });
       } catch (err) {
         log(`demo autopilot: intent #${e.seq} (${e.type}) not carried out: ${(err as Error).message}`);
       }
     });
   };
   ledger.events.on('event', onEvent);
-  log('DEMO AUTOPILOT ON: acting as the DM and every Mayor for demo.db');
+  log('DEMO AUTOPILOT ON: acting as the World Messenger and every Mayor for demo.db');
   return () => ledger.events.off('event', onEvent);
 }
 

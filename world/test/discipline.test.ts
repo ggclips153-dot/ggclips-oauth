@@ -1,4 +1,4 @@
-// A22: World HQ confirms strikes; Marc voids strikes, releases early and evicts (typing the agent's ID); clean time
+// A23: World HQ confirms strikes; Marc voids strikes, releases early and evicts (typing the agent's ID); clean time
 // lowers the jail level; deans and professors can be struck; deletion needs World HQ's archive and lesson record.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -7,7 +7,7 @@ import { isJailed } from '../src/domain/state.ts';
 import { carryOut } from '../src/server/executor.ts';
 import { TestWorld, hq, mayorOf, owner, persona } from './helpers.ts';
 
-const marc = { dm: { id: 'marc-as-dm', role: 'dm' as const, writeScope: ['*'] }, mayor: (c: string) => ({ id: 'marc-as-mayor', role: 'mayor' as const, writeScope: [c] }) };
+const marc = { messenger: { id: 'marc-as-messenger', role: 'messenger' as const, writeScope: ['*'] }, mayor: (c: string) => ({ id: 'marc-as-mayor', role: 'mayor' as const, writeScope: [c] }) };
 
 const setup = () => {
   const w = new TestWorld();
@@ -29,7 +29,7 @@ const setup = () => {
   return { w, city, security, other, dept, agent, guard, report, strike, ask, a };
 };
 
-describe('A22: World HQ confirms strikes', () => {
+describe('A23: World HQ confirms strikes', () => {
   it('a report counts only once HQ confirms it; a dismissed report never counts; only HQ decides', () => {
     const s = setup();
     const r1 = s.report();
@@ -37,7 +37,7 @@ describe('A22: World HQ confirms strikes', () => {
     assert.equal(s.a().taskStrikes, 0);
     assert.equal(worldView(s.w.state, owner, s.w.time).taskStrikes.filter((t) => t.status === 'pending').length, 2);
     // Neither Marc, the DM nor a Mayor can confirm: only World HQ.
-    for (const who of [mayorOf(s.security), { id: 'dm', role: 'dm' as const, writeScope: ['*'] }]) {
+    for (const who of [mayorOf(s.security), { id: 'messenger', role: 'messenger' as const, writeScope: ['*'] }]) {
       assert.throws(() => s.w.ledger.append(who, { type: 'hq.strike_confirmed', city: 'WORLD', payload: { strikeSeq: r1.seq } }), /may not write/);
     }
     s.w.hqConfirm(r1.seq);
@@ -60,7 +60,7 @@ describe('A22: World HQ confirms strikes', () => {
   });
 });
 
-describe('A22: Marc voids strikes and releases early', () => {
+describe('A23: Marc voids strikes and releases early', () => {
   it('voiding the strike that triggered a term ends that term, as if it never counted', () => {
     const s = setup();
     s.strike(); s.strike();
@@ -94,7 +94,7 @@ describe('A22: Marc voids strikes and releases early', () => {
   });
 });
 
-describe('A22: clean time lowers the jail level (60 days per step)', () => {
+describe('A23: clean time lowers the jail level (60 days per step)', () => {
   it('after 60 strike-free days the next jailing is one step lower', () => {
     const s = setup();
     s.strike(); s.strike(); s.strike(); // term 1: 6h
@@ -110,7 +110,7 @@ describe('A22: clean time lowers the jail level (60 days per step)', () => {
   });
 });
 
-describe('A22: everyone but Bob and the DM can be struck', () => {
+describe('A23: everyone but Bob and the DM can be struck', () => {
   it('a dean takes task strikes and jail terms', () => {
     const s = setup();
     const i = s.w.intent('create_dean', s.city, { persona, domainFocus: 'running the college' });
@@ -121,7 +121,7 @@ describe('A22: everyone but Bob and the DM can be struck', () => {
   });
 });
 
-describe('A22: eviction and deletion need Marc to type the agent\'s ID, and World HQ\'s record', () => {
+describe('A23: eviction and deletion need Marc to type the agent\'s ID, and World HQ\'s record', () => {
   it('evict before a 3rd strike: held awaiting deletion; HQ writes the record; Marc deletes by typing the ID', () => {
     const s = setup();
     assert.throws(() => s.ask('evict_agent', s.city, { agentId: s.agent, reason: 'not a fit', confirmAgentId: 'AGT-999999' }), /type the agent's ID/);

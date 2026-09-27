@@ -30,7 +30,7 @@ const taskStrike = (w: TestWorld, security: string, agentId: string, observedBy:
     payload: { agentId, observedBy, task: 'daily ledger entry', evidence: 'no entry for 2026-09-24' },
   });
 
-/** Security reports, World HQ confirms (A22): only confirmed strikes count. */
+/** Security reports, World HQ confirms (A23): only confirmed strikes count. */
 const strikes = (w: TestWorld, s: ReturnType<typeof setup>, n: number) => {
   for (let i = 0; i < n; i++) w.hqConfirm(taskStrike(w, s.security, s.agent, s.guard).seq);
 };

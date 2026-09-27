@@ -42,7 +42,7 @@ let stream = null;
 const feed = [];
 let refreshTimer = null;
 let build = null;
-let runtime = null; // /api/health: { mode: 'demo' | 'live', dmSeenAt }
+let runtime = null; // /api/health: { mode: 'demo' | 'live', messengerSeenAt }
 const timers = [];
 
 const serverNow = () => Date.now() + clockSkew;
@@ -495,7 +495,7 @@ function topbar() {
     h('span', { class: `live ${live}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), live === 'on' ? 'Live' : 'Reconnecting…'),
     h('span', { class: 'user' }, `${me.label ?? me.id} · ${me.role === 'owner' ? 'Owner' : cap(me.role)}`),
     h('button', { onclick: logout }, 'Sign out'),
-    runtime?.mode === 'demo' && h('span', { class: 'chip warning demo-chip', title: 'Demo world: the autopilot plays the DM and the Mayors' }, 'Demo'),
+    runtime?.mode === 'demo' && h('span', { class: 'chip warning demo-chip', title: 'Demo world: the autopilot plays the World Messenger and the Mayors' }, 'Demo'),
     build && h('span', { class: 'build muted small', title: 'Version of the world this server is running' }, `build ${build}`));
 }
 
@@ -594,7 +594,7 @@ function unfinishedCard(ix) {
         act('Apply', () => carryOutRequests([i.seq]))))));
 }
 
-/** Apply requests as DM + Mayor, oldest first (a district before the department that needs it). */
+/** Apply requests as World Messenger + Mayor, oldest first (a district before the department that needs it). */
 async function carryOutRequests(seqs) {
   let done = 0;
   const failures = [];
@@ -842,7 +842,7 @@ function agentActions(c, a) {
     ...disciplineActions(c, a));
 }
 
-/** A22: release early, evict (typing the ID), or delete once World HQ's record is in (typing the ID). */
+/** A23: release early, evict (typing the ID), or delete once World HQ's record is in (typing the ID). */
 function disciplineActions(c, a) {
   if (!isOwner()) return [];
   const inside = a.jail && (a.jail.status === 'awaiting_deletion' || Date.parse(a.jail.until) > serverNow());
@@ -1132,7 +1132,7 @@ function constitutionView(ix) {
   loadConstitution();
   const info = constitutionInfo;
   const cur = data.constitution.current;
-  const proposerCity = (p) => (p.city === 'WORLD' ? 'Bob, via the DM' : `${p.proposer}, ${ix.cities.get(p.city)?.name ?? p.city}`);
+  const proposerCity = (p) => (p.city === 'WORLD' ? 'Bob, via the World Messenger' : `${p.proposer}, ${ix.cities.get(p.city)?.name ?? p.city}`);
   const status = !info
     ? h('p', { class: 'muted' }, 'Loading…')
     : info.inForce

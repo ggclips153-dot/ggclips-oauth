@@ -115,8 +115,8 @@ const deployGuard = (w: TestWorld, city: string) => {
   return { security, guard };
 };
 
-describe('professor strikes (A13, A15, A22): teaching strikes and task strikes, confirmed by World HQ', () => {
-  it('a professor can take task strikes too (A22), but a Mayor cannot miss-KPI one', () => {
+describe('professor strikes (A13, A15, A23): teaching strikes and task strikes, confirmed by World HQ', () => {
+  it('a professor can take task strikes too (A23), but a Mayor cannot miss-KPI one', () => {
     const { w, city, dept } = setup();
     const prof = w.professor(city, dept);
     const { security, guard } = deployGuard(w, city);

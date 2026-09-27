@@ -34,15 +34,15 @@ export const SECURITY_CITY_ID = 'security-city';
 /**
  * Task strikes (caught not doing a task) are a SEPARATE counter from KPI strikes.
  * Every 3 task strikes = a jail term; the counter then resets. Terms escalate and never reset:
- * 6h, 24h, 3 days; the 4th time the agent is jailed awaiting deletion (Marc decides via DM).
+ * 6h, 24h, 3 days; the 4th time the agent is jailed awaiting deletion (Marc decides via the World Messenger).
  */
 export const TASK_STRIKES_PER_JAIL = 3;
 export const JAIL_TERMS_HOURS: readonly number[] = [6, 24, 72];
 /**
- * Teaching strikes (professors, A22): every 3 is a jail term too, 6h then 24h; the 3rd jailing = awaiting deletion.
+ * Teaching strikes (professors, A23): every 3 is a jail term too, 6h then 24h; the 3rd jailing = awaiting deletion.
  */
 export const TEACHING_JAIL_TERMS_HOURS: readonly number[] = [6, 24];
-/** A22: each full stretch of this many strike-free days lowers a jail level by one step (never below zero). */
+/** A23: each full stretch of this many strike-free days lowers a jail level by one step (never below zero). */
 export const CLEAN_DAYS_PER_LEVEL = 60;
 
 /**
@@ -80,15 +80,15 @@ export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
 /**
  * Ledger writer roles.
- * owner     = Marc (via the dashboard). Writes INTENTS only; the DM routes them.
- * dm        = District Messenger. Writes world events and routes intents.
+ * owner     = Marc (via the dashboard). Writes INTENTS only; the World Messenger routes them.
+ * messenger = the World Messenger (the District Messenger until A22). Writes world events and routes intents.
  * mayor     = one per city. Writes its own city's events only.
  * architect = Bob. Cross-city READ only, never writes.
  * gateway   = Hermes' shared-surface gateway. May only ask the surface guard; never reads or writes the ledger.
- * hq        = World HQ's supervisor (A22). Confirms or dismisses Security's strike reports and writes the archive and
+ * hq        = World HQ's supervisor (A23). Confirms or dismisses Security's strike reports and writes the archive and
  *             lesson record of an agent held for deletion. Reads every city.
  */
-export const ROLES = ['owner', 'dm', 'mayor', 'architect', 'gateway', 'hq'] as const;
+export const ROLES = ['owner', 'messenger', 'mayor', 'architect', 'gateway', 'hq'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const AGENT_STATUSES = ['working', 'idle', 'blocked', 'offline'] as const;

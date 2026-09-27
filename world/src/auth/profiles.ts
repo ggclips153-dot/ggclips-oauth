@@ -15,13 +15,14 @@ export const newToken = () => randomBytes(32).toString('base64url');
 export function checkProfile(p: ProfileRecord): ProfileRecord {
   const where = `profile "${p.id}"`;
   if (!p.id || typeof p.id !== 'string') throw new Error('profile id is required');
+  if ((p.role as string) === 'dm') throw new Error(`${where}: role "dm" is now "messenger" (A22: the World Messenger); make a new profile with --role messenger`);
   if (!ROLES.includes(p.role)) throw new Error(`${where}: unknown role ${p.role}`);
   if (!Array.isArray(p.writeScope)) throw new Error(`${where}: writeScope must be a list`);
   if (!/^[0-9a-f]{64}$/.test(p.tokenSha256)) throw new Error(`${where}: tokenSha256 must be a sha256 hex digest`);
   const scope = p.writeScope;
   switch (p.role) {
     case 'owner':
-    case 'dm':
+    case 'messenger':
     case 'hq':
       if (scope.length !== 1 || scope[0] !== '*') throw new Error(`${where}: ${p.role} writeScope must be ["*"]`);
       break;

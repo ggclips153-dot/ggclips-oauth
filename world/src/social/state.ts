@@ -119,7 +119,7 @@ export class SocialState {
           media: p.media ?? [],
           firstComment: p.firstComment || null,
           tags: p.tags ?? [],
-          author: byAgent ? { kind: 'agent', id: p.authorAgentId } : { kind: 'owner', id: e.actor.replace(/-as-(dm|mayor)$/, '') },
+          author: byAgent ? { kind: 'agent', id: p.authorAgentId } : { kind: 'owner', id: e.actor.replace(/-as-(messenger|mayor)$/, '') },
           note: p.note ?? null,
           status,
           scheduledAt: p.scheduledAt ?? null,

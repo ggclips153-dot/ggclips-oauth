@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, it } from 'node:test';
+import { Profiles, hashToken } from '../src/auth/profiles.ts';
+import type { Role } from '../src/domain/model.ts';
 import { Ledger } from '../src/ledger/ledger.ts';
 import { TestWorld, owner } from './helpers.ts';
 
@@ -54,5 +57,44 @@ describe('event ledger: append-only', () => {
     assert.equal(e.actor, 'marc');
     assert.equal(e.actorRole, 'owner');
     assert.equal(e.kind, 'intent');
+  });
+});
+
+describe('A22: the District Messenger is now the World Messenger', () => {
+  it('the World Messenger routes and writes world events', () => {
+    const w = new TestWorld();
+    w.city();
+    assert.deepEqual(w.ledger.readAll().map((e) => [e.type, e.actorRole]), [
+      ['intent.create_city', 'owner'],
+      ['messenger.routed', 'messenger'],
+      ['city.created', 'messenger'],
+    ]);
+  });
+
+  it('the old name is gone: no dm role, no dm.routed', () => {
+    const w = new TestWorld();
+    const city = w.city();
+    const i = w.ledger.append(owner, { type: 'intent.message_mayor', city, payload: { text: 'hi' } });
+    const oldDm = { id: 'dm', role: 'dm' as Role, writeScope: ['*'] };
+    assert.throws(() => w.ledger.append(oldDm, { type: 'dm.routed', city, payload: { intentSeq: i.seq, to: 'mayor' } }), /unknown event type/);
+    assert.throws(() => w.ledger.append(oldDm, { type: 'messenger.routed', city, payload: { intentSeq: i.seq, to: 'mayor' } }), /may not write/);
+    assert.throws(() => new Profiles([{ id: 'dm', role: 'dm' as Role, writeScope: ['*'], tokenSha256: hashToken('t') }]), /now "messenger"/);
+  });
+
+  it('refuses a ledger file made before A22 with a clear message, and lets go of the file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'world-'));
+    try {
+      const before = readFileSync(new URL('../src/ledger/schema.sql', import.meta.url), 'utf8').replace("'messenger'", "'dm'");
+      for (const [name, advice] of [['world.db', /before A22.*archive/], ['demo.db', /before A22.*npm run demo/]] as const) {
+        const path = join(dir, name);
+        const db = new DatabaseSync(path);
+        db.exec(before);
+        db.close();
+        assert.throws(() => new Ledger({ path }), advice);
+        rmSync(path); // would fail (file busy) on Windows if the refused ledger were still open
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

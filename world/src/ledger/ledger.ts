@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { WORLD_TAG, type Role } from '../domain/model.ts';
 import { suggestNames, type NameOptions } from '../domain/names.ts';
@@ -27,6 +28,23 @@ export function canonical(value: unknown): string {
 export function hashEvent(e: Omit<LedgerEvent, 'hash'>): string {
   const body = canonical([e.seq, e.ts, e.kind, e.type, e.city, e.actor, e.actorRole, e.subject, e.payload, e.authorizedBy, e.prevHash]);
   return createHash('sha256').update(body).digest('hex');
+}
+
+/**
+ * A22 renamed the District Messenger (role `dm`, `dm.routed`) to the World Messenger (`messenger`,
+ * `messenger.routed`). A ledger file made before that accepts only the old role (a table's CHECK can't change
+ * once created), and its history is never rewritten, so this build refuses it with a clear message.
+ */
+function refuseBeforeA22(db: DatabaseSync, path: string) {
+  const table = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events'").get() as { sql: string } | undefined;
+  if (table?.sql.includes("'messenger'")) return;
+  db.close(); // let go of the file, so it can be moved or deleted
+  const why = `${path} was written before A22 renamed the District Messenger to the World Messenger`;
+  throw new Error(
+    basename(path) === 'demo.db'
+      ? `${why}. Rebuild the demo: stop the server, delete data/demo.db (and demo.db-shm, demo.db-wal), then run: npm run demo`
+      : `${why}, so this build can't add to it. Keep the file as an archive and start a new ledger (set WORLD_DB to a new file, or move this one away).`,
+  );
 }
 
 export function slugify(name: string): string {
@@ -87,6 +105,7 @@ export class Ledger {
   constructor(opts: LedgerOptions) {
     this.db = new DatabaseSync(opts.path);
     this.db.exec(SCHEMA);
+    refuseBeforeA22(this.db, opts.path);
     this.upgrade();
     this.now = opts.now ?? (() => new Date());
     this.names = opts.names ?? {};
@@ -95,7 +114,7 @@ export class Ledger {
   }
 
   /**
-   * A22: ledgers made before World HQ existed only accept owner/dm/mayor writers. Rebuild the events table with the
+   * A23: ledgers made before World HQ existed only accept owner/messenger/mayor writers. Rebuild the events table with the
    * wider writer list, copying every row exactly (same seq, same hashes), so the hash chain is untouched.
    */
   private upgrade() {
@@ -138,7 +157,7 @@ export class Ledger {
     this.db.exec('BEGIN IMMEDIATE'); // holds the write lock: nobody else can append until we commit
     let event: LedgerEvent;
     try {
-      // Another process (e.g. `npm run seed` while the server runs) may have appended: catch up first,
+      // Another process (e.g. a script run while the server is up) may have appended: catch up first,
       // then check the write against the up-to-date world.
       this.sync();
       const draft = checkWrite(this.state, profile, this.withGeneratedName(input), now);

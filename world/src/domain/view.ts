@@ -1,5 +1,5 @@
 // Read-side: what each profile may see, and the dashboard's view of the projection.
-// Marc, the DM and Bob read across cities. Mayors of Essentials cities (Innovations, Security)
+// Marc, the World Messenger and Bob read across cities. Mayors of Essentials cities (Innovations, Security)
 // also read every city but still write only their own. Any other Mayor reads only its own city.
 import { CROSS_CITY_READ_FAMILIES } from './model.ts';
 import { socialView } from '../social/view.ts';
@@ -21,7 +21,7 @@ export function canRead(profile: Profile, e: LedgerEvent, state: WorldState): bo
   if (e.type === 'security.task_strike') return state.agents.get(String(e.payload.agentId))?.cityId === scope;
   if (e.type === 'professor.strike') return state.agents.get(String(e.payload.professorId))?.cityId === scope;
   if (e.type === 'security.escalated') return state.deanReports.get(Number(e.payload.reportSeq))?.cityId === scope;
-  // World HQ's decisions and Marc's voids on strikes against the Mayor's own agents (A22).
+  // World HQ's decisions and Marc's voids on strikes against the Mayor's own agents (A23).
   if (['hq.strike_confirmed', 'hq.strike_dismissed', 'strike.voided'].includes(e.type)) {
     return state.agents.get(state.reportAgent.get(Number(e.payload.strikeSeq)) ?? '')?.cityId === scope;
   }
@@ -136,7 +136,7 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
   const jail = agents
     .filter((a) => isJailed(a, now) && (scope === '*' || a.cityId === scope))
     .map((a) => ({ id: a.id, name: a.name, role: a.role, cityId: a.cityId, state: a.state, strikes: a.strikes, jailTerms: a.jailTerms, teachingJailTerms: a.teachingJailTerms, jail: a.jail, deletionRecord: a.deletionRecord, lastRelease: a.releases.at(-1) ?? null }));
-  // Security's strike reports with World HQ's decision on each (A22), and each struck agent's level today.
+  // Security's strike reports with World HQ's decision on each (A23), and each struck agent's level today.
   const taskStrikes = state.taskStrikes
     .filter((t) => scope === '*' || t.agentCity === scope)
     .map((t) => {

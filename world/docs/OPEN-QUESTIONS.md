@@ -1,7 +1,7 @@
-# Open questions for the District Messenger
+# Open questions for the World Messenger
 
 These are points where the brief is ambiguous. Each one names the interim behaviour the code uses,
-so nothing is decided silently. Answer here or via the DM.
+so nothing is decided silently. Answer here or via the World Messenger (the District Messenger until A22).
 
 | # | Question | Interim behaviour |
 |---|---|---|
@@ -12,7 +12,7 @@ so nothing is decided silently. Answer here or via the DM.
 | 5 | Can Marc delete or evict an agent **before** a 3rd strike? | No. `agent.deleted` requires 3 strikes. Eviction can be added as its own event if wanted. |
 | 6 | One dept-lead per department? | Yes, one. The badge drops on a move or school-return. |
 | 7 | Live agent status: should agents report their own status, or only the Mayor? | Only the Mayor writes `agent.status` (the brief: "Mayor writes city events"). |
-| 8 | Families for Personal Finance City and GGClutchPlays? | Both `revenue` in `config/seed.json`. |
+| 8 | Families for Personal Finance City and GGClutchPlays? | `revenue` (A4's list). Since A22 Marc picks the family himself when he creates each city. |
 | 10 | KPI metrics for Personal Finance City and GGClutchPlays? | `city.kpi_pulse` takes any metric name; AI Receptionist uses `qualified_bookings`. |
 | 11 | PROPOSAL-2026-09-25-B-REV2 itself was not in the SOUL upload. Is there anything in it beyond what the SOULs show? | Built from the SOULs: district = supervisor that coordinates + QCs; department = scope + own bank; shared notes on the Mnemosyne shared surface (`surface.db`). |
 | 24 | **Can professors be removed or replaced** other than through teaching strikes? | Only through teaching strikes and deletion today. |
@@ -25,6 +25,7 @@ so nothing is decided silently. Answer here or via the DM.
 | 37 | **Adopting a proposal.** Proposals carry suggested wording; who edits the Constitution file itself? | Marc (or Hermes on his instruction) edits the file, then ratifies it on the Constitution page. Nothing edits the file automatically. |
 | 38 | **Version numbers.** Any rule for major vs minor? | Any newer `x.y.z`; the Ratify form suggests the next minor. |
 | 39 | **Ledger backups** (`docs/templates/LEDGER-RETENTION.md`): how often, where, how many kept? | None automated. |
-| 40 | **Proposals from other cities.** Only Innovations, Security and Bob may propose. Should a revenue Mayor be able to raise one through the DM? | No; they message Marc instead. |
+| 40 | **Proposals from other cities.** Only Innovations, Security and Bob may propose. Should a revenue Mayor be able to raise one through the World Messenger? | No; they message Marc instead. |
+| 41 | **Constitution Article XI** lists the amendments it incorporates as A1–A18. Should the 1.0.0 ratified in the new ledger also list A19–A22? | Unchanged apart from the A22 rename; nothing is ratified in the new ledger yet. |
 
-Resolved: A1-A18, see `BRIEF-AMENDMENTS.md`.
+Resolved: A1-A22, see `BRIEF-AMENDMENTS.md`.
