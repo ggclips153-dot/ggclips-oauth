@@ -168,8 +168,8 @@ to me."*
 
 ## 8. Who sees the jail
 
-- **Marc, the DM, Bob, and the Essentials Mayors (Security, Innovations)** see every jailed agent from every
-  city (A2).
+- **Marc, the World Messenger, Bob, and the Essentials Mayors (Security, Innovations)** see every jailed agent
+  from every city (A2).
 - **A revenue, Claude or Gemini Mayor** sees only its own city's agents in the jail.
   - It also sees Security's task strikes, teaching strikes and escalations **about its own agents**, even
     though Security records them under its own tag.
@@ -215,7 +215,7 @@ the same jail.
 
 ---
 
-## 11. Open questions (back to the District Messenger)
+## 11. Open questions (back to the World Messenger)
 
 1. **Appeals or mistakes.** There's no way to **cancel a wrong strike** or **release someone early**. The
    ledger is append-only, so this would be a new event (e.g. `security.strike_voided`, Marc only). Do you
@@ -229,7 +229,7 @@ the same jail.
 5. **Teaching-strike rules.** They're free text until your school system spec arrives. Should professors get
    timed terms, or stay "3 = awaiting deletion" with no timed jail?
 6. **Archive and lesson record on deletion.** When you click Delete, the refs default to
-   `archive/<ID>/ledger` and `lessons/<ID>.md`. Who writes those files: Hermes (the home Mayor) or the DM?
+   `archive/<ID>/ledger` and `lessons/<ID>.md`. Who writes those files: Hermes (the home Mayor) or the World Messenger?
    Should Delete ask you for the lesson record first?
 7. **Eviction before a 3rd strike.** You can't delete an agent that isn't awaiting deletion (interim rule). Do
    you want a separate eviction path?
