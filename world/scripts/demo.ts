@@ -32,8 +32,8 @@ const intent = (type: string, city: string, payload: Record<string, unknown>) =>
 };
 const fact = (by: Profile, input: AppendInput) => ledger.append(by, input);
 
-function city(name: string, family: string, mayorName: string) {
-  const payload = { name, family, mayorName };
+function city(name: string, family: string, mayorName: string, security = false) {
+  const payload = { name, family, mayorName, ...(security ? { security: true } : {}) };
   const i = intent('create_city', 'WORLD', payload);
   return fact(messenger, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }).subject!;
 }
@@ -83,7 +83,7 @@ const reception = city('AI Receptionist City', 'revenue', 'Ana');
 const finance = city('Personal Finance City', 'revenue', 'Greg');
 const gaming = city('GGClutchPlays', 'revenue', 'Kevin');
 const innovations = city('Innovations City', 'essentials', 'Soren');
-const security = city('Security City', 'essentials', 'Odette');
+const security = city('Security City', 'essentials', 'Odette', true);
 const claudeCity = city('Claude Research City', 'claude', 'Imani');
 const geminiCity = city('Gemini Studio', 'gemini', 'Pax');
 

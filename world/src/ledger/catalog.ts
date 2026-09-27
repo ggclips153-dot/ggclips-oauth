@@ -112,6 +112,8 @@ export const CATALOG: Record<string, EventSpec> = {
       family: { t: 'str', oneOf: FAMILIES },
       mayorName: { t: 'str', max: 80 },
       initialDistricts: { t: 'json', maxBytes: 8000, opt: true },
+      // A28: this city is the Security city, which runs the jail (Essentials, one per world).
+      security: { t: 'bool', opt: true },
     },
   },
   'intent.create_district': {
@@ -203,7 +205,7 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { agentId: { t: 'str', max: 20 } },
   },
-  // Deploy a Security City agent to watch a city. Tagged security-city; Security's Mayor executes.
+  // Deploy a Security city agent to watch a city. Tagged with the Security city; its Mayor executes.
   // ---- In-world economy (A18): grants are Mayor + Marc executed, never self-run ----
   'intent.grant_earning': {
     kind: 'intent',
@@ -272,6 +274,7 @@ export const CATALOG: Record<string, EventSpec> = {
       name: { t: 'str', max: 120 },
       family: { t: 'str', oneOf: FAMILIES },
       mayorName: { t: 'str', max: 80 },
+      security: { t: 'bool', opt: true },
     },
     authorizedBy: ['intent.create_city'],
     allocates: 'CITY',

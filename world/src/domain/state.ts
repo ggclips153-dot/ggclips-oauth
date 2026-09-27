@@ -6,6 +6,7 @@ import {
   AGENT_STATES,
   DEPT_LEAD_BADGE,
   INTERN_BADGE,
+  LEGACY_SECURITY_CITY_ID,
   MAX_STRIKES,
   JAIL_TERMS_HOURS,
   TASK_STRIKES_PER_JAIL,
@@ -303,6 +304,13 @@ export class WorldState {
   readonly social = new SocialState();
   readonly proposals = new Map<number, ConstitutionProposal>();
   worldRollup: { seq: number; period: string; periodStart: string; rollup: unknown } | null = null;
+  /** The city created as the Security city (A28), if any. */
+  private securityCity: string | null = null;
+
+  /** The city that runs the jail: the one created as the Security city, or in older worlds security-city. */
+  securityCityId(): string | null {
+    return this.securityCity ?? (this.cities.has(LEGACY_SECURITY_CITY_ID) ? LEGACY_SECURITY_CITY_ID : null);
+  }
 
   isNameRetired(name: string) {
     return this.retiredNames.has(nameKey(name));
@@ -379,6 +387,7 @@ export class WorldState {
         this.routed.set(p.intentSeq, e.seq);
         break;
       case 'city.created':
+        if (p.security === true) this.securityCity = e.subject!;
         this.cities.set(e.subject!, {
           id: e.subject!,
           name: p.name,

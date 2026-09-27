@@ -28,8 +28,11 @@ export const MAX_CITIES_PER_FAMILY: Partial<Record<Family, number>> = { claude: 
 /** Mayors of these families READ every city (never edit). Amendment A2. */
 export const CROSS_CITY_READ_FAMILIES: readonly Family[] = ['essentials'];
 
-/** The city that runs the jail and records task strikes. Amendments A3, A6. */
-export const SECURITY_CITY_ID = 'security-city';
+/**
+ * The Security city runs the jail and records task strikes (A3, A6). Since A28 it is the city created as the
+ * Security city (whatever its name, e.g. "HQ"); in a world from before that, the city whose ID is this one.
+ */
+export const LEGACY_SECURITY_CITY_ID = 'security-city';
 
 /**
  * Task strikes (caught not doing a task) are a SEPARATE counter from KPI strikes.

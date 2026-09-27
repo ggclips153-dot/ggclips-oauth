@@ -21,7 +21,8 @@ function facts(i: LedgerEvent, { messenger, mayor }: Actors): [Profile, AppendIn
   ];
   switch (i.type) {
     case 'intent.create_city': {
-      const created: [Profile, AppendInput] = [messenger, { type: 'city.created', city: 'WORLD', payload: { name: p.name, family: p.family, mayorName: p.mayorName }, authorizedBy: i.seq }];
+      const payload = { name: p.name, family: p.family, mayorName: p.mayorName, ...(p.security !== undefined ? { security: p.security } : {}) };
+      const created: [Profile, AppendInput] = [messenger, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }];
       return [created];
     }
     case 'intent.create_district':

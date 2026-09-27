@@ -403,7 +403,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
     }
 
     // ---- Blocks filling the land inside the beltway and around each neighbourhood's grid ----
-    const jailAt = city.id === 'security-city' || jailed.length ? new THREE.Vector3(12, 0, -11) : null;
+    const isSecurity = city.id === data.securityCityId;
+    const jailAt = isSecurity || jailed.length ? new THREE.Vector3(12, 0, -11) : null;
     const distToSeg = (x, z, { a, b }) => {
       const dx = b.x - a.x;
       const dz = b.z - a.z;
@@ -507,12 +508,12 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
     }
     world.add(skyline(spots, city.id));
 
-    // ---- Security City keeps the jail, holding every jailed agent from any city ----
-    if (city.id === 'security-city' || jailed.length) {
+    // ---- The Security city keeps the jail, holding every jailed agent from any city ----
+    if (isSecurity || jailed.length) {
       const jailPos = new THREE.Vector3(12, 0, -11);
-      const inside = city.id === 'security-city' ? data.jail : jailed.map((a) => ({ ...a, cityId: city.id }));
+      const inside = isSecurity ? data.jail : jailed.map((a) => ({ ...a, cityId: city.id }));
       const cage = pick(new THREE.Mesh(new THREE.BoxGeometry(7, 4, 7), new THREE.MeshBasicMaterial({ color: NEON.red, wireframe: true })), {
-        tip: city.id === 'security-city' ? `Security jail · ${inside.length} inside` : `${inside.length} of this city's agents are in Security's jail`,
+        tip: isSecurity ? `Security jail · ${inside.length} inside` : `${inside.length} of this city's agents are in Security's jail`,
       });
       cage.position.set(jailPos.x, 2, jailPos.z);
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), neon(NEON.red, 0.18));
@@ -526,7 +527,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
           { tip: `${ag.name} (${ag.id}) · in jail${ag.jail?.status === 'awaiting_deletion' ? ', awaiting deletion' : ag.jail?.until ? ` until ${new Date(ag.jail.until).toLocaleString()}` : ''}` },
           { at: new THREE.Vector3(jailPos.x - 2 + (k % 3) * 2, 0, jailPos.z - 2 + Math.floor(k / 3) * 2), face: rand() * Math.PI * 2 });
       });
-      label(city.id === 'security-city' ? 'Jail' : "In Security's jail", `${inside.length}`, jailPos.clone().setY(5.2), 'jail');
+      label(isSecurity ? 'Jail' : "In Security's jail", `${inside.length}`, jailPos.clone().setY(5.2), 'jail');
     }
 
     // All the traffic in three draw calls, then merge the static scenery by material.

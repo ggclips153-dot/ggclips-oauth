@@ -8,6 +8,8 @@ const FAMILY_OPTIONS = [
   ['gemini', 'Gemini (expansion)'],
   ['essentials', 'Essentials'],
 ];
+/** Form-only choice: an Essentials city created as the Security city (A28). */
+const SECURITY_FAMILY = 'essentials-security';
 
 const PLAIN = {
   'intent.create_city': 'New city',
@@ -216,6 +218,9 @@ export function formsFor(ctx) {
 
   return {
     newCity() {
+      // A28: until the world has its Security city (the one that runs the jail), it can be chosen here.
+      const needsSecurity = !ctx.data()?.securityCityId;
+      const families = needsSecurity ? [...FAMILY_OPTIONS, [SECURITY_FAMILY, 'Essentials: the Security city (runs the jail)']] : FAMILY_OPTIONS;
       openForm(ctx, {
         createNow: true,
         title: 'New city',
@@ -223,7 +228,10 @@ export function formsFor(ctx) {
         repeat: true,
         fields: [
           { name: 'name', label: 'City name', type: 'text', required: true },
-          { name: 'family', label: 'Family', type: 'select', required: true, options: FAMILY_OPTIONS, value: 'revenue', keep: true },
+          {
+            name: 'family', label: 'Family', type: 'select', required: true, options: families, value: 'revenue', keep: true,
+            help: needsSecurity ? 'One Essentials city is the Security city: it runs the jail, whatever its name. Choose it when you create that city.' : null,
+          },
           { name: 'mayorName', label: 'Mayor name', type: 'name', required: true },
           { name: 'districts', label: 'Initial districts', type: 'lines', placeholder: 'One per line: District name | supervisor\nFront Desk | Rowe', help: 'Each line: district name, a | and its supervisor.' },
         ],
@@ -233,8 +241,15 @@ export function formsFor(ctx) {
             if (!name || !supervisor) throw new Error(`"${line}" needs a district name and a supervisor, separated by |`);
             return { name, supervisor };
           });
-          await intent('intent.create_city', 'WORLD', { name: v.name, family: v.family, mayorName: v.mayorName, ...(initialDistricts.length ? { initialDistricts } : {}) });
-          return `New city "${v.name}": done.`;
+          const security = v.family === SECURITY_FAMILY;
+          await intent('intent.create_city', 'WORLD', {
+            name: v.name,
+            family: security ? 'essentials' : v.family,
+            mayorName: v.mayorName,
+            ...(initialDistricts.length ? { initialDistricts } : {}),
+            ...(security ? { security: true } : {}),
+          });
+          return security ? `New city "${v.name}": done. It is the Security city and runs the jail.` : `New city "${v.name}": done.`;
         },
       });
     },

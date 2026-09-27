@@ -413,17 +413,17 @@ export function mount3D(container, { onOpenCity }) {
     return g;
   }
 
-  function jailModel(pal, jailed, detail) {
+  function jailModel(pal, jailed, detail, securityCityId) {
     const g = new THREE.Group();
     const at = new THREE.Vector3(-(PLATFORM - 2.4), 1.2, 0);
-    const cage = pick(new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 3.2), new THREE.MeshBasicMaterial({ color: NEON.red, wireframe: true })), { tip: `Security jail · ${jailed.length} inside`, cityId: 'security-city' });
+    const cage = pick(new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 3.2), new THREE.MeshBasicMaterial({ color: NEON.red, wireframe: true })), { tip: `Security jail · ${jailed.length} inside`, cityId: securityCityId });
     cage.position.set(at.x, 2.3, 0);
     const jg = glow(NEON.red, 6, 0.35);
     jg.position.copy(cage.position);
     g.add(cage, jg);
     jailed.forEach(({ ag, city }, k) => {
       const until = ag.jail.status === 'awaiting_deletion' ? 'awaiting deletion' : `until ${new Date(ag.jail.until).toLocaleString()}`;
-      addPerson(g, detail, { jacket: '#ff5a1f', seed: ag.id, accent: NEON.red }, { tip: `${ag.name} (${ag.id}) of ${city.name} · in jail, ${until}`, cityId: 'security-city' },
+      addPerson(g, detail, { jacket: '#ff5a1f', seed: ag.id, accent: NEON.red }, { tip: `${ag.name} (${ag.id}) of ${city.name} · in jail, ${until}`, cityId: securityCityId },
         { at: new THREE.Vector3(at.x - 0.9 + (k % 3) * 0.9, 1.2, -0.9 + Math.floor(k / 3) * 0.9), face: k });
     });
     return g;
@@ -617,7 +617,7 @@ export function mount3D(container, { onOpenCity }) {
 
       // City detail, shown when zoomed in.
       const detail = cityModel(c, fam, pal, jailed, now);
-      if (c.id === 'security-city') securityGroup = detail;
+      if (c.id === data.securityCityId) securityGroup = detail;
       detail.scale.setScalar(CITY_SCALE);
       placeOnGlobe(detail, dir, 0.02);
       detail.visible = false;
@@ -626,7 +626,7 @@ export function mount3D(container, { onOpenCity }) {
 
       label(c.name, `Mayor ${c.mayorName}`, dir.clone().multiplyScalar(R), 'city', { maxDist: R * 4.2 });
     }
-    if (securityGroup) securityGroup.add(jailModel(pal, jailed, securityGroup));
+    if (securityGroup) securityGroup.add(jailModel(pal, jailed, securityGroup, data.securityCityId));
     // Each city model draws in a handful of calls: merge its static parts by material.
     const pickSet = new Set(pickables);
     for (const dt of details) bakeStatic(dt.obj, pickSet);

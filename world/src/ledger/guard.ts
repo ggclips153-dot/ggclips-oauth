@@ -16,7 +16,6 @@ import {
   MAX_CITIES_PER_FAMILY,
   MAX_QC_REWORKS_PER_PERIOD,
   MAX_STRIKES,
-  SECURITY_CITY_ID,
   WORLD_TAG,
   type Role,
 } from '../domain/model.ts';
@@ -255,6 +254,18 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     const count = [...state.cities.values()].filter((c) => c.family === p.family).length;
     if (max !== undefined && count >= max) conflict(`the ${p.family} family holds ${max} ${max === 1 ? 'city' : 'cities'}; it already has ${count}`);
   };
+  /** A28: the Security city is an Essentials city, and a world has one. */
+  const securityCityHasRoom = () => {
+    if (!p.security) return;
+    if (p.family !== 'essentials') invalid('the Security city is an Essentials city');
+    const existing = state.securityCityId();
+    if (existing) conflict(`this world already has its Security city (${existing})`);
+  };
+  /** The city that runs the jail, for rules that only it may apply. */
+  const onlySecurityCity = (what: string) => {
+    const sec = state.securityCityId();
+    if (d.city !== sec) forbid(`only ${sec ?? 'the Security city'} ${what}`);
+  };
   const missed = () => {
     if (!(p.value < p.target)) invalid('a strike requires a KPI miss (value < target)');
   };
@@ -273,7 +284,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
   /** A Security agent deployed to `city` (task strikes, teaching strikes). */
   const deployedObserver = (id: unknown, city: string, subjectId: string) => {
     const obs = state.agents.get(String(id)) ?? notFound(`unknown observer: ${id}`);
-    if (obs.cityId !== SECURITY_CITY_ID || obs.deleted || obs.role !== 'agent') forbid(`observer ${obs.id} is not a Security City agent`);
+    if (obs.cityId !== state.securityCityId() || obs.deleted || obs.role !== 'agent') forbid(`observer ${obs.id} is not a Security City agent`);
     if (obs.id === subjectId) forbid('an agent cannot strike itself');
     if (!GRADUATED.includes(obs.state)) forbid(`observer ${obs.id} is ${obs.state}, not a working agent`);
     if (obs.deployedTo !== city) forbid(`observer ${obs.id} is not deployed to ${city}`);
@@ -292,6 +303,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     // ---- intents: early checks so Marc sees mistakes before the World Messenger routes them ----
     case 'intent.create_city': {
       familyHasRoom();
+      securityCityHasRoom();
       const list = p.initialDistricts;
       if (list !== undefined) {
         if (!Array.isArray(list) || list.length > 50) invalid('initialDistricts must be a list (max 50)');
@@ -368,7 +380,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     }
     case 'intent.deploy_agent': {
-      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} agents are deployed`);
+      onlySecurityCity('agents are deployed');
       const a = agentIn(p.agentId, d.city);
       if (!GRADUATED.includes(a.state)) conflict(`agent ${a.id} must be graduated (a working agent) to deploy; it is ${a.state}`);
       if (!state.cities.has(String(p.toCity))) notFound(`unknown city: ${p.toCity}`);
@@ -397,8 +409,9 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     }
     case 'city.created':
-      match(['name', 'family', 'mayorName']);
+      match(['name', 'family', 'mayorName', 'security']);
       familyHasRoom();
+      securityCityHasRoom();
       break;
     case 'intent.amend_constitution':
     case 'constitution.amended': {
@@ -517,7 +530,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     }
     case 'professor.strike': {
-      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} applies teaching strikes`);
+      onlySecurityCity('applies teaching strikes');
       const prof = state.agents.get(String(p.professorId));
       if (!prof || prof.role !== 'professor' || prof.deleted) return notFound(`unknown professor: ${p.professorId}`);
       deployedObserver(p.observedBy, prof.cityId, prof.id);
@@ -547,7 +560,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       break;
     }
     case 'security.escalated': {
-      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} escalates reports to Marc`);
+      onlySecurityCity('escalates reports to Marc');
       const report = state.deanReports.get(p.reportSeq) ?? notFound(`dean report #${p.reportSeq} not found`);
       if (report.escalated) conflict(`dean report #${report.seq} was already escalated`);
       break;
@@ -635,7 +648,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
       if (!state.cities.has(String(p.toCity))) notFound(`unknown city: ${p.toCity}`);
       break;
     case 'security.task_strike': {
-      if (d.city !== SECURITY_CITY_ID) forbid(`only ${SECURITY_CITY_ID} records task strikes`);
+      onlySecurityCity('records task strikes');
       const a = state.agents.get(String(p.agentId)) ?? notFound(`unknown agent: ${p.agentId}`);
       if (a.deleted) conflict(`agent ${a.id} is deleted`);
       // Professors take only teaching strikes (A15); the Mayor judges deans.

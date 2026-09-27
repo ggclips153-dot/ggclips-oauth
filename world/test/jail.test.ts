@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { canRead, worldView } from '../src/domain/view.ts';
 import { isJailed } from '../src/domain/state.ts';
-import { TestWorld, mayorOf, owner } from './helpers.ts';
+import { TestWorld, mayorOf, messenger, owner } from './helpers.ts';
 
 /** A revenue city with a working agent, the two Essentials cities, and a Security agent deployed to watch. */
 const setup = () => {
@@ -172,5 +172,59 @@ describe('Security jail: 3 task strikes = a term; 6h, 24h, 3 days, then deletion
     const jail = s.w.state.agents.get(s.agent)!.jail!;
     assert.deepEqual([jail.status, jail.cause], ['awaiting_deletion', 'kpi_strikes']);
     deleteIt();
+  });
+});
+
+/** A city created as the Security city (A28), with any name. */
+const createSecurityCity = (w: TestWorld, name: string) => {
+  const payload = { name, family: 'essentials', mayorName: 'Mayor Oakley', security: true };
+  const i = w.intent('create_city', 'WORLD', payload);
+  return w.fact(messenger, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq }).subject!;
+};
+
+describe('A28: the Security city is the one created as such, whatever its name', () => {
+  it('a Security city named HQ runs deployments, task strikes and the jail', () => {
+    const w = new TestWorld();
+    const hq = createSecurityCity(w, 'HQ');
+    assert.equal(hq, 'hq');
+    assert.equal(w.state.securityCityId(), 'hq');
+    const city = w.city('GGClutchPlays');
+    const agent = w.agent(city, w.department(city, w.district(city)), 'Iris');
+    w.promote(city, agent, 'probationer');
+    const guard = w.agent(hq, w.department(hq, w.district(hq, 'Oversight')), 'Sentinel');
+    w.promote(hq, guard, 'probationer');
+    const d = w.intent('deploy_agent', hq, { agentId: guard, toCity: city });
+    w.fact(mayorOf(hq), { type: 'agent.deployed', city: hq, subject: guard, payload: { toCity: city }, authorizedBy: d.seq });
+    for (let i = 0; i < 3; i++) taskStrike(w, hq, agent, guard);
+    assert.ok(isJailed(w.state.agents.get(agent)!, w.time), 'jailed by HQ');
+    assert.equal(worldView(w.state, owner, w.time).securityCityId, 'hq');
+  });
+
+  it('one Security city per world, an Essentials city, and the city record must match the request', () => {
+    const w = new TestWorld();
+    assert.throws(() => w.intent('create_city', 'WORLD', { name: 'Sec', family: 'revenue', mayorName: 'M', security: true }), /Essentials city/);
+    // The recorded city must carry the same choice as Marc's request.
+    const payload = { name: 'HQ', family: 'essentials', mayorName: 'M', security: true };
+    const i = w.intent('create_city', 'WORLD', payload);
+    assert.throws(
+      () => w.fact(messenger, { type: 'city.created', city: 'WORLD', payload: { name: 'HQ', family: 'essentials', mayorName: 'M' }, authorizedBy: i.seq }),
+      /security does not match/,
+    );
+    w.fact(messenger, { type: 'city.created', city: 'WORLD', payload, authorizedBy: i.seq });
+    assert.throws(() => createSecurityCity(w, 'Second HQ'), /already has its Security city \(hq\)/);
+    // Another Essentials city is not the Security city: it can't record strikes.
+    const innovations = w.city('Innovations', 'essentials');
+    assert.equal(w.state.securityCityId(), 'hq');
+    assert.throws(
+      () => w.fact(mayorOf(innovations), { type: 'security.task_strike', city: innovations, payload: { agentId: 'AGT-000001', observedBy: 'AGT-000002', task: 't', evidence: 'e' } }),
+      /only hq records task strikes/,
+    );
+  });
+
+  it('an older world keeps its Security City (security-city) and cannot add a second', () => {
+    const w = new TestWorld();
+    w.city('Security City', 'essentials');
+    assert.equal(w.state.securityCityId(), 'security-city');
+    assert.throws(() => createSecurityCity(w, 'HQ'), /already has its Security city \(security-city\)/);
   });
 });

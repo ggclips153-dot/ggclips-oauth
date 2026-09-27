@@ -57,6 +57,7 @@ function toast(message) {
 const forms = formsFor({
   api: (...a) => api(...a),
   toast,
+  data: () => data,
 });
 
 // ---------- 3D world (loaded only when chosen) ----------
@@ -740,7 +741,7 @@ function cityView(ix, id, sub = { mode: 'details' }) {
       h('button', { class: 'small-btn', type: 'button', onclick: () => memoryFor(c.id) }, 'Memory'),
       isOwner() && act('+ New district', () => forms.newDistrict(c)),
       isOwner() && act('Message Mayor', () => forms.messageMayor(c)),
-      isOwner() && c.id === 'security-city' && act('Deploy an agent', () => forms.deploy(c, data.cities))));
+      isOwner() && c.id === data.securityCityId && act('Deploy an agent', () => forms.deploy(c, data.cities))));
 
   const kpiCard = h('div', { class: 'card section' }, h('h3', {}, 'KPI pulse'),
     c.kpi

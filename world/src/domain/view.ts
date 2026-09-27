@@ -144,6 +144,8 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
   return {
     lastSeq: state.lastSeq,
     now: now.toISOString(),
+    // The city that runs the jail (A28), so the dashboard shows its jail and "Deploy an agent" there.
+    securityCityId: state.securityCityId(),
     jail,
     taskStrikes,
     escalations,
