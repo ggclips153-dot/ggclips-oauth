@@ -129,11 +129,13 @@ out by the Mayor (or the World Messenger for world events), and recorded in the 
 
 ## Article XI — Ratified amendments incorporated
 
-A1–A18 as recorded in `world/docs/BRIEF-AMENDMENTS.md`: the Essentials family and its cross-city reading;
+A1–A22 as recorded in `world/docs/BRIEF-AMENDMENTS.md`: the Essentials family and its cross-city reading;
 Security's jail and task strikes; the first cities; the name generator; shadows as interns; departments
 without slots and Mayor-appointed shadow promotions; caps and logged delegation; professors, the college, deans
 and their strike rules; dean replacement; one city each for Claude and Gemini; dollars, per-grant amounts and
-weekly periods.
+weekly periods; Marc's requests applied at once; StarNet, one station per city; the agents are Marc's Hermes
+agents, created only by Marc or on his instruction, with one shared memory surface the dashboard only reads;
+the World Messenger, Bob building each new agent's Hermes profile, and no seeding.
 
 ## Article XII — How SOULs reference this Constitution
 
