@@ -93,7 +93,7 @@ async function ensureCity3D(city, districtId, deptId = null) {
       onOpenCity: (id) => (location.hash = `#/city/${encodeURIComponent(id)}/3d`),
       onTalk: (agentId) => openAgentChat(chatCtx(), agentId),
       // Owner-only forms, opened from the 3D panel (the server re-checks every request anyway).
-      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp), renameCity: (c) => forms.renameCity(c), newDistrict: (c) => forms.newDistrict(c), renameDistrict: (c, d) => forms.renameDistrict(c, d), deleteDistrict: (c, d) => forms.deleteDistrict(c, d), renameDepartment: (c, dp) => forms.renameDepartment(c, dp), deleteDepartment: (c, dp) => forms.deleteDepartment(c, dp), newDepartment: (c, d) => forms.newDepartment(c, d), createProfessor: (c, dp) => forms.createProfessor(c, dp), createDean: (c) => forms.createDean(c) } : null),
+      actions: () => (isOwner() ? { createAgent: (c) => forms.createAgent(c), assignAgent: (c, dp) => forms.assignAgent(c, dp), renameCity: (c) => forms.renameCity(c), designateSecurityCity: (c) => forms.designateSecurityCity(c), newDistrict: (c) => forms.newDistrict(c), renameDistrict: (c, d) => forms.renameDistrict(c, d), deleteDistrict: (c, d) => forms.deleteDistrict(c, d), renameDepartment: (c, dp) => forms.renameDepartment(c, dp), deleteDepartment: (c, dp) => forms.deleteDepartment(c, dp), newDepartment: (c, d) => forms.newDepartment(c, d), createProfessor: (c, dp) => forms.createProfessor(c, dp), createDean: (c) => forms.createDean(c) } : null),
     });
     return city3d;
   });
@@ -740,7 +740,8 @@ function cityView(ix, id, sub = { mode: 'details' }) {
       isOwner() && act('+ New district', () => forms.newDistrict(c)),
       isOwner() && act('Rename city', () => forms.renameCity(c)),
       isOwner() && act('Message Mayor', () => forms.messageMayor(c)),
-      isOwner() && c.id === data.securityCityId && act('Deploy an agent', () => forms.deploy(c, data.cities))));
+      isOwner() && c.id === data.securityCityId && act('Deploy an agent', () => forms.deploy(c, data.cities)),
+      isOwner() && !data.securityCityId && c.family === 'essentials' && act('Make this the Security city', () => forms.designateSecurityCity(c))));
 
   const kpiCard = h('div', { class: 'card section' }, h('h3', {}, 'KPI pulse'),
     c.kpi
@@ -949,9 +950,11 @@ function retiredSection(c) {
 
 function jailView(ix) {
   const cityName = (id) => ix.cities.get(id)?.name ?? id;
+  const hqJail = data.securityCityId ? `${cityName(data.securityCityId)}'s jail` : "the Security city's jail";
   const rows = data.jail.map((j) => [
     h('div', {}, j.name, h('div', { class: 'mono muted' }, j.id)),
     h('a', { href: `#/city/${encodeURIComponent(j.cityId)}` }, cityName(j.cityId)),
+    `${cityName(j.heldIn)} jail`,
     JAIL_CAUSE[j.jail.cause] ?? j.jail.cause,
     j.jail.term ?? '—',
     j.jail.status === 'awaiting_deletion' ? statusChip('critical', 'Awaiting your deletion decision') : statusChip('serious', until(j.jail.until)),
@@ -969,8 +972,10 @@ function jailView(ix) {
   return [
     h('h1', {}, 'Security'),
     h('h2', {}, 'Jail'),
-    h('p', { class: 'secondary' }, 'Every 3 task strikes means a jail term: 6 hours, then 24 hours, then 3 days. The 4th time, or a 3rd KPI or teaching strike, the agent waits here for your deletion decision. Timed terms end on their own.'),
-    h('div', { class: 'card' }, table(['Agent', 'City', 'Cause', { label: 'Term', num: true }, 'Release', ''], rows, 'Nobody is in jail.')),
+    h('p', { class: 'secondary' }, `Every city holds its own agents in its own jail. Every 3 task strikes means a jail term: 6 hours, then 24 hours, then 3 days. The 4th time, or a 3rd KPI or teaching strike, the agent is moved to ${hqJail} and waits there for your deletion decision. Timed terms end on their own.`),
+    !data.securityCityId && h('p', { class: 'small' }, statusChip('warning', 'No Security city yet'),
+      ' Deployments, task strikes and the jail for agents awaiting deletion need one. Open your Security city (an Essentials city) and choose "Make this the Security city".'),
+    h('div', { class: 'card' }, table(['Agent', 'City', 'Held in', 'Cause', { label: 'Term', num: true }, 'Release', ''], rows, 'Nobody is in jail.')),
     h('div', { class: 'card section' }, h('h2', {}, 'Recent task strikes'), table(['When', 'Agent', 'City', 'Task', 'Observed by'], strikes, 'No task strikes recorded.')),
     h('div', { class: 'card section' },
       h('h2', {}, 'Shared-surface guard'),

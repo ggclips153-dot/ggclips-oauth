@@ -262,7 +262,6 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
       return { d, cols, radius: Math.max(13, cols * CELL * 0.72 + 7) };
     });
     const ringR = Math.max(34, plots.reduce((s, p) => s + p.radius * 2 + 10, 0) / (2 * Math.PI));
-    const jailed = [];
     const placed = [];
 
     plots.forEach(({ d, cols, radius }, i) => {
@@ -351,10 +350,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
         // Agents: working ones walk the block, the rest stand by the door.
         let standing = 0;
         dp.agents.forEach((ag, j) => {
-          if (inJail(ag)) {
-            jailed.push(ag);
-            return;
-          }
+          if (inJail(ag)) return; // held in a jail: this city's own, or HQ's while awaiting deletion (A30)
           const look = { jacket: pal.state[STATES.indexOf(ag.state)] ?? pal.axis, seed: ag.id, accent: hue };
           const info = { tip: agentTip(ag), districtId: d.id };
           if (ag.status?.status === 'working') {
@@ -404,7 +400,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
 
     // ---- Blocks filling the land inside the beltway and around each neighbourhood's grid ----
     const isSecurity = city.id === data.securityCityId;
-    const jailAt = isSecurity || jailed.length ? new THREE.Vector3(12, 0, -11) : null;
+    const jailAt = new THREE.Vector3(12, 0, -11); // every city has its own jail (A30)
     const distToSeg = (x, z, { a, b }) => {
       const dx = b.x - a.x;
       const dz = b.z - a.z;
@@ -419,7 +415,7 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
         const r = Math.hypot(px, pz);
         if (r > beltR - 5 || r < 17) continue;
         if (Math.hypot(px - campus.x, pz - campus.z) < 11) continue;
-        if (jailAt && Math.hypot(px - jailAt.x, pz - jailAt.z) < 8) continue;
+        if (Math.hypot(px - jailAt.x, pz - jailAt.z) < 8) continue;
         const size = 2.4 + rand() * 1.8;
         let inPlot = false;
         let ok = true;
@@ -508,12 +504,16 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
     }
     world.add(skyline(spots, city.id));
 
-    // ---- The Security city keeps the jail, holding every jailed agent from any city ----
-    if (isSecurity || jailed.length) {
-      const jailPos = new THREE.Vector3(12, 0, -11);
-      const inside = isSecurity ? data.jail : jailed.map((a) => ({ ...a, cityId: city.id }));
+    // ---- A30: every city holds its own jailed agents in its own jail; HQ's (the Security city's) also holds the
+    // agents awaiting deletion, from every city ----
+    {
+      const jailPos = jailAt;
+      const inside = data.jail.filter((j) => j.heldIn === city.id);
+      const toHq = data.jail.filter((j) => j.cityId === city.id && j.heldIn !== city.id).length;
+      const hqName = data.cities.find((c) => c.id === data.securityCityId)?.name ?? 'the Security city';
+      const cityName = (id) => data.cities.find((c) => c.id === id)?.name ?? id;
       const cage = pick(new THREE.Mesh(new THREE.BoxGeometry(7, 4, 7), new THREE.MeshBasicMaterial({ color: NEON.red, wireframe: true })), {
-        tip: isSecurity ? `Security jail · ${inside.length} inside` : `${inside.length} of this city's agents are in Security's jail`,
+        tip: `${city.name} jail · ${inside.length} inside${isSecurity ? ' · agents awaiting deletion from every city are held here' : ''}${toHq ? ` · ${toHq} moved to ${hqName}'s jail to await deletion` : ''}`,
       });
       cage.position.set(jailPos.x, 2, jailPos.z);
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), neon(NEON.red, 0.18));
@@ -524,10 +524,10 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
       world.add(cage, floor, jg);
       inside.forEach((ag, k) => {
         addPerson({ jacket: '#ff5a1f', seed: ag.id, accent: NEON.red },
-          { tip: `${ag.name} (${ag.id}) · in jail${ag.jail?.status === 'awaiting_deletion' ? ', awaiting deletion' : ag.jail?.until ? ` until ${new Date(ag.jail.until).toLocaleString()}` : ''}` },
+          { tip: `${ag.name} (${ag.id})${ag.cityId !== city.id ? ` of ${cityName(ag.cityId)}` : ''} · in jail${ag.jail?.status === 'awaiting_deletion' ? ', awaiting deletion' : ag.jail?.until ? ` until ${new Date(ag.jail.until).toLocaleString()}` : ''}` },
           { at: new THREE.Vector3(jailPos.x - 2 + (k % 3) * 2, 0, jailPos.z - 2 + Math.floor(k / 3) * 2), face: rand() * Math.PI * 2 });
       });
-      label(isSecurity ? 'Jail' : "In Security's jail", `${inside.length}`, jailPos.clone().setY(5.2), 'jail');
+      label('Jail', isSecurity ? `${inside.length} · holds agents awaiting deletion` : `${inside.length}`, jailPos.clone().setY(5.2), 'jail');
     }
 
     // All the traffic in three draw calls, then merge the static scenery by material.
@@ -606,7 +606,8 @@ export function mountCity3D(container, { onSelectDistrict, onOpenCity = null, on
         h('p', { class: 'small secondary' }, `Mayor ${city.mayorName} · ${city.districts.length} district(s)`),
         h('p', { class: 'small' }, STATES.map((s) => `${cap(s)} ${counts[s] ?? 0}`).join(' · ')),
         h('p', { class: 'small secondary' }, 'Choose a district or jump to a department above, or click a district\'s ground.'),
-        act && h('div', { class: 'toolbar' }, btn('+ Create agent at the college', () => act.createAgent(city), 'primary'), btn('Rename city', () => act.renameCity(city))),
+        act && h('div', { class: 'toolbar' }, btn('+ Create agent at the college', () => act.createAgent(city), 'primary'), btn('Rename city', () => act.renameCity(city)),
+          !current.data?.securityCityId && city.family === 'essentials' && btn('Make this the Security city', () => act.designateSecurityCity(city))),
       );
       return;
     }

@@ -235,3 +235,58 @@ Tony: "The Security City will be named HQ, you can start over."
 
 Enforced in (A28): `securityCityId()` in `src/domain/state.ts`, `src/ledger/guard.ts`, `src/ledger/catalog.ts`,
 the **+ New city** form. A23–A27 are built next (Bob's operator build).
+
+### A28, continued (2026-09-27): Marc's HQ is the Security city
+
+Marc kept the first live ledger instead of starting over. He renamed its "Security" city (created before a city
+could be created as the Security city) to HQ, and said: "HQ is SECURITY I briefed you on this already" (Bob's
+world-layer note n1a0e1a2d07b: "SECURITY CITY IS RENAMED HQ").
+
+- An Essentials city made before A28 can be **made the Security city, once**, while the world has none: "Make
+  this the Security city" on its page records `intent.designate_security_city`, and the World Messenger records
+  `city.security_designated`. It can't be changed later.
+- HQ keeps its ID, `security`. The archive plan in A28 above is dropped.
+
+Enforced in: `src/ledger/catalog.ts`, `src/ledger/guard.ts`, `src/domain/state.ts`, `src/server/executor.ts`, the
+city page and the 3D city's panel.
+
+## A29–A31 (2026-09-27): decided with Tony while taking the world live
+
+### A29 — The shared memory is the source of truth for cities and departments
+
+Tony approved Bob's queued command `cmd_94751e61dbe322d7fb9f3557`: "When Tony creates a CITY or DEPARTMENT in
+the dashboard, that creation must be committed to the shared surface (surface.db) through the audited bridge,
+attributed as 'tony' … so Tony's dashboard creations immediately become source-of-truth and Bob can read +
+reconcile them … Reuse the existing audited bridge endpoint; the dashboard must NEVER touch surface.db directly."
+Asked which rule the amendment states, he chose: the shared memory is the truth for cities and departments.
+
+- For **cities and departments**, the shared memory is the source of truth. This changes the brief ("event
+  ledger = source of truth") and A24 for them. The ledger still records everything, append-only and
+  hash-chained (the inviolable floor is unchanged), and stays the source of truth for everything else.
+- When Marc creates a city or a department in the dashboard, the dashboard writes it to the shared memory as
+  `tony`, through Hermes's audited bridge. It never touches `surface.db` directly. This changes A21's "the
+  dashboard only reads the surface" for these writes. Bob reads and reconciles them.
+- To build (a step of the operator build): the bridge endpoint, a `tony` write credential that Marc installs
+  himself, and the note format, from Bob and Hermes (`OPEN-QUESTIONS.md` #46–#47).
+
+### A30 — Every city has its own jail; HQ's jail holds agents awaiting deletion
+
+Tony: "Every city will have a jail and HQ's Jail will be the one agents are held in before facing deletion"
+(Bob's note n1a0e1a2d07b: "EVERY CITY runs its own local jail; any agent facing DELETION (awaiting deletion) is
+transferred to and held in the HQ JAIL").
+
+- An agent serving a jail term is held in its own city's jail. An agent awaiting deletion is held in HQ's jail
+  (the Security city's) until Marc decides.
+- Where an agent is held is worked out from the ledger, like the terms themselves; no event records the move.
+  HQ still records every task and teaching strike (A6, A13), and the terms are unchanged.
+
+Enforced in: `src/domain/view.ts` (`heldIn`), the Security page, the 3D city and the globe.
+
+### A31 — StarNet: a station per department
+
+Tony: "Make sure workstations show for departments not districts as well". Asked whether that means a StarNet
+station per department, he answered yes.
+
+- Each **department** gets its own StarNet station, where its supervisor carries out Marc's tasks for the
+  department's agents (A26). Districts get none. This replaces A20's "one station per city".
+- To build in the operator build plan (`OPEN-QUESTIONS.md` #49). Until then, one station per city.

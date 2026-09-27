@@ -2,7 +2,7 @@
 //   Continents: one per family (Revenue the largest; Essentials; Claude and Gemini one-city islands).
 //   Cities: map pins. Zoom in and a city appears on the surface: its platform, a building per department
 //   (taller = more agents), the college dome and professors, the KPI beacon, agents coloured by state
-//   (working agents walk), and Security's jail.
+//   (working agents walk), and the city's own jail (A30; HQ's also holds agents awaiting deletion).
 //   Drag to spin, scroll or pinch to zoom toward the cursor, double-click to fly in, +/- and reset,
 //   search to fly to a city, click a pin for its card.
 import * as THREE from './vendor/three-r186/three.module.min.js';
@@ -310,7 +310,7 @@ export function mount3D(container, { onOpenCity }) {
   }
 
   /** A city's model in local units (y up), as seen when zoomed in. */
-  function cityModel(c, fam, pal, jailed, now) {
+  function cityModel(c, fam, pal, now) {
     const g = new THREE.Group();
     const inJail = (a) => a.jail && (a.jail.status === 'awaiting_deletion' || Date.parse(a.jail.until) > now);
     const kpiText = c.kpi ? `${c.kpi.metric.replaceAll('_', ' ')}: ${c.kpi.value}${c.kpi.target != null ? ` / ${c.kpi.target}` : ''}` : 'No KPI pulse yet';
@@ -374,10 +374,7 @@ export function mount3D(container, { onOpenCity }) {
       }
       let standing = 0;
       dp.agents.forEach((ag, j) => {
-        if (inJail(ag)) {
-          jailed.push({ ag, city: c });
-          return;
-        }
+        if (inJail(ag)) return; // held in a jail: this city's own, or HQ's while awaiting deletion (A30)
         const look = { jacket: pal.state[STATES.indexOf(ag.state)] ?? pal.deemph, seed: ag.id, accent: hue };
         const info = { tip: `${ag.name} (${ag.id}) · ${ag.state}${ag.badges.length ? ` · ${ag.badges.join(', ')}` : ''} · ${ag.status?.status ?? 'no status yet'}${ag.status?.activity ? `: ${ag.status.activity}` : ''}`, cityId: c.id };
         if (ag.status?.status === 'working') {
@@ -413,17 +410,19 @@ export function mount3D(container, { onOpenCity }) {
     return g;
   }
 
-  function jailModel(pal, jailed, detail, securityCityId) {
+  /** A30: every city's own jail, with the agents held there (HQ's also holds agents awaiting deletion). */
+  function jailModel(pal, c, inside, detail, isSecurity, cityName) {
     const g = new THREE.Group();
     const at = new THREE.Vector3(-(PLATFORM - 2.4), 1.2, 0);
-    const cage = pick(new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 3.2), new THREE.MeshBasicMaterial({ color: NEON.red, wireframe: true })), { tip: `Security jail · ${jailed.length} inside`, cityId: securityCityId });
+    const tip = `${c.name} jail · ${inside.length} inside${isSecurity ? ' · agents awaiting deletion from every city are held here' : ''}`;
+    const cage = pick(new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.2, 3.2), new THREE.MeshBasicMaterial({ color: NEON.red, wireframe: true })), { tip, cityId: c.id });
     cage.position.set(at.x, 2.3, 0);
     const jg = glow(NEON.red, 6, 0.35);
     jg.position.copy(cage.position);
     g.add(cage, jg);
-    jailed.forEach(({ ag, city }, k) => {
+    inside.forEach((ag, k) => {
       const until = ag.jail.status === 'awaiting_deletion' ? 'awaiting deletion' : `until ${new Date(ag.jail.until).toLocaleString()}`;
-      addPerson(g, detail, { jacket: '#ff5a1f', seed: ag.id, accent: NEON.red }, { tip: `${ag.name} (${ag.id}) of ${city.name} · in jail, ${until}`, cityId: securityCityId },
+      addPerson(g, detail, { jacket: '#ff5a1f', seed: ag.id, accent: NEON.red }, { tip: `${ag.name} (${ag.id}) of ${cityName(ag.cityId)} · in jail, ${until}`, cityId: c.id },
         { at: new THREE.Vector3(at.x - 0.9 + (k % 3) * 0.9, 1.2, -0.9 + Math.floor(k / 3) * 0.9), face: k });
     });
     return g;
@@ -581,8 +580,7 @@ export function mount3D(container, { onOpenCity }) {
     });
 
     const now = Date.parse(data.now);
-    const jailed = [];
-    let securityGroup = null;
+    const cityName = (id) => data.cities.find((x) => x.id === id)?.name ?? id;
     datalist.replaceChildren(...data.cities.map((c) => h('option', { value: c.name })));
     const places = cityPlaces(data.cities);
 
@@ -616,8 +614,8 @@ export function mount3D(container, { onOpenCity }) {
       pins.push({ obj: pin, dir, cityId: c.id });
 
       // City detail, shown when zoomed in.
-      const detail = cityModel(c, fam, pal, jailed, now);
-      if (c.id === data.securityCityId) securityGroup = detail;
+      const detail = cityModel(c, fam, pal, now);
+      detail.add(jailModel(pal, c, data.jail.filter((j) => j.heldIn === c.id), detail, c.id === data.securityCityId, cityName));
       detail.scale.setScalar(CITY_SCALE);
       placeOnGlobe(detail, dir, 0.02);
       detail.visible = false;
@@ -626,7 +624,6 @@ export function mount3D(container, { onOpenCity }) {
 
       label(c.name, `Mayor ${c.mayorName}`, dir.clone().multiplyScalar(R), 'city', { maxDist: R * 4.2 });
     }
-    if (securityGroup) securityGroup.add(jailModel(pal, jailed, securityGroup, data.securityCityId));
     // Each city model draws in a handful of calls: merge its static parts by material.
     const pickSet = new Set(pickables);
     for (const dt of details) bakeStatic(dt.obj, pickSet);

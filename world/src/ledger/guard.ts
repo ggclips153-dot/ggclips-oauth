@@ -255,9 +255,8 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     if (max !== undefined && count >= max) conflict(`the ${p.family} family holds ${max} ${max === 1 ? 'city' : 'cities'}; it already has ${count}`);
   };
   /** A28: the Security city is an Essentials city, and a world has one. */
-  const securityCityHasRoom = () => {
-    if (!p.security) return;
-    if (p.family !== 'essentials') invalid('the Security city is an Essentials city');
+  const securityCityHasRoom = (family = p.family) => {
+    if (family !== 'essentials') invalid('the Security city is an Essentials city');
     const existing = state.securityCityId();
     if (existing) conflict(`this world already has its Security city (${existing})`);
   };
@@ -303,7 +302,7 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     // ---- intents: early checks so Marc sees mistakes before the World Messenger routes them ----
     case 'intent.create_city': {
       familyHasRoom();
-      securityCityHasRoom();
+      if (p.security) securityCityHasRoom();
       const list = p.initialDistricts;
       if (list !== undefined) {
         if (!Array.isArray(list) || list.length > 50) invalid('initialDistricts must be a list (max 50)');
@@ -411,10 +410,14 @@ function checkRules(state: WorldState, d: Draft, agent: Agent | undefined, inten
     case 'city.created':
       match(['name', 'family', 'mayorName', 'security']);
       familyHasRoom();
-      securityCityHasRoom();
+      if (p.security) securityCityHasRoom();
       break;
     case 'city.renamed':
       match(['name']);
+      break;
+    case 'intent.designate_security_city':
+    case 'city.security_designated':
+      securityCityHasRoom(state.cities.get(d.city)!.family);
       break;
     case 'intent.amend_constitution':
     case 'constitution.amended': {

@@ -304,10 +304,13 @@ export class WorldState {
   readonly social = new SocialState();
   readonly proposals = new Map<number, ConstitutionProposal>();
   worldRollup: { seq: number; period: string; periodStart: string; rollup: unknown } | null = null;
-  /** The city created as the Security city (A28), if any. */
+  /** The city created as, or later made, the Security city (A28), if any. */
   private securityCity: string | null = null;
 
-  /** The city that runs the jail: the one created as the Security city, or in older worlds security-city. */
+  /**
+   * The Security city (HQ): it records task and teaching strikes, and its jail holds agents awaiting deletion from
+   * every city (A30). The one created as or made the Security city, or in older worlds security-city.
+   */
   securityCityId(): string | null {
     return this.securityCity ?? (this.cities.has(LEGACY_SECURITY_CITY_ID) ? LEGACY_SECURITY_CITY_ID : null);
   }
@@ -405,6 +408,9 @@ export class WorldState {
         if (city) city.name = p.name;
         break;
       }
+      case 'city.security_designated':
+        this.securityCity ??= e.city;
+        break;
       case 'constitution.amended': {
         const v: ConstitutionVersion = {
           version: p.version,

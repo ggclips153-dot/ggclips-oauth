@@ -226,5 +226,66 @@ describe('A28: the Security city is the one created as such, whatever its name',
     w.city('Security City', 'essentials');
     assert.equal(w.state.securityCityId(), 'security-city');
     assert.throws(() => createSecurityCity(w, 'HQ'), /already has its Security city \(security-city\)/);
+    assert.throws(() => w.intent('designate_security_city', w.city('Innovations', 'essentials'), {}), /already has its Security city/);
+  });
+
+  it('continued: an Essentials city made before A28 (Marc\'s "Security", renamed HQ) can be made the Security city once', () => {
+    const w = new TestWorld();
+    const hq = w.city('Security', 'essentials');
+    const r = w.intent('rename_city', hq, { name: 'HQ' });
+    w.fact(messenger, { type: 'city.renamed', city: hq, payload: { name: 'HQ' }, authorizedBy: r.seq });
+    assert.equal(w.state.securityCityId(), null, 'not the Security city until Marc says so');
+    assert.throws(() => w.intent('designate_security_city', w.city('GGClutchPlays'), {}), /Essentials city/);
+
+    const d = w.intent('designate_security_city', hq, {});
+    assert.throws(() => w.fact(mayorOf(hq), { type: 'city.security_designated', city: hq, payload: {}, authorizedBy: d.seq }), /mayor may not write/);
+    w.fact(messenger, { type: 'city.security_designated', city: hq, payload: {}, authorizedBy: d.seq });
+    assert.equal(w.state.securityCityId(), 'security');
+    assert.equal(worldView(w.state, owner, w.time).securityCityId, 'security');
+
+    // Once only: no second Security city, however it is asked for.
+    assert.throws(() => w.intent('designate_security_city', w.city('Innovations', 'essentials'), {}), /already has its Security city \(security\)/);
+    assert.throws(() => createSecurityCity(w, 'Second HQ'), /already has its Security city \(security\)/);
+
+    // HQ now deploys and records task strikes.
+    const city = w.city('AI Receptionist City');
+    const agent = w.agent(city, w.department(city, w.district(city)), 'Iris');
+    w.promote(city, agent, 'probationer');
+    const guard = w.agent(hq, w.department(hq, w.district(hq, 'Oversight')), 'Sentinel');
+    w.promote(hq, guard, 'probationer');
+    const dep = w.intent('deploy_agent', hq, { agentId: guard, toCity: city });
+    w.fact(mayorOf(hq), { type: 'agent.deployed', city: hq, subject: guard, payload: { toCity: city }, authorizedBy: dep.seq });
+    for (let i = 0; i < 3; i++) taskStrike(w, hq, agent, guard);
+    assert.ok(isJailed(w.state.agents.get(agent)!, w.time), 'jailed on HQ\'s strikes');
+  });
+});
+
+describe('A30: every city has its own jail; agents awaiting deletion are held in HQ\'s', () => {
+  const heldIn = (w: TestWorld) => worldView(w.state, owner, w.time).jail.map((j) => [j.id, j.heldIn]);
+  /** KPI misses up to the 3rd strike: jailed awaiting deletion. */
+  const threeMisses = (w: TestWorld, city: string, agent: string) => {
+    w.miss(city, agent);
+    w.promote(city, agent, 'probationer');
+    w.miss(city, agent);
+    w.promote(city, agent, 'probationer');
+    w.miss(city, agent, true);
+  };
+
+  it('a term is served in the home city\'s jail; awaiting deletion, the agent is moved to the Security city\'s', () => {
+    const s = setup();
+    strikes(s.w, s, 3);
+    assert.deepEqual(heldIn(s.w), [[s.agent, s.city]]);
+    s.w.advanceHours(6);
+    threeMisses(s.w, s.city, s.agent);
+    assert.deepEqual(heldIn(s.w), [[s.agent, s.security]]);
+  });
+
+  it('with no Security city yet, an agent awaiting deletion stays in its own city\'s jail', () => {
+    const w = new TestWorld();
+    const city = w.city();
+    const agent = w.agent(city, w.department(city, w.district(city)), 'Iris');
+    w.promote(city, agent, 'probationer');
+    threeMisses(w, city, agent);
+    assert.deepEqual(heldIn(w), [[agent, city]]);
   });
 });

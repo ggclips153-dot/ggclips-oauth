@@ -132,6 +132,9 @@ export const CATALOG: Record<string, EventSpec> = {
   },
   // Rename a city (tagged with the city itself). Only its name changes; its ID stays the same.
   'intent.rename_city': { kind: 'intent', writers: OWNER, scope: 'city', schema: { name: { t: 'str', max: 120 } } },
+  // A28, continued: make an existing Essentials city the Security city, once, while the world has none (Marc's
+  // HQ was created as "Security" before a city could be created as the Security city).
+  'intent.designate_security_city': { kind: 'intent', writers: OWNER, scope: 'city', schema: {} },
   // Rename, or delete, a district or department. Deleting needs it empty (no departments / no agents), so
   // nobody is left without a place; its ID is retired like every other ID.
   'intent.rename_district': { kind: 'intent', writers: OWNER, scope: 'city', schema: renameDistrict },
@@ -288,6 +291,13 @@ export const CATALOG: Record<string, EventSpec> = {
     scope: 'city',
     schema: { name: { t: 'str', max: 120 } },
     authorizedBy: ['intent.rename_city'],
+  },
+  'city.security_designated': {
+    kind: 'fact',
+    writers: MESSENGER,
+    scope: 'city',
+    schema: {},
+    authorizedBy: ['intent.designate_security_city'],
   },
   'constitution.amended': {
     kind: 'fact',

@@ -17,6 +17,7 @@ const PLAIN = {
   'intent.create_department': 'New department',
   'intent.configure_department': 'Department settings',
   'intent.rename_city': 'Rename city',
+  'intent.designate_security_city': 'Make the Security city',
   'intent.rename_district': 'Rename district',
   'intent.rename_department': 'Rename department',
   'intent.delete_district': 'Delete district',
@@ -301,6 +302,20 @@ export function formsFor(ctx) {
         onSubmit: async (v) => {
           await intent('intent.rename_city', city.id, { name: v.name });
           return `City renamed to "${v.name}".`;
+        },
+      });
+    },
+
+    /** A28, continued: an Essentials city made before it could be created as the Security city (e.g. HQ). */
+    designateSecurityCity(city) {
+      openForm(ctx, {
+        title: `Make ${city.name} the Security city?`,
+        intro: `${city.name} will run the jail: it deploys Security agents, records task and teaching strikes, and its jail holds agents awaiting deletion from every city. A world has one Security city, and this can't be changed later.`,
+        fields: [],
+        submitLabel: 'Make it the Security city',
+        onSubmit: async () => {
+          await intent('intent.designate_security_city', city.id, {});
+          return `${city.name} is now the Security city.`;
         },
       });
     },

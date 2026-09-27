@@ -121,11 +121,21 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
     .filter((i) => !state.routed.has(i.seq) && (scope === '*' || i.city === scope))
     .map((i) => ({ seq: i.seq, ts: i.ts, type: i.type, city: i.city, payload: i.payload }));
 
-  // Security's jail: every jailed agent the reader can see, from any city.
-  // Timed terms drop off on their own once `until` passes.
+  // Every jailed agent the reader can see, from any city. Timed terms drop off on their own once `until` passes.
+  // A30: each city holds its own agents in its own jail; one awaiting deletion is held in the Security city's (HQ).
+  const securityCityId = state.securityCityId();
   const jail = agents
     .filter((a) => isJailed(a, now) && (scope === '*' || a.cityId === scope))
-    .map((a) => ({ id: a.id, name: a.name, cityId: a.cityId, state: a.state, strikes: a.strikes, jailTerms: a.jailTerms, jail: a.jail }));
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      cityId: a.cityId,
+      heldIn: a.jail!.status === 'awaiting_deletion' && securityCityId ? securityCityId : a.cityId,
+      state: a.state,
+      strikes: a.strikes,
+      jailTerms: a.jailTerms,
+      jail: a.jail,
+    }));
   const taskStrikes = state.taskStrikes.filter((t) => scope === '*' || t.agentCity === scope);
   // Dean reports Security has brought up to Marc: his inbox.
   const escalations = [...state.deanReports.values()].filter((r) => r.escalated && (scope === '*' || r.cityId === scope));
@@ -144,8 +154,8 @@ export function worldView(state: WorldState, profile: Profile, now: Date) {
   return {
     lastSeq: state.lastSeq,
     now: now.toISOString(),
-    // The city that runs the jail (A28), so the dashboard shows its jail and "Deploy an agent" there.
-    securityCityId: state.securityCityId(),
+    // The Security city (A28), so the dashboard shows "Deploy an agent" there and its jail as HQ's.
+    securityCityId,
     jail,
     taskStrikes,
     escalations,

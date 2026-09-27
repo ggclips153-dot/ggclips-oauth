@@ -104,6 +104,19 @@ describe('Marc can create structure and agents himself (as World Messenger and M
     assert.equal(w.state.cities.get(city)!.name, 'Front Office City');
   });
 
+  it('making an Essentials city the Security city is applied at once, recorded by the World Messenger', async () => {
+    const hq = w.city('HQ', 'essentials');
+    const res = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer t-marc', 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'intent.designate_security_city', city: hq, payload: {} }),
+    });
+    const body = await res.json();
+    assert.equal(body.applied, true);
+    assert.deepEqual(body.created.map((e: { type: string }) => e.type), ['messenger.routed', 'city.security_designated']);
+    assert.equal(w.state.securityCityId(), hq);
+  });
+
   it('a request the rules refuse is kept unfinished and Marc is told why', async () => {
     const rookie = w.collegeAgent(city, 'Rookie Two');
     const res = await fetch(`${base}/api/events`, {

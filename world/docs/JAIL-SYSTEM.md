@@ -11,6 +11,16 @@ they are quoted.
 - **A6:** task strikes and jail terms.
 - **A13/A15:** professors take teaching strikes from Security.
 - **A15:** deans report to Security, which escalates to Marc.
+- **A28:** the Security city is **HQ**, whatever its name. Marc's HQ was created as "Security" before a city
+  could be created as the Security city, so it is made the Security city once, from its page ("Make this the
+  Security city", `city.security_designated`).
+- **A30:** **every city has its own jail.** An agent serving a term is held in its own city's jail. An agent
+  **awaiting deletion** is moved to **HQ's jail** and waits there for Marc's decision. Where an agent is held is
+  worked out from the ledger (like the terms), so no event records the move. HQ still records every task and
+  teaching strike.
+
+In the sections below, "Security City" means the Security city, which is HQ in Marc's world (its ID is
+`security`; the demo's is `security-city`).
 
 ---
 
@@ -182,15 +192,16 @@ to me."*
 
 | Place | What you see |
 |---|---|
-| **Top bar → Security** (count = people in jail + quarantined notes) | **Jail** table: agent, city, cause, term, release ("5h 12m left") or **"Awaiting your deletion decision"** with **Delete**. **Recent task strikes**: when, agent, city, task, observed by (last 20). Also the shared-surface guard's stopped notes. |
+| **Top bar → Security** (count = people in jail + quarantined notes) | **Jail** table: agent, city, **held in** (its own city's jail, or HQ's while awaiting deletion), cause, term, release ("5h 12m left") or **"Awaiting your deletion decision"** with **Delete**. A warning while the world has no Security city. **Recent task strikes**: when, agent, city, task, observed by (last 20). Also the shared-surface guard's stopped notes. |
 | **Map → city tiles, city header** | A red "**N in jail**" chip. |
 | **World KPI row** | "In jail" total. |
 | **City → Details → each agent row** | "KPI x/3 · Task x/3", and a jail chip: "Jail · 5h left" or "Jail · awaiting deletion". **Delete** only when awaiting deletion. |
 | **College → professors** | The jail chip in "Now". |
 | **Dean card** | Scorecard includes the graduates' **jail terms** and **in jail now**. |
 | **Live** page | The jail chip next to each agent. |
-| **3D city** | **Security City** has a red wireframe **jail cage** holding every jailed agent from every city (hover for "in jail until …" or "awaiting deletion"). Another city with agents inside shows a cage labelled "In Security's jail". Jailed agents wear orange and stand inside. |
-| **Deploy an agent** | Button on Security City's page (owner). |
+| **3D city and globe** | **Every city** has a red wireframe **jail cage** holding its own jailed agents (hover for "in jail until …"). HQ's cage also holds the agents **awaiting deletion** from every city, labelled "holds agents awaiting deletion". Jailed agents wear orange and stand inside. |
+| **Deploy an agent** | Button on the Security city's page (owner). |
+| **Make this the Security city** | Button on an Essentials city's page while the world has none (owner, once). |
 
 ---
 
@@ -209,8 +220,12 @@ to me."*
 | `intent.delete_agent` | Marc | the agent's city | `agentId` | — |
 | `agent.deleted` | home Mayor | the agent's city | `ledgerArchiveRef`, `lessonRecordRef` | cites the intent; agent **awaiting deletion** |
 
+`security-city` above is the demo's Security city; in Marc's world the tag is HQ's ID, `security`. Making an
+older Essentials city the Security city: `intent.designate_security_city` (Marc, that city's tag) and
+`city.security_designated` (the World Messenger), once per world.
+
 A jail term is not an event. It's the **result** of the 3rd strike, worked out when the strike is recorded;
-release is worked out from time. So the ledger stays the single source of truth, and a restart gives exactly
+release is worked out from time. The same goes for where the agent is held (A30). So a restart gives exactly
 the same jail.
 
 ---
@@ -242,7 +257,7 @@ the same jail.
 
 ## 12. Tests covering it
 
-`npm test` checks every rule above (162 tests in total). The jail-specific ones:
+`npm test` checks every rule above (176 tests in total). The jail-specific ones:
 
 **`test/jail.test.ts`**
 - Essentials read everything but write only their own city.
@@ -257,6 +272,11 @@ the same jail.
 - **The level never resets,** and the agent works normally after a term.
 - **The 3rd KPI strike** means awaiting deletion; deletion is refused in every other case, including during a
   timed term.
+- **A28:** a Security city named HQ runs deployments, task strikes and the jail; one per world, Essentials only;
+  an older world keeps `security-city`; an Essentials city made before A28 (Marc's "Security", renamed HQ) can be
+  made the Security city once.
+- **A30:** a term is served in the home city's jail; awaiting deletion, the agent is held in HQ's; with no
+  Security city yet, it stays in its own city's jail.
 
 **Other files**
 - **`test/college.test.ts`:** professors' teaching strikes, and jailed professors can't examine or step in.

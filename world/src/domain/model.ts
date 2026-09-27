@@ -30,7 +30,8 @@ export const CROSS_CITY_READ_FAMILIES: readonly Family[] = ['essentials'];
 
 /**
  * The Security city runs the jail and records task strikes (A3, A6). Since A28 it is the city created as the
- * Security city (whatever its name, e.g. "HQ"); in a world from before that, the city whose ID is this one.
+ * Security city, or later made it once (whatever its name, e.g. "HQ"); in a world from before that, the city whose
+ * ID is this one.
  */
 export const LEGACY_SECURITY_CITY_ID = 'security-city';
 
